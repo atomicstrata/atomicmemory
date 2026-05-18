@@ -18,6 +18,9 @@ importers:
       eslint:
         specifier: 9.39.1
         version: 9.39.1
+      fallow:
+        specifier: 2.75.0
+        version: 2.75.0
       turbo:
         specifier: 2.9.14
         version: 2.9.14
@@ -1131,6 +1134,46 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@fallow-cli/darwin-arm64@2.75.0':
+    resolution: {integrity: sha512-izJTjYPNdiWPbf7QjVwje0JwJeVQJAUuncjPkuAO9hRM3t4oJ9fqAvyEXyyRq4dAJS4NO4DMEsPsN82QOF8fGw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@fallow-cli/darwin-x64@2.75.0':
+    resolution: {integrity: sha512-hZzaSidHYKFC82bjP/L+xKOp67ESgNjSUX3U2HzaBg/dKFVcyMFxub3O7r3SBFBU2zY5wsZK1qmfpw/oC01vsg==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@fallow-cli/linux-arm64-gnu@2.75.0':
+    resolution: {integrity: sha512-K5ymLWqR6NJUV+wVDFK0+bKK4YSzYo9Lr2Xla5YptW6FnlpEAvRDdcr3lGdf3Ge1T14fKU3ys8dKHDHkJSeyeA==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@fallow-cli/linux-arm64-musl@2.75.0':
+    resolution: {integrity: sha512-FRBz19XQ6pPjnhsIry0w0cRqUEYGZH6rEDCau3SGa2DNgts/i4573HJOn7ZRAzgSNMtgoh3KKTyUNOEzNLTl0A==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@fallow-cli/linux-x64-gnu@2.75.0':
+    resolution: {integrity: sha512-81xmIf9G8hVTKbQGRGV6oTbu9W5XQPpKFpfXS3KFu16bbdgfwEaKzr5E7Y7dxECYsskhIiff5zdHcEPOFv29Wg==}
+    cpu: [x64]
+    os: [linux]
+
+  '@fallow-cli/linux-x64-musl@2.75.0':
+    resolution: {integrity: sha512-lVPjmM+dGy3NG6nJ9PaZfkUClZC6OyfwyqVZdQFhq+6Xl/2c2jZI9vgmwIDBIGBhL9TU+V8NdSM7Xy85ifeOyw==}
+    cpu: [x64]
+    os: [linux]
+
+  '@fallow-cli/win32-arm64-msvc@2.75.0':
+    resolution: {integrity: sha512-HbIXLbte8pzNX0XlbyRlRQA2+y8kfJ4O6XxB2VR2dE6q5LrNhG4fl0QRR/P9x8r3CNn9fw/25kk+WxULfbHu1w==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@fallow-cli/win32-x64-msvc@2.75.0':
+    resolution: {integrity: sha512-h8W+qEOPvyolBQO2Y0H4/pz2XXw/1yHA8/XRPo3/tYRovmN2zoNjDrvaGjjodzFt6fBVLus+T0uo+U4pMgOu/w==}
+    cpu: [x64]
+    os: [win32]
 
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
@@ -3393,6 +3436,11 @@ packages:
 
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
+
+  fallow@2.75.0:
+    resolution: {integrity: sha512-0/2cquNI/cDLP/LzcCbkwI4hMzkX4tE0VY3/69n3PBBeqFpbM2oai+2Cb0sB8dXB8MDUGPVoPJjDW5GiUo7a1A==}
+    engines: {node: '>=16'}
+    hasBin: true
 
   fast-decode-uri-component@1.0.1:
     resolution: {integrity: sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==}
@@ -7152,6 +7200,30 @@ snapshots:
     optionalDependencies:
       '@noble/hashes': 2.2.0
 
+  '@fallow-cli/darwin-arm64@2.75.0':
+    optional: true
+
+  '@fallow-cli/darwin-x64@2.75.0':
+    optional: true
+
+  '@fallow-cli/linux-arm64-gnu@2.75.0':
+    optional: true
+
+  '@fallow-cli/linux-arm64-musl@2.75.0':
+    optional: true
+
+  '@fallow-cli/linux-x64-gnu@2.75.0':
+    optional: true
+
+  '@fallow-cli/linux-x64-musl@2.75.0':
+    optional: true
+
+  '@fallow-cli/win32-arm64-msvc@2.75.0':
+    optional: true
+
+  '@fallow-cli/win32-x64-msvc@2.75.0':
+    optional: true
+
   '@fastify/ajv-compiler@4.0.5':
     dependencies:
       ajv: 8.20.0
@@ -10583,6 +10655,19 @@ snapshots:
       is-extendable: 0.1.1
 
   extend@3.0.2: {}
+
+  fallow@2.75.0:
+    dependencies:
+      detect-libc: 2.1.2
+    optionalDependencies:
+      '@fallow-cli/darwin-arm64': 2.75.0
+      '@fallow-cli/darwin-x64': 2.75.0
+      '@fallow-cli/linux-arm64-gnu': 2.75.0
+      '@fallow-cli/linux-arm64-musl': 2.75.0
+      '@fallow-cli/linux-x64-gnu': 2.75.0
+      '@fallow-cli/linux-x64-musl': 2.75.0
+      '@fallow-cli/win32-arm64-msvc': 2.75.0
+      '@fallow-cli/win32-x64-msvc': 2.75.0
 
   fast-decode-uri-component@1.0.1:
     optional: true

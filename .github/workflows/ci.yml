@@ -38,6 +38,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Run repo hygiene
         run: node scripts/ci/repo-hygiene.mjs
+      - name: Validate migration inventories
+        run: node scripts/ci/migration-inventories.mjs --check
 
   package-metadata:
     name: package-metadata
@@ -54,7 +56,42 @@ jobs:
         run: node scripts/ci/package-metadata.mjs
 
   affected-build-test:
-    name: affected-build-test
+    name: affected-build-test (node ${{ matrix.node-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22", "24"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            pnpm install --frozen-lockfile
+          else
+            echo "::notice::No root package.json yet; skipped dependency install."
+          fi
+      - name: Run affected build, typecheck, lint, and self-contained tests
+        run: node scripts/ci/run-root-script.mjs ci:affected
+
+  code-health:
+    name: code-health
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -77,8 +114,8 @@ jobs:
           else
             echo "::notice::No root package.json yet; skipped dependency install."
           fi
-      - name: Run affected build, typecheck, lint, and self-contained tests
-        run: node scripts/ci/run-root-script.mjs ci:affected
+      - name: Run code health checks
+        run: node scripts/ci/run-root-script.mjs ci:code-health
 
   pack-dry-run:
     name: pack-dry-run

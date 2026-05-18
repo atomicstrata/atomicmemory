@@ -8,6 +8,7 @@
   "owner": "TBD-owner-plugin-claude-code",
   "reviewer": "TBD-reviewer-public-safety",
   "included_paths": [
+    ".claude-plugin/**",
     "hooks/**",
     "scripts/**",
     "skills/**",

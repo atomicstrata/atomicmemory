@@ -65,11 +65,14 @@
     "openapi.yaml"
   ],
   "scripts": {
+    "code-health": "fallow --no-cache --format compact --fail-on-issues",
     "dev": "dotenv -e .env -- tsx watch src/server.ts",
     "start": "dotenv -e .env -- tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "pnpm run check:openapi",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && tsx scripts/generate-schema-hash.ts",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
-    "check:openapi": "npm run generate:openapi && git diff --exit-code openapi.yaml openapi.json",
+    "check:openapi": "pnpm run generate:openapi && git diff --exit-code openapi.yaml openapi.json",
     "prepublishOnly": "npm run generate:openapi && npm run build",
     "test": "dotenv -e .env.test -- vitest run --reporter verbose",
     "test:watch": "dotenv -e .env.test -- vitest --reporter verbose",

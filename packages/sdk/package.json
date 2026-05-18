@@ -90,6 +90,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "code-health": "pnpm run test:coverage && FALLOW_COVERAGE=coverage/coverage-final.json fallow audit --health-baseline=.fallow/health-baseline.json --dupes-baseline=.fallow/dupes-baseline.json --base=${FALLOW_BASE_REF:-origin/main} --no-cache && ./scripts/check-baseline-ratchet.sh ${FALLOW_BASE_REF:-origin/main}",
     "build:dev": "tsup --watch",
     "dev": "tsup --watch",
     "test": "vitest run",
@@ -97,7 +98,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
-    "lint": "eslint src/**/*.ts",
+    "lint": "eslint src/**/*.ts && pnpm run boundary:check",
+    "boundary:check": "node scripts/check-boundary.mjs",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts",
     "format:check": "prettier --check src/**/*.ts",

@@ -22,13 +22,16 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "turbo run lint",
+    "code-health": "node scripts/ci/code-health.mjs --verify && turbo run code-health",
     "docs-contract": "turbo run docs-contract",
     "package-metadata": "node scripts/ci/package-metadata.mjs",
+    "migration-inventories": "node scripts/ci/migration-inventories.mjs --check",
     "public-integration-smoke": "turbo run public-integration-smoke",
     "repo-hygiene": "node scripts/ci/repo-hygiene.mjs",
     "security-compliance": "node scripts/security/security-compliance.mjs",
     "pack-dry-run": "node scripts/ci/pack-dry-run.mjs",
     "ci:affected": "turbo run build typecheck lint --affected && turbo run test --affected --filter='!@atomicmemory/core'",
+    "ci:code-health": "node scripts/ci/code-health.mjs --verify && (turbo run code-health --affected || turbo run code-health)",
     "ci:pack-dry-run": "turbo run pack-dry-run --affected && node scripts/ci/pack-dry-run.mjs",
     "ci:docs-contract": "turbo run docs-contract",
     "ci:public-smoke": "turbo run public-integration-smoke"
@@ -36,6 +39,7 @@
   "devDependencies": {
     "@typescript-eslint/parser": "^8.59.3",
     "eslint": "9.39.1",
+    "fallow": "2.75.0",
     "turbo": "2.9.14"
   },
   "pnpm": {

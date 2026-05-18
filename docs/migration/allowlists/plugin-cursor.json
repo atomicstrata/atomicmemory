@@ -8,6 +8,7 @@
   "owner": "TBD-owner-plugin-cursor",
   "reviewer": "TBD-reviewer-public-safety",
   "included_paths": [
+    ".cursor/**",
     "package.json",
     "README.md"
   ],

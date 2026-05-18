@@ -60,6 +60,16 @@
       ],
       "outputs": []
     },
+    "code-health": {
+      "cache": false,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".fallowrc.json",
+        "../../package.json",
+        "../../pnpm-lock.yaml"
+      ],
+      "outputs": []
+    },
     "docs-contract": {
       "dependsOn": ["^build"],
       "inputs": [

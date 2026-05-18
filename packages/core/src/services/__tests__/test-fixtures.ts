@@ -7,8 +7,40 @@
  */
 
 import type { MemoryRow, SearchResult } from '../../db/repository-types.js';
+import type { MemoryService } from '../memory-service.js';
+import type { Mock } from 'vitest';
 
 const DEFAULT_NOW = new Date('2026-03-27T00:00:00.000Z');
+
+interface SearchPipelineMockContextMocks {
+  mockRunSearchPipelineWithTrace: Mock;
+  mockTouchMemory: Mock;
+  mockGetMemory: Mock;
+  mockTraceStage: Mock;
+  mockTraceEvent: Mock;
+  mockTraceFinalize: Mock;
+}
+
+interface SearchPipelineMockContext {
+  repo: unknown;
+  claims: unknown;
+  trace: SearchPipelineTraceMock;
+  readonly service: MemoryService;
+  resetMocks: () => void;
+  initService: () => Promise<void>;
+}
+
+interface SearchPipelineTraceMock {
+  stage: Mock;
+  event: Mock;
+  finalize: Mock;
+  setRetrievalSummary: () => void;
+  setPackagingSummary: () => void;
+  setAssemblySummary: () => void;
+  getRetrievalSummary: () => undefined;
+  getPackagingSummary: () => undefined;
+  getAssemblySummary: () => undefined;
+}
 
 /** Shared base fields for both MemoryRow and SearchResult. */
 function baseMemoryDefaults(): MemoryRow {
@@ -174,14 +206,7 @@ export function createDecisionFactory(
  * stale retrieval). Returns the fake repo, claims, trace, service, and a
  * beforeEach callback that resets all mocks.
  */
-function createSearchPipelineMockContext(mocks: {
-  mockRunSearchPipelineWithTrace: import('vitest').Mock;
-  mockTouchMemory: import('vitest').Mock;
-  mockGetMemory: import('vitest').Mock;
-  mockTraceStage: import('vitest').Mock;
-  mockTraceEvent: import('vitest').Mock;
-  mockTraceFinalize: import('vitest').Mock;
-}) {
+function createSearchPipelineMockContext(mocks: SearchPipelineMockContextMocks): SearchPipelineMockContext {
   const repo = {
     getMemory: (...args: unknown[]) => (mocks.mockGetMemory as Function)(...args),
     touchMemory: (...args: unknown[]) => (mocks.mockTouchMemory as Function)(...args),
@@ -201,7 +226,7 @@ function createSearchPipelineMockContext(mocks: {
   };
 
   /* Lazy-init service in beforeAll to avoid require() CJS resolution issues. */
-  const ctx: { service: import('../memory-service.js').MemoryService } = {} as any;
+  const ctx: { service: MemoryService } = {} as any;
 
   function resetMocks() {
     mocks.mockGetMemory.mockReset();
@@ -233,12 +258,12 @@ function createSearchPipelineMockContext(mocks: {
  * Reduces boilerplate duplication across search-pipeline-based test files.
  */
 export function setupSearchPipelineTest(
-  mocks: Parameters<typeof createSearchPipelineMockContext>[0],
+  mocks: SearchPipelineMockContextMocks,
   hooks: {
     beforeAll: (fn: () => Promise<void>) => void;
     beforeEach: (fn: () => void) => void;
   },
-) {
+): SearchPipelineMockContext {
   const context = createSearchPipelineMockContext(mocks);
   hooks.beforeAll(async () => { await context.initService(); });
   hooks.beforeEach(() => { context.resetMocks(); });

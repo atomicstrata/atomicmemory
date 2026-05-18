@@ -8,6 +8,8 @@
   "owner": "TBD-owner-plugin-codex",
   "reviewer": "TBD-reviewer-public-safety",
   "included_paths": [
+    ".codex-mcp.json",
+    ".codex-plugin/**",
     "skills/**",
     "logo.svg",
     "marketplace.example.json",
