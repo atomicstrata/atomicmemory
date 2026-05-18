@@ -1,0 +1,56 @@
+name: Host plugin bug
+description: Report a host-specific plugin install or runtime problem.
+title: "[Plugin]: "
+labels:
+  - bug
+  - plugin
+body:
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      options:
+        - Claude Code
+        - OpenClaw
+        - Hermes
+        - Codex
+        - Cursor
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package or plugin version
+    validations:
+      required: true
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Install path
+      options:
+        - npm package
+        - host marketplace
+        - local development checkout
+        - documentation example
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: Issue
+      description: Describe what failed and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Public-safe reproduction
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety check
+      options:
+        - label: I have removed tokens, private logs, local absolute paths, and host account details.
+          required: true

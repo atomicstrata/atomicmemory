@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.0.0"
+
+jobs:
+  repo-hygiene:
+    name: repo-hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Run repo hygiene
+        run: node scripts/ci/repo-hygiene.mjs
+
+  package-metadata:
+    name: package-metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Run package metadata checks
+        run: node scripts/ci/package-metadata.mjs
+
+  affected-build-test:
+    name: affected-build-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            pnpm install --frozen-lockfile
+          else
+            echo "::notice::No root package.json yet; skipped dependency install."
+          fi
+      - name: Run affected build, typecheck, test, and lint
+        run: node scripts/ci/run-root-script.mjs ci:affected
+
+  pack-dry-run:
+    name: pack-dry-run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            pnpm install --frozen-lockfile
+          else
+            echo "::notice::No root package.json yet; skipped dependency install."
+          fi
+      - name: Run package dry-runs through turbo
+        run: node scripts/ci/run-root-script.mjs ci:pack-dry-run
+      - name: Verify pack output shape
+        run: node scripts/ci/pack-dry-run.mjs
+
+  docs-contract:
+    name: docs-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            pnpm install --frozen-lockfile
+          else
+            echo "::notice::No root package.json yet; skipped dependency install."
+          fi
+      - name: Run docs contract
+        run: node scripts/ci/run-root-script.mjs ci:docs-contract
+      - name: Validate public smoke contract JSON when present
+        run: |
+          contract_path="tests/smoke/docs-contract/public-smoke-contract.json"
+          if [ -f "${contract_path}" ]; then
+            jq empty "${contract_path}"
+          else
+            echo "::notice::No public smoke contract yet; skipped JSON validation."
+          fi
+
+  public-integration-smoke:
+    name: public-integration-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            pnpm install --frozen-lockfile
+          else
+            echo "::notice::No root package.json yet; skipped dependency install."
+          fi
+      - name: Run public integration smoke
+        run: node scripts/ci/run-root-script.mjs ci:public-smoke
+
+  security-compliance:
+    name: security-compliance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Run security compliance
+        run: node scripts/security/security-compliance.mjs

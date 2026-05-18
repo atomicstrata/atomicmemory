@@ -1,0 +1,61 @@
+name: Package bug
+description: Report a bug in a package, adapter, plugin, or smoke contract.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - packages/core
+        - packages/sdk
+        - packages/cli
+        - packages/mcp-server
+        - adapters/vercel-ai
+        - adapters/openai-agents
+        - adapters/langchain
+        - adapters/langgraph
+        - adapters/mastra
+        - plugins/claude-code
+        - plugins/openclaw
+        - plugins/hermes
+        - plugins/codex
+        - plugins/cursor
+        - tests/smoke
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Package version, commit, or docs page version.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Include public-safe commands, minimal code, and relevant output.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety check
+      options:
+        - label: I have not included credentials, private logs, or sensitive deployment details.
+          required: true

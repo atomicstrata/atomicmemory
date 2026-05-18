@@ -1,0 +1,32 @@
+name: Docs issue
+description: Report incorrect, stale, or unclear public documentation.
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or file
+      description: Link to the docs page or repository path.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+    validations:
+      required: false
+  - type: checkboxes
+    id: package_claims
+    attributes:
+      label: Package status
+      options:
+        - label: I checked whether the docs imply an unpublished package is already published.
+          required: false

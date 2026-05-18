@@ -1,0 +1,40 @@
+name: Feature request
+description: Request a new package, adapter, plugin, or public workflow.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core runtime
+        - SDK
+        - CLI
+        - MCP server
+        - Framework adapter
+        - Host plugin
+        - Documentation
+        - CI or public smoke
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What should AtomicMemory make possible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
