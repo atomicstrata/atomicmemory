@@ -1123,8 +1123,11 @@ async function expandWithLinks(
     policyConfig,
   );
 
+  // Sort by `ranking_score` (floor-gated) rather than raw `score` so the
+  // similarity floor actually gates expansion order — same reason as
+  // `memory-search.ts:463`.
   const expansions = [...linkedMemories, ...dedupedTemporal, ...entityMemories]
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => (b.ranking_score ?? b.score) - (a.ranking_score ?? a.score))
     .slice(0, budget);
 
   return [...results, ...expansions];
@@ -1438,7 +1441,10 @@ function mergeStageResults(
   mergeStageWeightedResults(merged, primary, primaryWeight);
   mergeStageWeightedResults(merged, secondary, secondaryWeight);
   return [...merged.values()]
-    .sort((left, right) => right.score - left.score)
+    .sort(
+      (left, right) =>
+        (right.ranking_score ?? right.score) - (left.ranking_score ?? left.score),
+    )
     .slice(0, limit);
 }
 
