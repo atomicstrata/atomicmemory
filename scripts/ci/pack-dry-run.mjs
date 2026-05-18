@@ -32,13 +32,30 @@ function runPackDryRun(packageDir) {
 }
 
 function validatePackOutput(packageDir, output) {
+  const jsonOutput = extractJsonArray(output);
+
+  if (!jsonOutput) {
+    return [`${packageDir}: npm pack dry-run did not emit a JSON array`];
+  }
+
   try {
-    const packEntries = JSON.parse(output);
+    const packEntries = JSON.parse(jsonOutput);
     const fileCount = packEntries?.[0]?.files?.length ?? 0;
     return fileCount > 0 ? [] : [`${packageDir}: npm pack dry-run reported no packed files`];
   } catch (error) {
     return [`${packageDir}: npm pack dry-run did not emit valid JSON: ${error.message}`];
   }
+}
+
+function extractJsonArray(output) {
+  const start = output.indexOf("[");
+  const end = output.lastIndexOf("]");
+
+  if (start === -1 || end === -1 || end < start) {
+    return null;
+  }
+
+  return output.slice(start, end + 1);
 }
 
 function main() {

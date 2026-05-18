@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "docs-contract": "bash scripts/validate-public-smoke-contract.sh",
+    "public-integration-smoke": "pnpm run docs-contract",
     "test": "pnpm run docs-contract",
     "validate": "pnpm run docs-contract"
   },
-  "license": "MIT",
-  "packageManager": "pnpm@9.15.4"
+  "license": "MIT"
 }

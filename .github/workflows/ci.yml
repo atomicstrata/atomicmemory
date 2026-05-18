@@ -20,7 +20,7 @@ defaults:
 
 env:
   NODE_VERSION: "22"
-  PNPM_VERSION: "9.0.0"
+  PNPM_VERSION: "9.15.4"
 
 jobs:
   repo-hygiene:
@@ -77,7 +77,7 @@ jobs:
           else
             echo "::notice::No root package.json yet; skipped dependency install."
           fi
-      - name: Run affected build, typecheck, test, and lint
+      - name: Run affected build, typecheck, lint, and self-contained tests
         run: node scripts/ci/run-root-script.mjs ci:affected
 
   pack-dry-run:

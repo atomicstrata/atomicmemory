@@ -1,6 +1,6 @@
 # @atomicmemory/mcp-server
 
-MCP server that exposes [AtomicMemory](https://github.com/atomicstrata/atomicmemory-core) as four tools to any MCP-compatible agent:
+MCP server that exposes [AtomicMemory core](../../packages/core) as four tools to any MCP-compatible agent:
 
 - `memory_search` — semantic retrieval
 - `memory_ingest` — AUDN-mutating ingest (`text` / `messages`) or deterministic one-record ingest (`verbatim`, provider permitting)

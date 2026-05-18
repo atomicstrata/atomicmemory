@@ -70,7 +70,7 @@ interface CoreVersionInfo {
 function cleanCheckoutGuard(): CoreVersionInfo {
   if (!existsSync(CORE_REPO)) {
     throw new Error(
-      `Sibling atomicmemory-core checkout not found at ${CORE_REPO}. ` +
+      `Core package not found at ${CORE_REPO}. ` +
       `Capture requires packages/core next to packages/sdk.`,
     );
   }
@@ -81,7 +81,7 @@ function cleanCheckoutGuard(): CoreVersionInfo {
 
   if (dirty && !dirtyOverride) {
     throw new Error(
-      'atomicmemory-core working tree is dirty:\n' +
+      'packages/core working tree is dirty:\n' +
       status.split('\n').slice(0, 10).map((l) => '  ' + l).join('\n') +
       (status.split('\n').length > 10 ? '\n  ...' : '') +
       '\n\nEither commit/stash those changes, or set ' +
@@ -129,7 +129,7 @@ async function pollHealth(coreUrl: string): Promise<void> {
     await sleep(HEALTH_POLL_INTERVAL_MS);
   }
   throw new Error(
-    `atomicmemory-core not reachable at ${coreUrl} after ${HEALTH_TIMEOUT_MS}ms. ` +
+    `packages/core not reachable at ${coreUrl} after ${HEALTH_TIMEOUT_MS}ms. ` +
     `Last error: ${lastError}.\n` +
     `Bring it up with: cd ${CORE_REPO} && docker compose up -d --build`,
   );

@@ -12,7 +12,7 @@
 #   3. real metadata object → 6-field body with `metadata` deep-
 #      equal to the input
 #   4. malformed JSON → exits non-zero with a non-empty stderr
-#      (CLAUDE.md "no fallback values")
+#      (project rule: no fallback values)
 #
 # Runs entirely in-process: no Docker, no curl, no network.
 # The companion `metadata-roundtrip.sh` script is the optional

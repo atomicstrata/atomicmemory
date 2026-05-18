@@ -163,7 +163,7 @@ config. The CLI does not invent a user for provider-backed operations.
 
 The backend-gated smoke suite (`pnpm -C packages/cli test:backend`) is skipped
 unless `ATOMICMEMORY_TEST_BACKEND=1` is set against a real
-`atomicmemory-core` instance. To exercise it deterministically against a
+`@atomicmemory/core` instance. To exercise it deterministically against a
 local Docker stack, run:
 
 ```bash
@@ -171,8 +171,8 @@ pnpm -C packages/cli test:backend:docker
 ```
 
 The harness (`scripts/test-backend-docker.mjs`) brings up
-`docker-compose.yml` + `docker-compose.smoke.yml` from a sibling
-`atomicmemory-core` checkout, layers a small CLI-side overlay
+`docker-compose.yml` + `docker-compose.smoke.yml` from `packages/core`,
+layers a small CLI-side overlay
 (`scripts/docker/docker-compose.cli-backend.yml`) that routes core's
 LLM at an in-network mock so `/v1/memories/ingest` doesn't 401 on
 core's smoke `OPENAI_API_KEY=sk-smoke-test-dummy`, polls the real
@@ -185,7 +185,7 @@ Configuration env vars (all optional):
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `ATOMICMEMORY_CORE_PATH` | sibling `../atomicmemory-core` | path to the core checkout |
+| `ATOMICMEMORY_CORE_PATH` | sibling `../core` | path to the core package root |
 | `ATOMICMEMORY_DOCKER_APP_PORT` | first free port from 3060 | host port for core's app |
 | `ATOMICMEMORY_DOCKER_POSTGRES_PORT` | first free port from 5444 | host port for core's pg |
 | `ATOMICMEMORY_DOCKER_HEALTH_TIMEOUT` | `90` (seconds) | bounded `/health` poll cap |
@@ -194,5 +194,5 @@ Configuration env vars (all optional):
 | `ATOMICMEMORY_DOCKER_KEEP_UP` | `0` | leave the stack up after the run for inspection |
 
 Requirements: `docker` daemon running, `docker compose` v2 plugin,
-`pnpm`, and a sibling `atomicmemory-core` checkout containing both
+`pnpm`, and `packages/core` containing both
 `docker-compose.yml` and `docker-compose.smoke.yml`.

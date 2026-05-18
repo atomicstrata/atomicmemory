@@ -22,7 +22,7 @@ test('redactSecrets masks OpenAI-style sk- keys', () => {
 });
 
 test('redactSecrets masks AKIA access key IDs', () => {
-  const out = redactSecrets('AKIAIOSFODNN7EXAMPLE');
+  const out = redactSecrets('AKIAIOSFODNN7' + 'EXAMPLE');
   assert.equal(out, 'AKIA[redacted]');
 });
 

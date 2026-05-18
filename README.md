@@ -124,7 +124,7 @@ layer. pnpm owns dependency resolution, workspace linking, and packing. Turbo
 owns task ordering, caching, and affected-task selection.
 
 ```bash
-# install (uses the pinned pnpm@9.0.0 from packageManager)
+# install (uses the pinned pnpm@9.15.4 from packageManager)
 pnpm install
 
 # build / typecheck / test (cacheable)
@@ -149,7 +149,7 @@ to external services, or must always reflect current repo state.
 CI lanes use thin aliases over the same Turbo tasks:
 
 ```bash
-pnpm run ci:affected         # build / typecheck / test / lint, affected-only
+pnpm run ci:affected         # build / typecheck / lint for affected packages; tests for self-contained packages
 pnpm run ci:pack-dry-run     # pack-dry-run, affected-only
 pnpm run ci:docs-contract    # docs-contract
 pnpm run ci:public-smoke     # public-integration-smoke
@@ -157,7 +157,10 @@ pnpm run ci:public-smoke     # public-integration-smoke
 
 `ci:affected` and `ci:pack-dry-run` use Turbo's `--affected` filter for normal
 PRs; full release-green validation runs the unprefixed scripts so the required
-surface is never narrowed by affected detection.
+surface is never narrowed by affected detection. The core package's DB-backed
+test suite requires service provisioning and is intentionally outside the
+generic affected lane; build, typecheck, lint, metadata, and pack validation
+still cover `@atomicmemory/core` in public CI.
 
 Per-package commands (`pnpm --filter @atomicmemory/sdk run build`, etc.) work
 once a package lands in `packages/`, `adapters/`, or `plugins/`. The skeleton

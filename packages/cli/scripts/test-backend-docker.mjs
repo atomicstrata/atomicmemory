@@ -3,12 +3,12 @@
  * @file Deterministic backend-smoke harness for the AtomicMemory CLI.
  *
  * Runs the opt-in `pnpm -C packages/cli test:backend` suite against a
- * real `atomicmemory-core` Docker stack started + torn down here. The
+ * real `packages/core` Docker stack started + torn down here. The
  * test:backend suite is `node:test`-skipped without
  * `ATOMICMEMORY_TEST_BACKEND=1`, so this harness is the canonical way
  * to actually exercise it locally.
  *
- * Mirrors atomicmemory-core's own
+ * Mirrors the core package's own
  * `scripts/docker-smoke-test.sh` pattern (port resolution → unique
  * compose project → bring up `docker-compose.yml` + `docker-compose.smoke.yml`
  * → poll the real `/health` endpoint with a bounded timeout → run
@@ -16,10 +16,8 @@
  * (HTTP 2xx from `/health`) — there is no sleep-only readiness assumption.
  *
  * Configuration env vars (all optional):
- *   ATOMICMEMORY_CORE_PATH     Path to a checkout of the
- *                              atomicmemory-core repo. Default: sibling
- *                              `../atomicmemory-core` from this
- *                              integrations repo root.
+ *   ATOMICMEMORY_CORE_PATH     Path to the core package root. Default:
+ *                              sibling `../core` from packages/cli.
  *   ATOMICMEMORY_DOCKER_APP_PORT      Port to publish core's app on
  *                                     (default: pick a free port
  *                                     starting at 3060).
@@ -104,7 +102,7 @@ function resolveCoreRoot() {
   const override = env.ATOMICMEMORY_CORE_PATH;
   const candidates = override
     ? [override]
-    : [resolve(REPO_ROOT, '..', 'atomicmemory-core')];
+    : [resolve(REPO_ROOT, 'core')];
   for (const c of candidates) {
     if (!existsSync(c)) continue;
     if (!statSync(c).isDirectory()) continue;
@@ -113,8 +111,8 @@ function resolveCoreRoot() {
     return c;
   }
   throw new Error(
-    `could not locate an atomicmemory-core checkout with docker-compose.yml + docker-compose.smoke.yml. ` +
-      `Set ATOMICMEMORY_CORE_PATH to the repo root. Tried: ${candidates.join(', ')}`,
+    `could not locate a core package with docker-compose.yml + docker-compose.smoke.yml. ` +
+      `Set ATOMICMEMORY_CORE_PATH to the core package root. Tried: ${candidates.join(', ')}`,
   );
 }
 

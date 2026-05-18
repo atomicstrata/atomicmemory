@@ -12,10 +12,10 @@
     "url": "https://github.com/atomicstrata/atomicmemory/issues"
   },
   "homepage": "https://github.com/atomicstrata/atomicmemory#readme",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=20.10.0",
-    "pnpm": ">=9.0.0"
+    "pnpm": ">=9.15.4"
   },
   "scripts": {
     "build": "turbo run build",
@@ -23,17 +23,25 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "docs-contract": "turbo run docs-contract",
-    "package-metadata": "turbo run package-metadata",
+    "package-metadata": "node scripts/ci/package-metadata.mjs",
     "public-integration-smoke": "turbo run public-integration-smoke",
-    "repo-hygiene": "turbo run repo-hygiene",
-    "security-compliance": "turbo run security-compliance",
-    "pack-dry-run": "turbo run pack-dry-run",
-    "ci:affected": "turbo run build typecheck test lint --affected",
-    "ci:pack-dry-run": "turbo run pack-dry-run --affected",
+    "repo-hygiene": "node scripts/ci/repo-hygiene.mjs",
+    "security-compliance": "node scripts/security/security-compliance.mjs",
+    "pack-dry-run": "node scripts/ci/pack-dry-run.mjs",
+    "ci:affected": "turbo run build typecheck lint --affected && turbo run test --affected --filter='!@atomicmemory/core'",
+    "ci:pack-dry-run": "turbo run pack-dry-run --affected && node scripts/ci/pack-dry-run.mjs",
     "ci:docs-contract": "turbo run docs-contract",
     "ci:public-smoke": "turbo run public-integration-smoke"
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "^8.59.3",
+    "eslint": "9.39.1",
     "turbo": "2.9.14"
+  },
+  "pnpm": {
+    "overrides": {
+      "@protobufjs/utf8": "1.1.1",
+      "protobufjs": "7.5.6"
+    }
   }
 }

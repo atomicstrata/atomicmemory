@@ -15,7 +15,7 @@ expectations, and gating checks for changes to this repository.
 
 ## Development workflow
 
-We use pnpm workspaces and Turborepo. Node 20.10+ and pnpm 9.0+ are required;
+We use pnpm workspaces and Turborepo. Node 20.10+ and pnpm 9.15+ are required;
 both are pinned in the root `package.json`.
 
 ```bash
@@ -43,7 +43,7 @@ reflects current repository and registry state.
 CI uses thin `ci:*` aliases that wrap the same Turbo tasks:
 
 ```bash
-pnpm run ci:affected         # build / typecheck / test / lint, affected-only
+pnpm run ci:affected         # build / typecheck / lint for affected packages; tests for self-contained packages
 pnpm run ci:pack-dry-run     # pack-dry-run, affected-only
 pnpm run ci:docs-contract    # docs-contract
 pnpm run ci:public-smoke     # public-integration-smoke
@@ -51,7 +51,9 @@ pnpm run ci:public-smoke     # public-integration-smoke
 
 The `--affected` filter is only used on normal PR lanes. Release-green
 validation runs the unprefixed scripts so the required-row surface is never
-narrowed by affected detection.
+narrowed by affected detection. `@atomicmemory/core` has DB-backed tests that
+require service provisioning; the generic affected lane still builds,
+typechecks, lints, packs, and validates metadata for core changes.
 
 Per-package commands work via `pnpm --filter <name> run <task>` once a package
 lands in `packages/`, `adapters/`, or `plugins/`. Each package owns its own
@@ -75,8 +77,8 @@ Every pull request runs through:
   publishable packages, no leaked internal hostnames.
 - `package-metadata` — `repository`, `homepage`, `bugs`, `license`, `exports`,
   `bin`, and `files` are valid for every publishable package.
-- `affected-build-test` — build, typecheck, and test for packages affected by
-  the diff, plus their dependents.
+- `affected-build-test` — build, typecheck, and lint for packages affected by
+  the diff, plus tests for self-contained packages and their dependents.
 - `pack-dry-run` — `npm pack --dry-run --json` for changed publishable
   packages.
 - `docs-contract` — docs commands match harness and package commands.

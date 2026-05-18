@@ -133,11 +133,5 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.7.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "@protobufjs/utf8": "1.1.1",
-      "protobufjs": "7.5.6"
-    }
   }
 }

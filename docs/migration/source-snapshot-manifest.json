@@ -15,8 +15,8 @@
       "target_path": "packages/core",
       "allowlist": "docs/migration/allowlists/core.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "fcd7c96",
+      "status": "copied",
       "notes": "Phase 2 first-wave copy. Old repo retained for history lookup and archived per docs/migration/release-history.md."
     },
     {
@@ -29,8 +29,8 @@
       "target_path": "packages/sdk",
       "allowlist": "docs/migration/allowlists/sdk.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "fcd7c96",
+      "status": "copied",
       "notes": "Phase 2 first-wave copy. Every adapter depends on this package."
     },
     {
@@ -44,8 +44,8 @@
       "target_path": "packages/cli",
       "allowlist": "docs/migration/allowlists/cli.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Phase 2 first-wave copy from atomicmemory-integrations monorepo subdirectory."
     },
     {
@@ -59,8 +59,8 @@
       "target_path": "packages/mcp-server",
       "allowlist": "docs/migration/allowlists/mcp-server.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Phase 2 first-wave copy from atomicmemory-integrations monorepo subdirectory."
     },
     {
@@ -74,8 +74,8 @@
       "target_path": "adapters/vercel-ai",
       "allowlist": "docs/migration/allowlists/adapter-vercel-ai.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Directory rename normalizes adapter path to match unscoped package name. Update repository.directory in package.json to adapters/vercel-ai at copy time."
     },
     {
@@ -89,8 +89,8 @@
       "target_path": "adapters/openai-agents",
       "allowlist": "docs/migration/allowlists/adapter-openai-agents.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Directory rename normalizes adapter path to match unscoped package name. Update repository.directory in package.json to adapters/openai-agents at copy time."
     },
     {
@@ -104,8 +104,8 @@
       "target_path": "adapters/langchain",
       "allowlist": "docs/migration/allowlists/adapter-langchain.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Source lives on the framework-adapters branch and is not yet on integrations main. Directory rename normalizes adapter path to match unscoped package name. Update repository.directory in package.json to adapters/langchain at copy time."
     },
     {
@@ -119,8 +119,8 @@
       "target_path": "adapters/langgraph",
       "allowlist": "docs/migration/allowlists/adapter-langgraph.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Source lives on the framework-adapters branch and is not yet on integrations main. Directory rename normalizes adapter path to match unscoped package name. Update repository.directory in package.json to adapters/langgraph at copy time."
     },
     {
@@ -134,8 +134,8 @@
       "target_path": "adapters/mastra",
       "allowlist": "docs/migration/allowlists/adapter-mastra.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Source lives on the framework-adapters branch and is not yet on integrations main. Source and target directory names already match."
     },
     {
@@ -149,8 +149,8 @@
       "target_path": "plugins/claude-code",
       "allowlist": "docs/migration/allowlists/plugin-claude-code.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Lock-step plugin versioning preserved with sibling plugins. Marketplace manifest revalidation required at cutover."
     },
     {
@@ -164,8 +164,8 @@
       "target_path": "plugins/openclaw",
       "allowlist": "docs/migration/allowlists/plugin-openclaw.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Lock-step plugin versioning preserved with sibling plugins."
     },
     {
@@ -179,8 +179,8 @@
       "target_path": "plugins/hermes",
       "allowlist": "docs/migration/allowlists/plugin-hermes.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Plugin bundles the Hermes Python provider (pyproject.toml and Python source). The phase 2 Python decision concerns only the standalone @atomicmemory/python PyPI SDK and does not block this plugin migration."
     },
     {
@@ -194,8 +194,8 @@
       "target_path": "plugins/codex",
       "allowlist": "docs/migration/allowlists/plugin-codex.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Package remains private: true until host marketplace manifest format is validated. Lock-step version bumps continue but no public package tag or registry publish until posture changes."
     },
     {
@@ -209,8 +209,8 @@
       "target_path": "plugins/cursor",
       "allowlist": "docs/migration/allowlists/plugin-cursor.json",
       "copy_method": "clean source snapshot, no git history",
-      "initial_monorepo_commit": "TBD",
-      "status": "planned",
+      "initial_monorepo_commit": "a133b27",
+      "status": "copied",
       "notes": "Package remains private: true until host marketplace manifest format is validated. Lock-step version bumps continue but no public package tag or registry publish until posture changes."
     }
   ]

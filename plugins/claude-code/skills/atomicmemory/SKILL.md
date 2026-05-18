@@ -32,7 +32,7 @@ Use `mode: "text"` for standalone facts. Use `mode: "messages"` only when the fu
 ## What NOT to save
 
 - Ephemeral task state (current WIP, what file you're editing)
-- Facts already documented in CLAUDE.md, README, or recent git commits
+- Facts already documented in repository docs, README files, or recent git commits
 - Anything the user can trivially re-derive from the code
 - Debugging session scratch
 
