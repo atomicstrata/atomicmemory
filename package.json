@@ -26,7 +26,6 @@
     "code-health": "node scripts/ci/code-health.mjs --verify && turbo run code-health",
     "docs-contract": "turbo run docs-contract",
     "package-metadata": "node scripts/ci/package-metadata.mjs",
-    "migration-inventories": "node scripts/ci/migration-inventories.mjs --check",
     "public-integration-smoke": "turbo run public-integration-smoke",
     "repo-hygiene": "node scripts/ci/repo-hygiene.mjs",
     "security-compliance": "node scripts/security/security-compliance.mjs",

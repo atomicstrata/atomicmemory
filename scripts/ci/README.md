@@ -22,7 +22,6 @@ The standalone checks in this lane are:
 
 - `node scripts/ci/repo-hygiene.mjs`
 - `node scripts/ci/code-health.mjs --verify`
-- `node scripts/ci/migration-inventories.mjs --check`
 - `node scripts/ci/package-metadata.mjs`
 - `node scripts/ci/pack-dry-run.mjs`
 - `node scripts/security/security-compliance.mjs`
