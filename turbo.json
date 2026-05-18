@@ -1,0 +1,101 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalDependencies": [
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "turbo.json",
+    ".npmrc"
+  ],
+  "globalEnv": [
+    "CI",
+    "NODE_ENV"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.md",
+        "!**/__tests__/**",
+        "!**/*.test.*",
+        "!**/*.spec.*"
+      ],
+      "outputs": [
+        "dist/**",
+        "build/**",
+        "lib/**",
+        ".tsup/**",
+        ".tsbuildinfo"
+      ],
+      "env": ["NODE_ENV"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "tsconfig*.json",
+        "!**/*.md"
+      ],
+      "outputs": [".tsbuildinfo", "**/*.tsbuildinfo"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "vitest.config.*",
+        "jest.config.*",
+        "playwright.config.*"
+      ],
+      "outputs": ["coverage/**", "test-results/**"],
+      "env": ["NODE_ENV", "VITEST", "JEST_WORKER_ID"]
+    },
+    "lint": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".eslintrc*",
+        "eslint.config.*",
+        ".prettierrc*",
+        "!**/*.md"
+      ],
+      "outputs": []
+    },
+    "docs-contract": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../docs/**",
+        "../../tests/smoke/docs-contract/**"
+      ],
+      "outputs": []
+    },
+    "package-metadata": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "package.json",
+        "README.md",
+        "LICENSE",
+        "../../package.json"
+      ],
+      "outputs": []
+    },
+    "pack-dry-run": {
+      "dependsOn": ["^build", "build"],
+      "cache": false
+    },
+    "public-integration-smoke": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "env": [
+        "ATOMICMEMORY_SMOKE_MODE",
+        "ATOMICMEMORY_API_BASE_URL"
+      ]
+    },
+    "repo-hygiene": {
+      "cache": false
+    },
+    "security-compliance": {
+      "cache": false
+    }
+  }
+}

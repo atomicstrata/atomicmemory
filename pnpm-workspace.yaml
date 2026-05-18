@@ -1,0 +1,6 @@
+packages:
+  - "packages/*"
+  - "adapters/*"
+  - "plugins/*"
+  - "examples/*"
+  - "tests/*"

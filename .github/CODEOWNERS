@@ -1,0 +1,38 @@
+# AtomicMemory CODEOWNERS
+#
+# Branch protection on `main` requires CODEOWNERS review for matched paths.
+# Keep this file as the single source of truth for who owns what in the public
+# monorepo. Private ownership for release/marketplace operations lives in the
+# internal ops repository, not here.
+#
+# Syntax reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default owner for anything not matched below.
+*                                       @atomicstrata/atomicmemory-maintainers
+
+# Repository-wide policy surfaces.
+/.github/                               @atomicstrata/atomicmemory-maintainers
+/CODEOWNERS                             @atomicstrata/atomicmemory-maintainers
+/.github/CODEOWNERS                     @atomicstrata/atomicmemory-maintainers
+/SECURITY.md                            @atomicstrata/atomicmemory-maintainers @atomicstrata/security
+/LICENSE                                @atomicstrata/atomicmemory-maintainers
+/CONTRIBUTING.md                        @atomicstrata/atomicmemory-maintainers
+/README.md                              @atomicstrata/atomicmemory-maintainers
+
+# Monorepo plumbing.
+/package.json                           @atomicstrata/atomicmemory-maintainers
+/pnpm-workspace.yaml                    @atomicstrata/atomicmemory-maintainers
+/turbo.json                             @atomicstrata/atomicmemory-maintainers
+/pnpm-lock.yaml                         @atomicstrata/atomicmemory-maintainers
+
+# Packages, adapters, plugins.
+/packages/core/                         @atomicstrata/atomicmemory-core
+/packages/sdk/                          @atomicstrata/atomicmemory-sdk
+/packages/cli/                          @atomicstrata/atomicmemory-sdk
+/packages/mcp-server/                   @atomicstrata/atomicmemory-sdk
+/adapters/                              @atomicstrata/atomicmemory-integrations
+/plugins/                               @atomicstrata/atomicmemory-integrations
+
+# Public smoke and docs surface.
+/tests/                                 @atomicstrata/atomicmemory-maintainers
+/docs/                                  @atomicstrata/atomicmemory-maintainers

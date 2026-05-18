@@ -1,0 +1,39 @@
+{
+  "name": "atomicmemory",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AtomicMemory public monorepo: portable semantic memory packages, framework adapters, and host plugins.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory#readme",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.10.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "docs-contract": "turbo run docs-contract",
+    "package-metadata": "turbo run package-metadata",
+    "public-integration-smoke": "turbo run public-integration-smoke",
+    "repo-hygiene": "turbo run repo-hygiene",
+    "security-compliance": "turbo run security-compliance",
+    "pack-dry-run": "turbo run pack-dry-run",
+    "ci:affected": "turbo run build typecheck test lint --affected",
+    "ci:pack-dry-run": "turbo run pack-dry-run --affected",
+    "ci:docs-contract": "turbo run docs-contract",
+    "ci:public-smoke": "turbo run public-integration-smoke"
+  },
+  "devDependencies": {
+    "turbo": "2.9.14"
+  }
+}
