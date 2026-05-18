@@ -7,7 +7,7 @@
 import type { ValidationResult, StringValidationOptions, NumberValidationOptions, ArrayValidationOptions } from './types';
 
 /**
- * Validate a string against the supplied options.
+ * Validates a string with comprehensive options
  */
 export function validateString(
   value: any,
@@ -62,7 +62,7 @@ export function validateString(
 }
 
 /**
- * Validate a number against the supplied options.
+ * Validates a number with comprehensive options
  */
 export function validateNumber(
   value: any,
@@ -109,7 +109,7 @@ export function validateNumber(
 }
 
 /**
- * Validate an array against the supplied options.
+ * Validates an array with comprehensive options
  */
 export function validateArray<T>(
   value: any,

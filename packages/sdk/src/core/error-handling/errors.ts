@@ -1,4 +1,20 @@
-/** @file SDK error class hierarchy; subclasses carry typed context + retry flags. */
+/**
+ * @file AtomicMemory SDK Error Classes
+ *
+ * This file provides the error class hierarchy for the AtomicMemory SDK.
+ * All SDK errors inherit from AtomicMemoryError and include structured
+ * error codes, context, and retry information.
+ *
+ * @example
+ * ```typescript
+ * import { AtomicMemoryError, StorageError } from './errors';
+ *
+ * throw new StorageError('Database connection failed', 'CONNECTION_FAILED', {
+ *   storage: { database: 'contexts', adapterType: 'indexeddb' },
+ *   retryable: true
+ * });
+ * ```
+ */
 
 import { ErrorContextData, AtomicMemoryErrorOptions } from './types';
 

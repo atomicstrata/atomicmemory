@@ -1,6 +1,10 @@
 /**
- * @file Centralized runtime configuration for the SDK. Must be initialized
- * explicitly by the SDK constructor — never reads `process.env`.
+ * @file Runtime Configuration
+ *
+ * Centralized runtime configuration for the SDK.
+ * This module provides a type-safe way to access environment-specific settings.
+ * It MUST be initialized with configuration values, typically from the SDK constructor.
+ * It DOES NOT read process.env directly.
  */
 
 /** Environment configuration consumed by `RuntimeConfig`. */

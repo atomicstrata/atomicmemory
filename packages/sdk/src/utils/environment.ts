@@ -168,7 +168,9 @@ interface EnvironmentInfo {
   userAgent: string;
 }
 
-/** Snapshot the host's runtime environment (node version, OS, features, agent). */
+/**
+ * Get comprehensive environment information
+ */
 function getEnvironmentInfo(): EnvironmentInfo {
   return {
     environment: getEnvironment(),

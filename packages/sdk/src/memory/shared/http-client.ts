@@ -8,7 +8,7 @@
  * errors are automatically tagged with the correct provider name.
  */
 
-import { MemoryProviderError, NetworkError, RateLimitError } from '../errors';
+import { MemoryProviderError, MemoryTransportError, RateLimitError } from '../errors';
 
 export interface HttpOptions {
   apiUrl: string;
@@ -61,7 +61,7 @@ function buildHeaders(
 /**
  * Perform a raw fetch with the provider's auth/timeout plumbing.
  * Transport-level failures (connection refused, DNS, timeout, abort) are
- * re-thrown as `NetworkError` so callers see an actionable
+ * re-thrown as `MemoryTransportError` so callers see an actionable
  * "cannot reach <provider> at <url>" message instead of bare "fetch failed".
  */
 async function performFetch(
@@ -80,7 +80,7 @@ async function performFetch(
     });
   } catch (err) {
     const cause = err instanceof Error ? err : new Error(String(err));
-    throw new NetworkError(providerName, path, url, cause);
+    throw new MemoryTransportError(providerName, path, url, cause);
   }
 }
 
