@@ -17,6 +17,13 @@
 /SECURITY.md                            @atomicstrata/atomicmemory-maintainers @atomicstrata/security
 /LICENSE                                @atomicstrata/atomicmemory-maintainers
 /CONTRIBUTING.md                        @atomicstrata/atomicmemory-maintainers
+/CODE_OF_CONDUCT.md                     @atomicstrata/atomicmemory-maintainers
+/ROADMAP.md                             @atomicstrata/atomicmemory-maintainers
+/CHANGELOG.md                           @atomicstrata/atomicmemory-maintainers
+/SUPPORT.md                             @atomicstrata/atomicmemory-maintainers
+/AGENTS.md                              @atomicstrata/atomicmemory-maintainers
+/CLAUDE.md                              @atomicstrata/atomicmemory-maintainers
+/GEMINI.md                              @atomicstrata/atomicmemory-maintainers
 /README.md                              @atomicstrata/atomicmemory-maintainers
 
 # Monorepo plumbing.
