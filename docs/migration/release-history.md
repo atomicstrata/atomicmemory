@@ -63,8 +63,8 @@ column shows the tag prefix that future per-package releases will use.
 | `@atomicmemory/claude-code-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/claude-code` | `claude-code-plugin-v` | Host plugins continue to share a lock-step version across releases. |
 | `@atomicmemory/openclaw-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/openclaw` | `openclaw-plugin-v` | Host plugins continue to share a lock-step version across releases. |
 | `@atomicmemory/hermes-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/hermes` | `hermes-plugin-v` | Plugin bundles the Hermes Python provider; the standalone Python SDK migration is a separate phase 2 decision. |
-| `@atomicmemory/codex-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/codex` | `codex-plugin-v` (private) | Package stays `private: true` until host marketplace manifest format is validated. Lock-step version bumps continue privately. |
-| `@atomicmemory/cursor-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/cursor` | `cursor-plugin-v` (private) | Package stays `private: true` until host marketplace manifest format is validated. Lock-step version bumps continue privately. |
+| `@atomicmemory/codex-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/codex` | `codex-plugin-v` (coming soon) | Public source is present, but no public npm package or host install path is supported until marketplace validation is complete. |
+| `@atomicmemory/cursor-plugin` | `atomicstrata/atomicmemory-integrations` | 0.1.14 | `plugins/cursor` | `cursor-plugin-v` (coming soon) | Public source is present, but no public npm package or host install path is supported until marketplace validation is complete. |
 
 ## Tag policy in the monorepo
 

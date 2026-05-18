@@ -86,9 +86,9 @@
       "registry_artifact": "npm:@atomicmemory/langchain",
       "required_for_public_release": true,
       "coverage_label": "package_protocol",
-      "publish_status": "implemented_publish_pending",
-      "install_type": "npm_framework_adapter_pending_publish",
-      "public_install_command": null
+      "publish_status": "published",
+      "install_type": "npm_framework_adapter",
+      "public_install_command": "npm install @atomicmemory/langchain @atomicmemory/sdk @langchain/core zod"
     },
     {
       "kind": "adapter",
@@ -97,9 +97,9 @@
       "registry_artifact": "npm:@atomicmemory/langgraph",
       "required_for_public_release": true,
       "coverage_label": "package_protocol",
-      "publish_status": "implemented_publish_pending",
-      "install_type": "npm_framework_adapter_pending_publish",
-      "public_install_command": null
+      "publish_status": "published",
+      "install_type": "npm_framework_adapter",
+      "public_install_command": "npm install @atomicmemory/langgraph @atomicmemory/sdk @langchain/langgraph"
     },
     {
       "kind": "adapter",
@@ -108,9 +108,9 @@
       "registry_artifact": "npm:@atomicmemory/mastra",
       "required_for_public_release": true,
       "coverage_label": "package_protocol",
-      "publish_status": "implemented_publish_pending",
-      "install_type": "npm_framework_adapter_pending_publish",
-      "public_install_command": null
+      "publish_status": "published",
+      "install_type": "npm_framework_adapter",
+      "public_install_command": "npm install @atomicmemory/mastra @atomicmemory/sdk @mastra/core zod"
     },
     {
       "kind": "plugin",
@@ -163,8 +163,8 @@
       "registry_artifact": null,
       "required_for_public_release": false,
       "coverage_label": "host_install",
-      "publish_status": "private_unpublished",
-      "install_type": "private_host_plugin",
+      "publish_status": "coming_soon",
+      "install_type": "host_plugin_coming_soon",
       "public_install_command": null,
       "release_blocker": "Host marketplace validation is not complete."
     },
@@ -175,8 +175,8 @@
       "registry_artifact": null,
       "required_for_public_release": false,
       "coverage_label": "host_install",
-      "publish_status": "private_unpublished",
-      "install_type": "private_host_plugin",
+      "publish_status": "coming_soon",
+      "install_type": "host_plugin_coming_soon",
       "public_install_command": null,
       "release_blocker": "Host marketplace validation is not complete."
     }

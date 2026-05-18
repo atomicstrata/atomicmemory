@@ -196,7 +196,7 @@
       "copy_method": "clean source snapshot, no git history",
       "initial_monorepo_commit": "a133b27",
       "status": "copied",
-      "notes": "Package remains private: true until host marketplace manifest format is validated. Lock-step version bumps continue but no public package tag or registry publish until posture changes."
+      "notes": "Coming soon for public install: source is present, but no public package tag, registry publish, or supported host install path exists until marketplace validation is complete."
     },
     {
       "id": "plugin-cursor",
@@ -211,7 +211,7 @@
       "copy_method": "clean source snapshot, no git history",
       "initial_monorepo_commit": "a133b27",
       "status": "copied",
-      "notes": "Package remains private: true until host marketplace manifest format is validated. Lock-step version bumps continue but no public package tag or registry publish until posture changes."
+      "notes": "Coming soon for public install: source is present, but no public package tag, registry publish, or supported host install path exists until marketplace validation is complete."
     }
   ]
 }

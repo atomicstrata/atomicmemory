@@ -1,6 +1,14 @@
 # AtomicMemory
 
-**Portable semantic memory for agents and applications.**
+[![CI](https://github.com/atomicstrata/atomicmemory/actions/workflows/ci.yml/badge.svg)](https://github.com/atomicstrata/atomicmemory/actions/workflows/ci.yml)
+[![Core npm](https://img.shields.io/npm/v/%40atomicmemory%2Fcore?label=core)](https://www.npmjs.com/package/@atomicmemory/core)
+[![SDK npm](https://img.shields.io/npm/v/%40atomicmemory%2Fsdk?label=sdk)](https://www.npmjs.com/package/@atomicmemory/sdk)
+[![CLI npm](https://img.shields.io/npm/v/%40atomicmemory%2Fcli?label=cli)](https://www.npmjs.com/package/@atomicmemory/cli)
+[![Docker](https://img.shields.io/badge/docker-GHCR-2496ED?logo=docker&logoColor=white)](packages/core/Dockerfile)
+[![Docs](https://img.shields.io/badge/docs-docs.atomicstrata.ai-blue)](https://docs.atomicstrata.ai)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+**Inspectable, portable semantic memory for agents and applications.**
 
 AtomicMemory is a memory layer you embed where your AI code already runs. Capture
 context, ground generations in prior interactions, and carry knowledge across
@@ -8,8 +16,17 @@ sessions — from a direct SDK call, a CLI, an MCP server, a framework adapter, 
 a host plugin. Local-first where supported, hosted where convenient, and
 designed so the choice can change later without rewriting your application.
 
+Most memory products ask you to trust a hosted black box with the layer that
+decides what an AI believes about your users. AtomicMemory takes the opposite
+position: the interface should be portable, the engine should be inspectable,
+and the memory system should be able to revise itself when facts change.
+
 This repository is the public source of truth for the AtomicMemory JavaScript /
 TypeScript packages, framework adapters, host plugins, and public smoke tests.
+
+**Docs:** [docs.atomicstrata.ai](https://docs.atomicstrata.ai)
+
+**Field note:** [The AI Memory Industry Has A Black Box Problem](https://www.atomicstrata.ai/blog/the-ai-memory-industry-has-a-black-box-problem)
 
 ## Why AtomicMemory
 
@@ -20,6 +37,15 @@ TypeScript packages, framework adapters, host plugins, and public smoke tests.
 - **SDK-agnostic**: every adapter is built on the same SDK. Adapters are
   conveniences, not gatekeepers. You can drop down to the SDK at any time and
   keep the same data, indexes, and retrieval behavior.
+- **Inspectable**: Core is open source, self-hostable, and built around
+  explicit mutation decisions rather than an opaque hosted opinion.
+- **Correction-aware**: memory is not just append and recall. Real products
+  need supersession, clarification, deletion, no-op decisions, lineage, and
+  trust-sensitive revision when users change their mind.
+- **Model-surface portable**: the SDK lets applications swap memory backends;
+  Core separates embeddings, extraction, mutation, reranking, retrieval
+  packaging, and evaluation so the memory engine is not frozen to one model
+  vintage.
 - **Local or hosted, your choice**: the core engine runs locally for
   privacy-sensitive workloads. The hosted profile is available where it makes
   sense and is marked clearly in the package matrix below. There is no
@@ -27,6 +53,39 @@ TypeScript packages, framework adapters, host plugins, and public smoke tests.
 - **No lock-in**: package APIs are stable and semver-disciplined. Migrating
   between direct SDK use, adapters, and host plugins is documented and does not
   require re-ingesting your data. You own your memory store.
+
+## What This Repository Provides
+
+- **Core** — Docker-deployable memory backend with durable context, semantic
+  retrieval, memory mutation, and Postgres/pgvector storage.
+- **SDK** — backend-agnostic TypeScript client surface with provider interfaces,
+  storage helpers, local embeddings, and semantic search primitives.
+- **CLI and MCP** — command-line and MCP surfaces for setup, diagnostics,
+  capture, retrieval, and context packaging.
+- **Framework adapters** — integration packages for Vercel AI SDK, OpenAI
+  Agents SDK, LangChain, LangGraph, and Mastra.
+- **Host plugins** — package and manifest surfaces for agent hosts such as
+  Claude Code, OpenClaw, Hermes, Codex, and Cursor.
+- **Public validation** — package metadata checks, smoke contracts, and
+  contributor-safe CI gates that keep install paths, docs, and package status in
+  sync.
+
+The SDK is the portability contract: applications depend on a typed interface
+and provider boundary instead of one memory vendor. Core is the engine that can
+earn that slot: self-hosted, auditable, and designed around revision rather than
+append-only recall.
+
+## What This Is Not
+
+- Not the hosted AtomicMemory service infrastructure.
+- Not the private release orchestration or marketplace cutover runbook.
+- Not the Python SDK for launch; the Python package remains in its own
+  repository and PyPI metadata for now.
+- Not the benchmark research repo. Reproducible benchmark suites and raw eval
+  harnesses live outside this public monorepo until they are ready to publish as
+  public artifacts.
+- Not a replacement for package-level READMEs. Package-specific setup still
+  lives under `packages/`, `adapters/`, and `plugins/`.
 
 ## Performance posture
 
@@ -44,9 +103,12 @@ they are reproducible.
 
 ## Quickstart
 
-These commands use only currently-published packages. Adapters and surfaces
-that are implemented but not yet on the registry are listed in the package
-matrix below and are not part of the main install path.
+For the full walkthrough, see the
+[AtomicMemory quickstart](https://docs.atomicstrata.ai/quickstart).
+
+These commands use currently-published packages. Host plugin surfaces that are
+not yet public are listed in the package matrix below and are not part of the
+main install path.
 
 ```bash
 # direct SDK
@@ -57,6 +119,30 @@ npm install -g @atomicmemory/cli
 
 # framework adapter (example: Vercel AI SDK)
 npm install @atomicmemory/vercel-ai @atomicmemory/sdk
+```
+
+Minimal SDK shape:
+
+```ts
+import { MemoryClient } from '@atomicmemory/sdk';
+
+const memory = new MemoryClient({
+  providers: {
+    atomicmemory: { apiUrl: 'http://localhost:3050' },
+  },
+});
+
+await memory.initialize();
+await memory.ingest({
+  mode: 'messages',
+  messages: [{ role: 'user', content: 'I prefer aisle seats.' }],
+  scope: { user: 'demo-user' },
+});
+
+const results = await memory.search({
+  query: 'seat preference',
+  scope: { user: 'demo-user' },
+});
 ```
 
 The minimal example, environment setup, and the full list of supported hosts
@@ -72,9 +158,9 @@ Status labels follow the docs contract:
 - **implemented, publish pending** — code lives in this repo and works locally,
   but the first monorepo-era release has not been cut yet. Do not put these in
   install commands until the row flips to `published`.
-- **private** — intentionally not published while a host validator or posture
-  decision is pending. Lock-step version bumps continue alongside the public
-  set; the public release contract does not include these yet.
+- **coming soon** — public source is present, but the host install path is not
+  supported yet. Do not use these in install commands until the row flips to
+  `published`.
 - **unsupported** / **planned** — reserved for future entries.
 
 ### Packages
@@ -92,9 +178,9 @@ Status labels follow the docs contract:
 | --- | --- | --- |
 | `@atomicmemory/vercel-ai` | `adapters/vercel-ai` | published |
 | `@atomicmemory/openai-agents` | `adapters/openai-agents` | published |
-| `@atomicmemory/langchain` | `adapters/langchain` | implemented, publish pending |
-| `@atomicmemory/langgraph` | `adapters/langgraph` | implemented, publish pending |
-| `@atomicmemory/mastra` | `adapters/mastra` | implemented, publish pending |
+| `@atomicmemory/langchain` | `adapters/langchain` | published |
+| `@atomicmemory/langgraph` | `adapters/langgraph` | published |
+| `@atomicmemory/mastra` | `adapters/mastra` | published |
 
 ### Host plugins
 
@@ -103,13 +189,11 @@ Status labels follow the docs contract:
 | `@atomicmemory/claude-code-plugin` | `plugins/claude-code` | published |
 | `@atomicmemory/openclaw-plugin` | `plugins/openclaw` | published |
 | `@atomicmemory/hermes-plugin` | `plugins/hermes` | published |
-| `@atomicmemory/codex-plugin` | `plugins/codex` | private |
-| `@atomicmemory/cursor-plugin` | `plugins/cursor` | private |
+| `@atomicmemory/codex-plugin` | `plugins/codex` | coming soon |
+| `@atomicmemory/cursor-plugin` | `plugins/cursor` | coming soon |
 
-Codex and Cursor plugins remain private until the host marketplace manifest
-format is validated end to end. Lock-step plugin version bumps continue for
-those packages alongside the public set; the public release contract simply
-does not include them yet.
+Codex and Cursor plugin source is present, but the public host install path is
+coming soon until each host marketplace manifest format is validated end to end.
 
 ### Other surfaces
 
@@ -142,9 +226,12 @@ pnpm run repo-hygiene
 pnpm run security-compliance
 ```
 
-The first four lanes are deterministic and cached. The bottom group is
-explicitly `cache: false` in `turbo.json` because they have side effects, talk
-to external services, or must always reflect current repo state.
+Build, typecheck, test, lint, docs-contract, and package-metadata are cacheable
+because their outputs are deterministic functions of their declared inputs. The
+side-effecting checks (`pack-dry-run`, `public-integration-smoke`,
+`repo-hygiene`, and `security-compliance`) always re-run: the smoke lanes are
+declared `cache: false` in `turbo.json`, and the root node scripts bypass Turbo
+caching entirely.
 
 CI lanes use thin aliases over the same Turbo tasks:
 
@@ -166,6 +253,11 @@ Per-package commands (`pnpm --filter @atomicmemory/sdk run build`, etc.) work
 once a package lands in `packages/`, `adapters/`, or `plugins/`. The skeleton
 intentionally ships no source yet; packages copy in as part of the phased
 migration.
+
+## Release Notes
+
+Per-package changelogs live next to each package. Cross-package and monorepo
+rollup changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Repository layout
 

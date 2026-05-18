@@ -21,10 +21,9 @@ Each row declares:
 - public install command when the artifact is already published.
 
 `@atomicmemory/langchain`, `@atomicmemory/langgraph`, and
-`@atomicmemory/mastra` are listed as `implemented_publish_pending`, so their
-rows do not expose public install commands yet. Codex and Cursor plugin rows
-remain `private_unpublished` and are not required for public release until host
-marketplace validation is complete.
+`@atomicmemory/mastra` are published package-protocol rows with public install
+commands. Codex and Cursor plugin rows remain `coming_soon` and are not
+required for public release until host marketplace validation is complete.
 
 ## Validation
 
