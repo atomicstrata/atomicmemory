@@ -1,0 +1,78 @@
+{
+  "name": "@atomicmemory/cli",
+  "version": "0.1.1",
+  "description": "AtomicMemory CLI for memory operations, config, status, and agent-friendly JSON output.",
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "atomicmemory": "dist/bin.js"
+  },
+  "files": [
+    "CHANGELOG.md",
+    "cli-spec.json",
+    "config.schema.json",
+    "dist",
+    "SKILL.md",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "packages/cli"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "atomicmemory",
+    "memory",
+    "cli",
+    "ai-memory",
+    "semantic-search"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --import tsx 'src/**/*.test.ts'",
+    "test:backend": "node --test --import tsx src/__tests__/backend-gated-smoke.test.ts",
+    "test:backend:docker": "node scripts/test-backend-docker.mjs",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "sync-versions": "node scripts/sync-versions.mjs",
+    "sync-versions:check": "node scripts/sync-versions.mjs --check",
+    "generate-config-schema": "node --import tsx scripts/generate-config-schema.mjs",
+    "generate-config-schema:check": "node --import tsx scripts/generate-config-schema.mjs --check",
+    "check-spec-parser-drift": "node scripts/check-spec-parser-drift.mjs",
+    "prepack": "pnpm build",
+    "prepublishOnly": "node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
+  },
+  "dependencies": {
+    "@atomicmemory/sdk": "^1.0.1",
+    "commander": "^12.1.0",
+    "ink": "npm:@jrichman/ink@6.6.9",
+    "react": "^19.2.6",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.2.14",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/packages/cli#readme"
+}

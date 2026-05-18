@@ -1,0 +1,49 @@
+# CLI-side compose overlay used exclusively by
+# `pnpm -C packages/cli test:backend:docker`. Stacks on top of
+# atomicmemory-core's `docker-compose.yml` + `docker-compose.smoke.yml`
+# so the resulting environment is hermetic for the CLI backend suite.
+#
+# What it overrides:
+#   - LLM provider routed to a tiny in-network mock OpenAI-compatible
+#     server (see mock-openai-extraction.mjs). Core's smoke overlay
+#     pins LLM_PROVIDER=openai with a dummy key, which 401s on every
+#     /v1/memories/ingest call (the CLI's `add` adapter goes through
+#     that path). The mock returns one deterministic extracted fact
+#     from the request conversation so full ingest persists one
+#     searchable memory without external credentials.
+#   - The mock service is mounted from this repo's
+#     `packages/cli/scripts/docker/` directory; the harness sets
+#     ATOMICMEMORY_CLI_MOUNT to that absolute path.
+#
+# What it does NOT change:
+#   - Embedding provider (still transformers, local).
+#   - postgres image/healthcheck/volumes.
+#   - core's exposed app port (still ${APP_PORT}).
+services:
+  mock-openai-extraction:
+    image: node:22-slim
+    restart: unless-stopped
+    working_dir: /mock
+    volumes:
+      - ${ATOMICMEMORY_CLI_MOUNT}:/mock:ro
+    command: ["node", "/mock/mock-openai-extraction.mjs"]
+    environment:
+      PORT: "8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  app:
+    environment:
+      - LLM_PROVIDER=openai-compatible
+      - LLM_API_URL=http://mock-openai-extraction:8080/v1
+      - LLM_API_KEY=mock-openai-key
+      - LLM_MODEL=mock-extractor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-openai-extraction:
+        condition: service_healthy

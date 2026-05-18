@@ -1,0 +1,43 @@
+{
+  "name": "@atomicmemory/openclaw-plugin",
+  "version": "0.1.14",
+  "description": "AtomicMemory plugin for OpenClaw — persistent semantic memory and deterministic session snapshots across channels.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "plugins/openclaw"
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "skills",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "pnpm --dir ../../packages/mcp-server build && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm build && node --test 'dist/**/*.test.js'",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@atomicmemory/mcp-server": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.0"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/plugins/openclaw#readme"
+}

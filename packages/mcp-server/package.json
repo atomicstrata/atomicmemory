@@ -1,0 +1,61 @@
+{
+  "name": "@atomicmemory/mcp-server",
+  "version": "0.1.1",
+  "description": "MCP server exposing AtomicMemory's ingest / search / package tools to any MCP-compatible agent.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./spawn": {
+      "types": "./dist/spawn.d.ts",
+      "import": "./dist/spawn.js"
+    },
+    "./embedded-client": {
+      "types": "./dist/embedded-client.d.ts",
+      "import": "./dist/embedded-client.js"
+    }
+  },
+  "bin": {
+    "atomicmemory-mcp": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "packages/mcp-server"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --import tsx 'src/**/*.test.ts'",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prepack": "pnpm build",
+    "prepublishOnly": "node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
+  },
+  "dependencies": {
+    "@atomicmemory/sdk": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/packages/mcp-server#readme"
+}

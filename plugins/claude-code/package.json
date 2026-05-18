@@ -1,0 +1,26 @@
+{
+  "name": "@atomicmemory/claude-code-plugin",
+  "version": "0.1.14",
+  "description": "AtomicMemory plugin for Claude Code — persistent semantic memory across sessions.",
+  "private": false,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "plugins/claude-code"
+  },
+  "files": [
+    ".claude-plugin",
+    "hooks",
+    "scripts",
+    "skills",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "bash scripts/__tests__/quick-ingest-body.sh && bash scripts/__tests__/load-env-defaults.sh && bash scripts/__tests__/auth-header.sh"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/plugins/claude-code#readme"
+}

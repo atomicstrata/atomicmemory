@@ -1,0 +1,31 @@
+{
+  "name": "atomicmemory",
+  "version": "0.1.14",
+  "description": "AtomicMemory memory layer for Codex. Pluggable semantic memory — swap backends through the SDK's MemoryProvider model by config, not code change.",
+  "author": {
+    "name": "AtomicMemory",
+    "email": "support@atomicstrata.ai"
+  },
+  "homepage": "https://atomicmem.ai",
+  "repository": "https://github.com/atomicmemory/atomicmemory-integrations",
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "mcpServers": "./.codex-mcp.json",
+  "interface": {
+    "displayName": "AtomicMemory",
+    "shortDescription": "Pluggable semantic memory for AI coding workflows",
+    "longDescription": "AtomicMemory adds durable, scope-aware semantic memory to Codex. Store decisions, user preferences, project context, and deterministic session snapshots across conversations — retrievable via semantic search. Backend-agnostic: self-hosted AtomicMemory core (Apache-2.0, Docker Compose) out of the box, with the SDK's MemoryProvider model for alternative backends.",
+    "developerName": "AtomicMemory",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://atomicmem.ai",
+    "defaultPrompt": [
+      "Search my memories for recent project decisions",
+      "Remember that we always use pnpm in this repo",
+      "Save a handoff snapshot for this task",
+      "What do you know about my coding conventions?"
+    ],
+    "brandColor": "#3A60E4",
+    "logo": "./logo.svg"
+  }
+}

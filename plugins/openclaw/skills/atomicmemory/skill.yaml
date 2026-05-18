@@ -1,0 +1,21 @@
+name: atomicmemory
+version: 0.1.14
+author:
+  name: AtomicMemory
+  url: https://atomicmem.ai
+description: |
+  Persistent semantic memory across conversations. Search prior context
+  before answering questions that reference past work. Save durable facts
+  the user shares, and store deterministic session snapshots before
+  context is lost. Backed by the AtomicMemory SDK's pluggable
+  MemoryProvider model.
+
+permissions:
+  network:
+    - http://127.0.0.1:3050
+    - http://localhost:3050
+  credentials: []
+  filesystem: []
+  shell: []
+
+entrypoint: ./instructions.md

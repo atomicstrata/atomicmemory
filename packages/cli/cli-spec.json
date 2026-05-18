@@ -1,0 +1,299 @@
+{
+  "spec_version": "5.0.0",
+  "package_name": "@atomicmemory/cli",
+  "package_version": "0.1.0",
+  "global_options": [
+    {
+      "name": "--json",
+      "description": "Emit raw structured JSON output."
+    },
+    {
+      "name": "--agent",
+      "description": "Emit the stable agent envelope JSON output."
+    },
+    {
+      "name": "--output <mode>",
+      "description": "Select output mode: text, table, json, quiet, or agent."
+    },
+    {
+      "name": "--profile <name>",
+      "description": "Use a named CLI profile."
+    },
+    {
+      "name": "--api-url <url>",
+      "description": "Provider base URL."
+    },
+    {
+      "name": "--provider <name>",
+      "description": "Provider name: atomicmemory or mem0."
+    },
+    {
+      "name": "--user <id>",
+      "description": "Scope user."
+    },
+    {
+      "name": "--agent-id <id>",
+      "description": "Scope agent."
+    },
+    {
+      "name": "--namespace <name>",
+      "description": "Scope namespace."
+    },
+    {
+      "name": "--thread <id>",
+      "description": "Scope thread."
+    },
+    {
+      "name": "--interactive",
+      "description": "Hint to launch the Ink human renderer (only valid in text mode on a TTY)."
+    },
+    {
+      "name": "--no-interactive",
+      "description": "Force the plain text renderer; suppress Ink even when stdin/stdout is a TTY."
+    },
+    {
+      "name": "--experimental",
+      "description": "Permit invocation of hidden experimental commands."
+    }
+  ],
+  "commands": [
+    {
+      "name": "init",
+      "usage": "atomicmemory init [--profile NAME] [--api-url URL] [--provider atomicmemory|mem0] [--user USER]",
+      "summary": "Write or update local CLI config.",
+      "category": "setup",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": [
+        "--api-key-stdin",
+        "--save-api-key",
+        "--config PATH",
+        "--force",
+        "--trust-surface local|self-hosted|authenticated-wrapper"
+      ],
+      "examples": [
+        "atomicmemory init --profile local --api-url http://127.0.0.1:3050 --user $USER",
+        "echo \"$ATOMICMEMORY_API_KEY\" | atomicmemory init --api-key-stdin --save-api-key --profile cloud"
+      ]
+    },
+    {
+      "name": "doctor",
+      "usage": "atomicmemory doctor [--quick] [--offline] [--fix]",
+      "summary": "Validate config, profile, provider connectivity, package health, and integration readiness.",
+      "category": "diagnostics",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--api-key-stdin", "--quick", "--offline", "--fix"],
+      "examples": ["atomicmemory doctor", "atomicmemory doctor --json --quick --offline"]
+    },
+    {
+      "name": "status",
+      "usage": "atomicmemory status",
+      "summary": "Report active provider, profile, scope, and capabilities.",
+      "category": "diagnostics",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--api-key-stdin"]
+    },
+    {
+      "name": "config",
+      "usage": "atomicmemory config <show|get|set|unset|profile>",
+      "summary": "Manage local CLI config and named profiles.",
+      "category": "setup",
+      "allowed_outputs": ["text", "json", "agent"],
+      "children": [
+        { "name": "show", "usage": "atomicmemory config show", "summary": "Show merged config with secrets redacted." },
+        { "name": "get", "usage": "atomicmemory config get <key>", "summary": "Read one config value.", "args": ["<key>"] },
+        { "name": "set", "usage": "atomicmemory config set <key> <value>", "summary": "Set one non-secret config value.", "args": ["<key>", "<value>"] },
+        { "name": "unset", "usage": "atomicmemory config unset <key>", "summary": "Remove one config value.", "args": ["<key>"] },
+        { "name": "profile list", "usage": "atomicmemory config profile list", "summary": "List configured profiles." },
+        { "name": "profile use", "usage": "atomicmemory config profile use <name>", "summary": "Set the active profile.", "args": ["<name>"] },
+        { "name": "profile show", "usage": "atomicmemory config profile show [name]", "summary": "Show one profile with secrets redacted; defaults to the active profile.", "args": ["[name]"] }
+      ]
+    },
+    {
+      "name": "skill",
+      "usage": "atomicmemory skill <list|get|path> [name]",
+      "summary": "Expose bundled, version-matched agent instructions for this CLI.",
+      "category": "agent",
+      "allowed_outputs": ["text", "json", "agent"],
+      "children": [
+        { "name": "list", "usage": "atomicmemory skill list", "summary": "List bundled CLI skills." },
+        { "name": "get", "usage": "atomicmemory skill get <name>", "summary": "Print bundled agent instructions.", "args": ["<name>"] },
+        { "name": "path", "usage": "atomicmemory skill path <name>", "summary": "Print the installed skill file path.", "args": ["<name>"] }
+      ]
+    },
+    {
+      "name": "hooks",
+      "usage": "atomicmemory hooks <install|run> [event] [--host codex|claude-code] [--runtime node|python]",
+      "summary": "Generate coding-agent hook config and run the bundled Node hook runtime.",
+      "category": "setup",
+      "allowed_outputs": ["text", "json", "agent"],
+      "args": ["<action>", "[event]"],
+      "flags": [
+        "--host codex|claude-code",
+        "--runtime node|python",
+        "--limit N"
+      ],
+      "examples": [
+        "atomicmemory hooks install --host codex",
+        "atomicmemory hooks install --host codex --runtime python",
+        "atomicmemory hooks run user-prompt-submit --host codex"
+      ]
+    },
+    {
+      "name": "validate",
+      "usage": "atomicmemory validate [--online] [--json]",
+      "summary": "Validate installed CLI package metadata, command spec, schema, and bundled skill. Offline by default; --online additionally checks provider connectivity/auth.",
+      "category": "diagnostics",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--online", "--api-key-stdin"]
+    },
+    {
+      "name": "add",
+      "usage": "atomicmemory add <text>",
+      "summary": "Ingest text into memory.",
+      "category": "memory",
+      "allowed_outputs": ["text", "json", "quiet", "agent"],
+      "args": ["[text...]"],
+      "flags": [
+        "--file PATH|-",
+        "--metadata JSON",
+        "--source VALUE",
+        "--source-url URL",
+        "--stdin",
+        "--api-key-stdin"
+      ]
+    },
+    {
+      "name": "ingest",
+      "usage": "atomicmemory ingest --mode text|messages|verbatim [content]",
+      "summary": "Explicit ingest command for text, messages, or verbatim storage.",
+      "category": "memory",
+      "allowed_outputs": ["text", "json", "quiet", "agent"],
+      "args": ["[content...]"],
+      "flags": [
+        "--mode text|messages|verbatim",
+        "--file PATH|-",
+        "--kind fact|episode|summary|procedure|document",
+        "--stdin",
+        "--api-key-stdin"
+      ]
+    },
+    {
+      "name": "search",
+      "usage": "atomicmemory search <query>",
+      "summary": "Search scoped memories. --threshold is intentionally omitted in v5 because raw similarity scores are not comparable across providers.",
+      "category": "memory",
+      "allowed_outputs": ["text", "table", "json", "agent"],
+      "args": ["<query...>"],
+      "flags": ["--limit N", "--filter-json JSON", "--reranker NAME", "--api-key-stdin"]
+    },
+    {
+      "name": "package",
+      "usage": "atomicmemory package <query>",
+      "summary": "Build prompt-ready context from scoped memories.",
+      "category": "memory",
+      "allowed_outputs": ["text", "table", "json", "agent"],
+      "args": ["<query...>"],
+      "flags": [
+        "--token-budget N",
+        "--format flat|tiered|structured",
+        "--section header|inline|footer",
+        "--api-key-stdin"
+      ]
+    },
+    {
+      "name": "list",
+      "usage": "atomicmemory list [--limit N] [--cursor VALUE]",
+      "summary": "List scoped memories.",
+      "category": "memory",
+      "allowed_outputs": ["text", "table", "json", "agent"],
+      "default_output": "table",
+      "flags": ["--limit N", "--cursor VALUE", "--api-key-stdin"]
+    },
+    {
+      "name": "get",
+      "usage": "atomicmemory get <id>",
+      "summary": "Fetch one memory by id.",
+      "category": "memory",
+      "allowed_outputs": ["text", "json", "agent"],
+      "args": ["<id>"],
+      "flags": ["--api-key-stdin"]
+    },
+    {
+      "name": "delete",
+      "usage": "atomicmemory delete <id>",
+      "summary": "Delete one memory by id.",
+      "category": "memory",
+      "allowed_outputs": ["text", "json", "quiet", "agent"],
+      "args": ["<id>"],
+      "flags": ["--api-key-stdin"]
+    },
+    {
+      "name": "import",
+      "usage": "atomicmemory import <file|->",
+      "summary": "Bulk import JSON memory records.",
+      "category": "memory",
+      "allowed_outputs": ["text", "json", "quiet", "agent"],
+      "args": ["<file>"],
+      "flags": ["--stdin", "--api-key-stdin"]
+    },
+    {
+      "name": "completion",
+      "usage": "atomicmemory completion bash|zsh",
+      "summary": "Generate shell completion scripts. Fish and PowerShell completions are V1.1.",
+      "category": "setup",
+      "allowed_outputs": ["text"],
+      "args": ["<shell>"]
+    },
+    {
+      "name": "version",
+      "usage": "atomicmemory version",
+      "summary": "Print CLI version.",
+      "category": "diagnostics",
+      "allowed_outputs": ["text", "json", "agent"]
+    },
+    {
+      "name": "help",
+      "usage": "atomicmemory help [command] [--json]",
+      "summary": "Show human or machine-readable help.",
+      "category": "diagnostics",
+      "allowed_outputs": ["text", "json", "agent"],
+      "args": ["[command...]"]
+    },
+    {
+      "name": "lifecycle",
+      "usage": "atomicmemory --experimental lifecycle <stats|cap>",
+      "summary": "[experimental] AtomicMemory memory lifecycle operations. Requires --experimental and the atomicmemory.lifecycle SDK extension.",
+      "category": "experimental",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--api-key-stdin"],
+      "hidden": true
+    },
+    {
+      "name": "audit",
+      "usage": "atomicmemory --experimental audit <summary|recent|trail>",
+      "summary": "[experimental] Inspect AtomicMemory audit trail. Requires --experimental and the atomicmemory.audit SDK extension.",
+      "category": "experimental",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--api-key-stdin"],
+      "hidden": true
+    },
+    {
+      "name": "lessons",
+      "usage": "atomicmemory --experimental lessons <list|stats|report>",
+      "summary": "[experimental] Inspect durable lessons. Requires --experimental and the atomicmemory.lessons SDK extension.",
+      "category": "experimental",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--api-key-stdin"],
+      "hidden": true
+    },
+    {
+      "name": "agents",
+      "usage": "atomicmemory --experimental agents <trust|conflicts>",
+      "summary": "[experimental] Inspect agent trust and conflicts. Requires --experimental and the atomicmemory.agents SDK extension.",
+      "category": "experimental",
+      "allowed_outputs": ["text", "json", "agent"],
+      "flags": ["--api-key-stdin"],
+      "hidden": true
+    }
+  ]
+}

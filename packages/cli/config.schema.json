@@ -1,0 +1,93 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2"
+    },
+    "activeProfile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "atomicmemory",
+              "mem0"
+            ]
+          },
+          "apiUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "trustSurface": {
+            "type": "string",
+            "enum": [
+              "local",
+              "self-hosted",
+              "authenticated-wrapper"
+            ]
+          },
+          "scope": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "string",
+                "minLength": 1
+              },
+              "agent_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "namespace": {
+                "type": "string",
+                "minLength": 1
+              },
+              "thread": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "output": {
+            "type": "string",
+            "enum": [
+              "text",
+              "json",
+              "agent",
+              "table",
+              "quiet"
+            ]
+          },
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "provider",
+          "apiUrl",
+          "trustSurface"
+        ],
+        "additionalProperties": false
+      },
+      "propertyNames": {
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "activeProfile",
+    "profiles"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.atomicmemory.ai/cli/config.schema.json"
+}

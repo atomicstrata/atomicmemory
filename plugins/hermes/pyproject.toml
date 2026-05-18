@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atomicmemory-hermes"
+version = "0.1.14"
+description = "AtomicMemory native Hermes memory provider."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Atomic Strata" }]
+dependencies = ["atomicmemory>=1.0.1,<2.0.0"]
+
+[project.urls]
+Repository = "https://github.com/atomicstrata/atomicmemory"
+Documentation = "https://docs.atomicstrata.ai/integrations/coding-agents/hermes/local"
+
+[project.entry-points."hermes_agent.plugins"]
+atomicmemory = "atomicmemory_hermes:register"
+
+[tool.setuptools]
+packages = ["atomicmemory_hermes"]
+
+[tool.setuptools.package-dir]
+atomicmemory_hermes = "."
+
+[tool.setuptools.package-data]
+atomicmemory_hermes = ["plugin.yaml", "README.md"]

@@ -1,0 +1,20 @@
+{
+  "name": "@atomicmemory/codex-plugin",
+  "version": "0.1.14",
+  "description": "AtomicMemory plugin for OpenAI Codex — plugin manifest, MCP server config, and memory protocol skill.",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "plugins/codex"
+  },
+  "files": [
+    ".codex-plugin",
+    ".codex-mcp.json",
+    "skills",
+    "logo.svg",
+    "marketplace.example.json",
+    "README.md"
+  ]
+}

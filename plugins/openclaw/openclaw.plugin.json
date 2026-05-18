@@ -1,0 +1,58 @@
+{
+  "id": "atomicmemory",
+  "name": "AtomicMemory",
+  "version": "0.1.14",
+  "description": "Persistent semantic memory for OpenClaw agents — cross-channel user memory and deterministic session snapshots via the AtomicMemory SDK's pluggable MemoryProvider model.",
+  "kind": "memory",
+  "skills": ["./skills/atomicmemory"],
+  "contracts": {
+    "tools": ["memory_search", "memory_ingest", "memory_package", "memory_list"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiUrl": {
+        "type": "string",
+        "description": "Optional provider base URL. Defaults to the local AtomicMemory core for provider=atomicmemory. Required for provider=mem0."
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Optional bearer credential forwarded to AtomicMemory core as Authorization: Bearer <apiKey>."
+      },
+      "provider": {
+        "type": "string",
+        "enum": ["atomicmemory", "mem0"],
+        "default": "atomicmemory",
+        "description": "Provider name dispatched through the SDK's MemoryProvider model. Defaults to AtomicMemory local core."
+      },
+      "scope": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Optional scope overrides. The plugin defaults `user` to the local machine user when omitted.",
+        "properties": {
+          "user": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable channel-agnostic user identity. Defaults to the local machine user."
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional agent identity for agent-specific memory."
+          },
+          "namespace": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional workspace or project boundary."
+          },
+          "thread": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional conversation or task thread boundary."
+          }
+        }
+      }
+    }
+  }
+}

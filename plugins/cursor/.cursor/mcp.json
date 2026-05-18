@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "atomicmemory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@atomicmemory/mcp-server"],
+      "env": {
+        "ATOMICMEMORY_API_URL": "${env:ATOMICMEMORY_API_URL}",
+        "ATOMICMEMORY_API_KEY": "${env:ATOMICMEMORY_API_KEY}",
+        "ATOMICMEMORY_PROVIDER": "${env:ATOMICMEMORY_PROVIDER}",
+        "ATOMICMEMORY_SCOPE_USER": "${env:ATOMICMEMORY_SCOPE_USER}",
+        "ATOMICMEMORY_SCOPE_AGENT": "${env:ATOMICMEMORY_SCOPE_AGENT}",
+        "ATOMICMEMORY_SCOPE_NAMESPACE": "${env:ATOMICMEMORY_SCOPE_NAMESPACE}",
+        "ATOMICMEMORY_SCOPE_THREAD": "${env:ATOMICMEMORY_SCOPE_THREAD}"
+      }
+    }
+  }
+}

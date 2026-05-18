@@ -1,0 +1,50 @@
+{
+  "name": "@atomicmemory/openai-agents",
+  "version": "0.1.0",
+  "description": "AtomicMemory adapter for the OpenAI Agents SDK — pre-run memory retrieval, post-run ingest, and function tools.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "adapters/openai-agents"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --import tsx 'src/**/*.test.ts'",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "smoke:backend": "pnpm build && node scripts/smoke-backend.mjs",
+    "prepack": "pnpm build",
+    "prepublishOnly": "node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
+  },
+  "dependencies": {
+    "@atomicmemory/sdk": "^1.0.1",
+    "@openai/agents": "^0.8.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/openai-agents#readme"
+}

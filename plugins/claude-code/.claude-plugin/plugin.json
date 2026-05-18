@@ -1,0 +1,27 @@
+{
+  "name": "atomicmemory",
+  "version": "0.1.14",
+  "description": "Persistent semantic memory for Claude Code — user preferences, project context, prior decisions, and codebase facts that survive across sessions.",
+  "author": {
+    "name": "AtomicMemory",
+    "url": "https://atomicmem.ai"
+  },
+  "homepage": "https://docs.atomicstrata.ai/integrations/coding-agents/claude-code",
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "atomicmemory": {
+      "command": "npx",
+      "args": ["-y", "--package=@atomicmemory/mcp-server@^0.1.1", "atomicmemory-mcp"],
+      "env": {
+        "ATOMICMEMORY_API_URL": "${ATOMICMEMORY_API_URL:-}",
+        "ATOMICMEMORY_API_KEY": "${ATOMICMEMORY_API_KEY:-}",
+        "ATOMICMEMORY_PROVIDER": "${ATOMICMEMORY_PROVIDER:-atomicmemory}",
+        "ATOMICMEMORY_SCOPE_USER": "${ATOMICMEMORY_SCOPE_USER:-}",
+        "ATOMICMEMORY_SCOPE_AGENT": "${ATOMICMEMORY_SCOPE_AGENT:-}",
+        "ATOMICMEMORY_SCOPE_NAMESPACE": "${ATOMICMEMORY_SCOPE_NAMESPACE:-}",
+        "ATOMICMEMORY_SCOPE_THREAD": "${ATOMICMEMORY_SCOPE_THREAD:-}"
+      }
+    }
+  },
+  "skills": ["./skills/atomicmemory"]
+}

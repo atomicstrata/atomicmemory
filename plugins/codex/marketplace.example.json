@@ -1,0 +1,21 @@
+{
+  "$comment": "Copy to .agents/plugins/marketplace.json at your repo root (team install) or ~/.agents/plugins/marketplace.json (personal install), then point `source.path` at this plugin directory.",
+  "name": "atomicmemory-plugins",
+  "interface": {
+    "displayName": "AtomicMemory Plugins"
+  },
+  "plugins": [
+    {
+      "name": "atomicmemory",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
