@@ -7,9 +7,9 @@
   "source_commit": "d3abc7d83f456d493c0598e099b8a11590001153",
   "source_subpath": null,
   "target_path": "packages/sdk",
-  "target_commit": "fcd7c961342a035d3e58381dbb2e5bcd37303809",
+  "target_commit": "25a2c6af4fde02be1f776e08ef44e7778b76216e",
   "allowlist": "docs/migration/allowlists/sdk.json",
-  "copied_on": "2026-05-17T23:21:54-07:00",
+  "copied_on": "2026-05-18T01:56:30-07:00",
   "copy_tool": "scripts/ci/migration-inventories.mjs --write",
   "files": [
     {
@@ -29,8 +29,8 @@
     {
       "source_path": "CHANGELOG.md",
       "target_path": "packages/sdk/CHANGELOG.md",
-      "sha256": "77e52f0509970b8dd21dc72e5a36f6153eacb0ae2f3011f76dc4c88de812f08c",
-      "size_bytes": 1284,
+      "sha256": "df1668697f7c7c5c28d675050b915fb4fd25a97f2f220603fe6cb775a8e23e83",
+      "size_bytes": 1274,
       "matched_include": "CHANGELOG.md"
     },
     {
@@ -64,8 +64,8 @@
     {
       "source_path": "ROADMAP.md",
       "target_path": "packages/sdk/ROADMAP.md",
-      "sha256": "e82e279cd1f0ea07d77ce42aaa386dd12015328c43ec43668281717520e54e41",
-      "size_bytes": 3485,
+      "sha256": "dbee82cea7e6c64b702b20e2195a7256c3db47f727707daeebf1491b72fc7a76",
+      "size_bytes": 3488,
       "matched_include": "ROADMAP.md"
     },
     {
@@ -85,8 +85,8 @@
     {
       "source_path": "benchmarks/alignbench/RESULTS.md",
       "target_path": "packages/sdk/benchmarks/alignbench/RESULTS.md",
-      "sha256": "e4c08af00e705e8ca68f33e7e850ade52773e4b4444ebb0b4e8b998595a1fec5",
-      "size_bytes": 11105,
+      "sha256": "6c23006643f8159d4e11659edb6d065f189317da3da208bc23521e7a30c64c82",
+      "size_bytes": 11083,
       "matched_include": "benchmarks/**"
     },
     {
@@ -197,8 +197,8 @@
     {
       "source_path": "package.json",
       "target_path": "packages/sdk/package.json",
-      "sha256": "33ff1ad7de14ac5c4927186d527bfec656657c5464dabf5dd86adbcc66d872d8",
-      "size_bytes": 3966,
+      "sha256": "63e797958a5af20f4adf00aed3c9b48ae79eb9adb40dc87bea48d147c2902375",
+      "size_bytes": 3861,
       "matched_include": "package.json"
     },
     {
@@ -211,8 +211,8 @@
     {
       "source_path": "scripts/capture-fixtures.ts",
       "target_path": "packages/sdk/scripts/capture-fixtures.ts",
-      "sha256": "74e2bfd9814c03707e3a4dde208912bb06aeb25e0abbb51070ff86322e52c31b",
-      "size_bytes": 16540,
+      "sha256": "6053810b90f400328810b0a04ea874e4125be2704becdd5150e08d0aef44dbf4",
+      "size_bytes": 16510,
       "matched_include": "scripts/**"
     },
     {
@@ -1275,7 +1275,7 @@
   ],
   "summary": {
     "file_count": 180,
-    "total_size_bytes": 1359382
+    "total_size_bytes": 1359218
   },
   "verification": {
     "allowlist_checked": true,

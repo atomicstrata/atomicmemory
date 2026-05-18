@@ -7,9 +7,9 @@
   "source_commit": "287e9ba80f215a08588fd5da543bd15741c045dd",
   "source_subpath": "packages/cli",
   "target_path": "packages/cli",
-  "target_commit": "a133b275679318500eb538aed9d3c9a5452881fa",
+  "target_commit": "25a2c6af4fde02be1f776e08ef44e7778b76216e",
   "allowlist": "docs/migration/allowlists/cli.json",
-  "copied_on": "2026-05-17T23:22:07-07:00",
+  "copied_on": "2026-05-18T01:56:30-07:00",
   "copy_tool": "scripts/ci/migration-inventories.mjs --write",
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "source_path": "packages/cli/README.md",
       "target_path": "packages/cli/README.md",
-      "sha256": "ce7d1029f5295d4f013289b73984309dbc45f20109b68edfae4618513120d87e",
-      "size_bytes": 5852,
+      "sha256": "09089a9e8cedd101c1aa2e1b72f3b2b77076ac7ceef1850df443fa7fdf25430c",
+      "size_bytes": 5798,
       "matched_include": "README.md"
     },
     {
@@ -92,8 +92,8 @@
     {
       "source_path": "packages/cli/scripts/test-backend-docker.mjs",
       "target_path": "packages/cli/scripts/test-backend-docker.mjs",
-      "sha256": "c2f5ab087ed10b95da167a61a9c7ae7451f1790a248696be4a8069072d29aae6",
-      "size_bytes": 11193,
+      "sha256": "1e769b218cfc6f33a35634fa6da01cb7f76474b726935f634bb2fa9ea3e5c635",
+      "size_bytes": 11051,
       "matched_include": "scripts/**"
     },
     {
@@ -302,8 +302,8 @@
     {
       "source_path": "packages/cli/src/__tests__/hooks-sanitize.test.ts",
       "target_path": "packages/cli/src/__tests__/hooks-sanitize.test.ts",
-      "sha256": "4dbfada4d0462adcea1b06889addc4bb5020fe563e3f01c0561debef36a431ee",
-      "size_bytes": 18238,
+      "sha256": "a385d704255cc8aa423acd673aeb297c81e5592069f3b83f38974f8e5b2eb348",
+      "size_bytes": 18243,
       "matched_include": "src/**"
     },
     {
@@ -1086,7 +1086,7 @@
   ],
   "summary": {
     "file_count": 153,
-    "total_size_bytes": 651857
+    "total_size_bytes": 651666
   },
   "verification": {
     "allowlist_checked": true,

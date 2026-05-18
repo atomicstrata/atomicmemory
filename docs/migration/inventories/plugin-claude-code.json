@@ -7,9 +7,9 @@
   "source_commit": "287e9ba80f215a08588fd5da543bd15741c045dd",
   "source_subpath": "plugins/claude-code",
   "target_path": "plugins/claude-code",
-  "target_commit": "a133b275679318500eb538aed9d3c9a5452881fa",
+  "target_commit": "25a2c6af4fde02be1f776e08ef44e7778b76216e",
   "allowlist": "docs/migration/allowlists/plugin-claude-code.json",
-  "copied_on": "2026-05-17T23:22:07-07:00",
+  "copied_on": "2026-05-18T01:56:30-07:00",
   "copy_tool": "scripts/ci/migration-inventories.mjs --write",
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "source_path": "plugins/claude-code/README.md",
       "target_path": "plugins/claude-code/README.md",
-      "sha256": "f41bdbbf0544dbee2c4bb324ae854fe98fef0a98693a38580e076f85f046f591",
-      "size_bytes": 13270,
+      "sha256": "c16960634b34c3ab2db60e7d3954b0b386928896f9fe42863e29458fef82caaa",
+      "size_bytes": 13268,
       "matched_include": "README.md"
     },
     {
@@ -64,8 +64,8 @@
     {
       "source_path": "plugins/claude-code/scripts/__tests__/quick-ingest-body.sh",
       "target_path": "plugins/claude-code/scripts/__tests__/quick-ingest-body.sh",
-      "sha256": "1fea0771ca5cc705216c8855b376bf2f427cf97eb8a07d222077d8673808f2d6",
-      "size_bytes": 4958,
+      "sha256": "3ed2cf1bc655cc0fe9f8a7d19ae74e0a712bba46d673c1487cf6279c6fd5e1bf",
+      "size_bytes": 4960,
       "matched_include": "scripts/**"
     },
     {
@@ -141,14 +141,14 @@
     {
       "source_path": "plugins/claude-code/skills/atomicmemory/SKILL.md",
       "target_path": "plugins/claude-code/skills/atomicmemory/SKILL.md",
-      "sha256": "89f356bbba014036ae451128970eff59c7aab570f1e112367e35004c98127733",
-      "size_bytes": 2260,
+      "sha256": "4b0b6f4c81ea10e58f74f124b68e44ee462d910664272f84f78beded704e7410",
+      "size_bytes": 2272,
       "matched_include": "skills/**"
     }
   ],
   "summary": {
     "file_count": 19,
-    "total_size_bytes": 70286
+    "total_size_bytes": 70298
   },
   "verification": {
     "allowlist_checked": true,

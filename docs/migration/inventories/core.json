@@ -7,9 +7,9 @@
   "source_commit": "0133cc68cf015f13972ba70c0695839bc8678fa8",
   "source_subpath": null,
   "target_path": "packages/core",
-  "target_commit": "fcd7c961342a035d3e58381dbb2e5bcd37303809",
+  "target_commit": "25a2c6af4fde02be1f776e08ef44e7778b76216e",
   "allowlist": "docs/migration/allowlists/core.json",
-  "copied_on": "2026-05-17T23:21:54-07:00",
+  "copied_on": "2026-05-18T01:56:30-07:00",
   "copy_tool": "scripts/ci/migration-inventories.mjs --write",
   "files": [
     {
@@ -57,8 +57,8 @@
     {
       "source_path": "CHANGELOG.md",
       "target_path": "packages/core/CHANGELOG.md",
-      "sha256": "67bd571e22c4cba53b0120f543e0124c74816f85e9659759acd69420e0b370df",
-      "size_bytes": 4331,
+      "sha256": "9f0a589dc158925d634c79906c9bfc5e2dcd70449fc60ab6d29d33a7b83858fd",
+      "size_bytes": 4333,
       "matched_include": "CHANGELOG.md"
     },
     {
@@ -99,15 +99,15 @@
     {
       "source_path": "README.md",
       "target_path": "packages/core/README.md",
-      "sha256": "b2eb6dc5b96afccce7a3c6c37cbe1b5072f4566827cf1fc27276c760039846ce",
-      "size_bytes": 15188,
+      "sha256": "e52a00ef5ba63202c1bfdc47d216387144571f18b25b4471aa5ad9b000df0151",
+      "size_bytes": 15186,
       "matched_include": "README.md"
     },
     {
       "source_path": "ROADMAP.md",
       "target_path": "packages/core/ROADMAP.md",
-      "sha256": "ded38d3327b08e76bca84da6004b82df86e9c68ba210fa8b28a9668596042ea6",
-      "size_bytes": 3911,
+      "sha256": "c1f99d9704b8034a290a641011720674888f50335b8c147098b71c68a4362145",
+      "size_bytes": 3894,
       "matched_include": "ROADMAP.md"
     },
     {
@@ -162,8 +162,8 @@
     {
       "source_path": "docs/db/README.md",
       "target_path": "packages/core/docs/db/README.md",
-      "sha256": "06e5a3bc63dbe854122f0a2d65e6d9d5e27b3001538f48bc80469006a4fba00c",
-      "size_bytes": 757,
+      "sha256": "6636e1bff15946c58b4d9a7079fe8fd5c14055572e60ba7c03b836e492cc4a4f",
+      "size_bytes": 690,
       "matched_include": "docs/**"
     },
     {
@@ -218,8 +218,8 @@
     {
       "source_path": "docs/db/migrations.md",
       "target_path": "packages/core/docs/db/migrations.md",
-      "sha256": "3a88415a97052b5926915e9e302b85fcd1bdc71ec3945221f35ff926cb2b5e5e",
-      "size_bytes": 11097,
+      "sha256": "1dbdab3b1bfc2f6d859410d56b7d8212943cf3e01c2a490c638dfcedd9b0adfd",
+      "size_bytes": 11105,
       "matched_include": "docs/**"
     },
     {
@@ -1891,8 +1891,8 @@
     {
       "source_path": "src/schemas/openapi.ts",
       "target_path": "packages/core/src/schemas/openapi.ts",
-      "sha256": "600c1a21446dd16df48e92e27ae992350a5aae12294eed9967e9a2d32943b398",
-      "size_bytes": 43387,
+      "sha256": "d40c9f0b5892810530c6362e8e3a43f28c090f5f7026ca9f88ef9238dec30386",
+      "size_bytes": 43373,
       "matched_include": "src/**"
     },
     {
@@ -4845,7 +4845,7 @@
   ],
   "summary": {
     "file_count": 690,
-    "total_size_bytes": 5803510
+    "total_size_bytes": 5803420
   },
   "verification": {
     "allowlist_checked": true,

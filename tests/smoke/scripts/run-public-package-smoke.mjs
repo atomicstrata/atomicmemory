@@ -46,6 +46,10 @@ function validateRow(row) {
   const packageDir = join(REPO_ROOT, row.monorepo_path);
   const manifestPath = join(packageDir, "package.json");
   const manifest = readJson(manifestPath);
+  const buildFailure = buildPackage(row, manifest);
+  if (buildFailure) {
+    return [buildFailure];
+  }
 
   return [
     ...validateManifest(row, manifest),
@@ -66,6 +70,27 @@ function validateManifest(row, manifest) {
     failures.push(`${row.monorepo_path}: package files array is required`);
   }
   return failures;
+}
+
+function buildPackage(row, manifest) {
+  if (!manifest.scripts?.build) {
+    return undefined;
+  }
+
+  const result = spawnSync("pnpm", ["--filter", manifest.name, "run", "build"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: smokeEnv(),
+  });
+  if (result.status === 0) {
+    return undefined;
+  }
+
+  return [
+    `${row.monorepo_path}: build failed before package smoke`,
+    result.stdout.trim(),
+    result.stderr.trim(),
+  ].filter(Boolean).join("\n");
 }
 
 function validatePack(row, manifest, packageDir) {

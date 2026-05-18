@@ -7,9 +7,9 @@
   "source_commit": "c6e3b5082af08ff71128478c252894cc9aa6f002",
   "source_subpath": "adapters/mastra",
   "target_path": "adapters/mastra",
-  "target_commit": "a133b275679318500eb538aed9d3c9a5452881fa",
+  "target_commit": "25a2c6af4fde02be1f776e08ef44e7778b76216e",
   "allowlist": "docs/migration/allowlists/adapter-mastra.json",
-  "copied_on": "2026-05-17T23:22:07-07:00",
+  "copied_on": "2026-05-18T01:56:30-07:00",
   "copy_tool": "scripts/ci/migration-inventories.mjs --write",
   "files": [
     {

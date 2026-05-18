@@ -7,9 +7,9 @@
   "source_commit": "287e9ba80f215a08588fd5da543bd15741c045dd",
   "source_subpath": "plugins/codex",
   "target_path": "plugins/codex",
-  "target_commit": "a133b275679318500eb538aed9d3c9a5452881fa",
+  "target_commit": "25a2c6af4fde02be1f776e08ef44e7778b76216e",
   "allowlist": "docs/migration/allowlists/plugin-codex.json",
-  "copied_on": "2026-05-17T23:22:07-07:00",
+  "copied_on": "2026-05-18T01:56:30-07:00",
   "copy_tool": "scripts/ci/migration-inventories.mjs --write",
   "files": [
     {
