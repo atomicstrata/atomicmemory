@@ -1,0 +1,39 @@
+{
+  "$schema": "./schemas/file-inventory.schema.json",
+  "description": "Template for the per-snapshot file inventory emitted alongside a source snapshot copy. One inventory file per manifest entry. Copy this template to docs/migration/inventories/<id>.json when running the copy, fill in the real source_commit, target_commit, and per-file sha256 values, and submit the inventory in the same PR as the snapshot. Never invent hashes; they must be computed from the actually copied files.",
+  "id": "<matches the entry id in source-snapshot-manifest.json>",
+  "source_repo": "<atomicstrata/...>",
+  "source_ref": "<branch or tag>",
+  "source_commit": "<full 40-char SHA at copy time>",
+  "source_subpath": "<subdirectory in the source repo, or null>",
+  "target_path": "<path in the monorepo, for example packages/sdk>",
+  "target_commit": "<full 40-char SHA of the initial monorepo commit that lands this snapshot>",
+  "allowlist": "docs/migration/allowlists/<id>.json",
+  "copied_on": "<UTC ISO 8601 timestamp>",
+  "copy_tool": "<command or script used, for example tar+rsync wrapper, with version>",
+  "files": [
+    {
+      "source_path": "<path relative to source repo root>",
+      "target_path": "<path relative to monorepo root>",
+      "sha256": "<sha256 of the copied file, lowercase hex, 64 chars>",
+      "size_bytes": 0,
+      "matched_include": "<the included_paths glob from the allowlist that allowed this file>"
+    }
+  ],
+  "summary": {
+    "file_count": 0,
+    "total_size_bytes": 0,
+    "excluded_default_count": 0,
+    "excluded_allowlist_count": 0
+  },
+  "verification": {
+    "npm_pack_dry_run": "<path to npm pack --dry-run --json output captured in the same PR, or null if not a publishable package>",
+    "boundary_scan": "<path to public-boundary scan output captured in the same PR>",
+    "secret_scan": "<path to secret scan output captured in the same PR>",
+    "reviewer_signoff": {
+      "reviewer": "<github handle of the public-safety reviewer>",
+      "signed_off_on": "<UTC ISO 8601 timestamp>",
+      "comment": "<short note confirming every copied file is matched by an included_paths entry and no excluded file leaked through>"
+    }
+  }
+}

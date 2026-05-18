@@ -1,0 +1,27 @@
+{
+  "id": "mcp-server",
+  "source_repo": "atomicstrata/atomicmemory-integrations",
+  "source_ref": "main",
+  "source_commit": "287e9ba80f215a08588fd5da543bd15741c045dd",
+  "source_subpath": "packages/mcp-server",
+  "target_path": "packages/mcp-server",
+  "owner": "TBD-owner-mcp-server",
+  "reviewer": "TBD-reviewer-public-safety",
+  "included_paths": [
+    "src/**",
+    "package.json",
+    "tsconfig.json",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "excluded_paths": [
+    "dist/**",
+    "node_modules/**"
+  ],
+  "post_copy_actions": [
+    "Update package.json repository to atomicstrata/atomicmemory with directory packages/mcp-server.",
+    "Update package.json homepage and bugs URLs to the monorepo issue tracker.",
+    "Run npm pack --dry-run --json and reconcile the published file list against this allowlist."
+  ],
+  "notes": "Source lives inside atomicmemory-integrations under packages/mcp-server. No host-specific config needs to ship; configuration travels with the user's MCP client."
+}

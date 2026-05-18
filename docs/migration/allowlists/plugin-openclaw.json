@@ -1,0 +1,30 @@
+{
+  "id": "plugin-openclaw",
+  "source_repo": "atomicstrata/atomicmemory-integrations",
+  "source_ref": "main",
+  "source_commit": "287e9ba80f215a08588fd5da543bd15741c045dd",
+  "source_subpath": "plugins/openclaw",
+  "target_path": "plugins/openclaw",
+  "owner": "TBD-owner-plugin-openclaw",
+  "reviewer": "TBD-reviewer-public-safety",
+  "included_paths": [
+    "src/**",
+    "skills/**",
+    "openclaw.plugin.json",
+    "package.json",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "excluded_paths": [
+    "dist/**",
+    "node_modules/**"
+  ],
+  "post_copy_actions": [
+    "Update package.json repository to atomicstrata/atomicmemory with directory plugins/openclaw.",
+    "Update package.json homepage and bugs URLs to the monorepo issue tracker.",
+    "Confirm openclaw.plugin.json points at the new monorepo install paths if it references repo URLs.",
+    "Run npm pack --dry-run --json and reconcile the published file list against this allowlist.",
+    "Verify lock-step plugin version still matches sibling plugins after monorepo workspace install."
+  ],
+  "notes": "openclaw.plugin.json is the host manifest and ships in the published tarball."
+}

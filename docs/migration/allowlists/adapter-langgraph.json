@@ -1,0 +1,28 @@
+{
+  "id": "adapter-langgraph",
+  "source_repo": "atomicstrata/atomicmemory-integrations",
+  "source_ref": "feat/integration-maturity-framework-adapters",
+  "source_commit": "c6e3b5082af08ff71128478c252894cc9aa6f002",
+  "source_subpath": "adapters/langgraph-js",
+  "target_path": "adapters/langgraph",
+  "owner": "TBD-owner-adapter-langgraph",
+  "reviewer": "TBD-reviewer-public-safety",
+  "included_paths": [
+    "src/**",
+    "package.json",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "excluded_paths": [
+    "dist/**",
+    "node_modules/**"
+  ],
+  "post_copy_actions": [
+    "Rename directory on disk from langgraph-js to langgraph during copy.",
+    "Update package.json repository to atomicstrata/atomicmemory with directory adapters/langgraph.",
+    "Update package.json homepage and bugs URLs to the monorepo issue tracker.",
+    "Confirm @atomicmemory/sdk dependency uses a registry-safe semver range or a workspace: spec that pack rewrites cleanly.",
+    "Run npm pack --dry-run --json and reconcile the published file list against this allowlist."
+  ],
+  "notes": "Source lives on the feat/integration-maturity-framework-adapters branch and is not yet on integrations main. If the branch lands on main before the copy is executed, update source_ref to main and re-pin source_commit accordingly. Directory rename normalizes adapter path to match the unscoped package name; package name @atomicmemory/langgraph is unchanged."
+}
