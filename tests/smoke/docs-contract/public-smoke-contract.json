@@ -1,0 +1,184 @@
+{
+  "schema_version": "atomicmemory-public-smoke-contract.v1",
+  "description": "Public-safe package, adapter, and plugin smoke matrix for the AtomicMemory monorepo. This file is data-only and excludes private release orchestration.",
+  "release_readiness": {
+    "full_suite_required": true,
+    "partial_runs": "diagnostic_only",
+    "allowed_coverage_labels": [
+      "package_protocol",
+      "host_install",
+      "true_host_e2e",
+      "skipped_host_missing",
+      "skipped_missing_secret"
+    ]
+  },
+  "rows": [
+    {
+      "kind": "package",
+      "name": "@atomicmemory/core",
+      "monorepo_path": "packages/core",
+      "registry_artifact": "npm:@atomicmemory/core",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_package",
+      "public_install_command": "npm install @atomicmemory/core"
+    },
+    {
+      "kind": "package",
+      "name": "@atomicmemory/sdk",
+      "monorepo_path": "packages/sdk",
+      "registry_artifact": "npm:@atomicmemory/sdk",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_package",
+      "public_install_command": "npm install @atomicmemory/sdk"
+    },
+    {
+      "kind": "package",
+      "name": "@atomicmemory/cli",
+      "monorepo_path": "packages/cli",
+      "registry_artifact": "npm:@atomicmemory/cli",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_cli",
+      "public_install_command": "npm install -g @atomicmemory/cli"
+    },
+    {
+      "kind": "package",
+      "name": "@atomicmemory/mcp-server",
+      "monorepo_path": "packages/mcp-server",
+      "registry_artifact": "npm:@atomicmemory/mcp-server",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_mcp_server",
+      "public_install_command": "npm install @atomicmemory/mcp-server"
+    },
+    {
+      "kind": "adapter",
+      "name": "@atomicmemory/vercel-ai",
+      "monorepo_path": "adapters/vercel-ai",
+      "registry_artifact": "npm:@atomicmemory/vercel-ai",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_framework_adapter",
+      "public_install_command": "npm install @atomicmemory/vercel-ai @atomicmemory/sdk"
+    },
+    {
+      "kind": "adapter",
+      "name": "@atomicmemory/openai-agents",
+      "monorepo_path": "adapters/openai-agents",
+      "registry_artifact": "npm:@atomicmemory/openai-agents",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_framework_adapter",
+      "public_install_command": "npm install @atomicmemory/openai-agents @atomicmemory/sdk"
+    },
+    {
+      "kind": "adapter",
+      "name": "@atomicmemory/langchain",
+      "monorepo_path": "adapters/langchain",
+      "registry_artifact": "npm:@atomicmemory/langchain",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "implemented_publish_pending",
+      "install_type": "npm_framework_adapter_pending_publish",
+      "public_install_command": null
+    },
+    {
+      "kind": "adapter",
+      "name": "@atomicmemory/langgraph",
+      "monorepo_path": "adapters/langgraph",
+      "registry_artifact": "npm:@atomicmemory/langgraph",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "implemented_publish_pending",
+      "install_type": "npm_framework_adapter_pending_publish",
+      "public_install_command": null
+    },
+    {
+      "kind": "adapter",
+      "name": "@atomicmemory/mastra",
+      "monorepo_path": "adapters/mastra",
+      "registry_artifact": "npm:@atomicmemory/mastra",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "implemented_publish_pending",
+      "install_type": "npm_framework_adapter_pending_publish",
+      "public_install_command": null
+    },
+    {
+      "kind": "plugin",
+      "name": "@atomicmemory/claude-code-plugin",
+      "monorepo_path": "plugins/claude-code",
+      "registry_artifact": "npm:@atomicmemory/claude-code-plugin",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_host_plugin",
+      "public_install_command": "npm install @atomicmemory/claude-code-plugin"
+    },
+    {
+      "kind": "plugin",
+      "name": "claude-code@atomicmemory",
+      "monorepo_path": "plugins/claude-code",
+      "registry_artifact": "host-marketplace:claude-code@atomicmemory",
+      "required_for_public_release": true,
+      "coverage_label": "host_install",
+      "publish_status": "published",
+      "install_type": "host_marketplace_plugin",
+      "public_install_command": null
+    },
+    {
+      "kind": "plugin",
+      "name": "@atomicmemory/openclaw-plugin",
+      "monorepo_path": "plugins/openclaw",
+      "registry_artifact": "npm:@atomicmemory/openclaw-plugin",
+      "required_for_public_release": true,
+      "coverage_label": "true_host_e2e",
+      "publish_status": "published",
+      "install_type": "host_plugin_npm",
+      "public_install_command": "npm install @atomicmemory/openclaw-plugin"
+    },
+    {
+      "kind": "plugin",
+      "name": "@atomicmemory/hermes-plugin",
+      "monorepo_path": "plugins/hermes",
+      "registry_artifact": "npm:@atomicmemory/hermes-plugin",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "npm_host_plugin",
+      "public_install_command": "npm install @atomicmemory/hermes-plugin"
+    },
+    {
+      "kind": "plugin",
+      "name": "@atomicmemory/codex-plugin",
+      "monorepo_path": "plugins/codex",
+      "registry_artifact": null,
+      "required_for_public_release": false,
+      "coverage_label": "host_install",
+      "publish_status": "private_unpublished",
+      "install_type": "private_host_plugin",
+      "public_install_command": null,
+      "release_blocker": "Host marketplace validation is not complete."
+    },
+    {
+      "kind": "plugin",
+      "name": "@atomicmemory/cursor-plugin",
+      "monorepo_path": "plugins/cursor",
+      "registry_artifact": null,
+      "required_for_public_release": false,
+      "coverage_label": "host_install",
+      "publish_status": "private_unpublished",
+      "install_type": "private_host_plugin",
+      "public_install_command": null,
+      "release_blocker": "Host marketplace validation is not complete."
+    }
+  ]
+}

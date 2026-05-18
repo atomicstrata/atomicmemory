@@ -1,0 +1,14 @@
+{
+  "name": "@atomicmemory/smoke",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Public-safe AtomicMemory smoke contract checks for the monorepo.",
+  "type": "module",
+  "scripts": {
+    "docs-contract": "bash scripts/validate-public-smoke-contract.sh",
+    "test": "pnpm run docs-contract",
+    "validate": "pnpm run docs-contract"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.4"
+}
