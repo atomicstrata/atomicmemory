@@ -22,7 +22,7 @@ import { runInvocation } from './cli/runtime.js';
 import { renderTopLevelError } from './cli/error-render.js';
 import type { ExitCode } from './types.js';
 
-export const CLI_VERSION = '0.1.0';
+export const CLI_VERSION = '0.1.2';
 
 async function main(argv: string[]): Promise<ExitCode> {
   const startTime = Date.now();

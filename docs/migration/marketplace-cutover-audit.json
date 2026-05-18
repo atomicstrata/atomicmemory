@@ -1,0 +1,71 @@
+{
+  "schema_version": "atomicmemory-marketplace-cutover-audit.v1",
+  "description": "Public-safe manifest audit for host plugin repository URL cutover.",
+  "checked_at": "2026-05-18",
+  "canonical_repository": "https://github.com/atomicstrata/atomicmemory",
+  "entries": [
+    {
+      "host": "Claude Code",
+      "monorepo_path": "plugins/claude-code",
+      "manifest_paths": [
+        "plugins/claude-code/.claude-plugin/plugin.json",
+        "plugins/claude-code/hooks/hooks.json"
+      ],
+      "package": "@atomicmemory/claude-code-plugin",
+      "cutover_version": "0.1.15",
+      "repository_metadata_status": "package_json_points_to_monorepo",
+      "marketplace_action": "resubmission_needed_if_listing_caches_manifest",
+      "supported_for_public_release": true
+    },
+    {
+      "host": "OpenClaw",
+      "monorepo_path": "plugins/openclaw",
+      "manifest_paths": [
+        "plugins/openclaw/openclaw.plugin.json"
+      ],
+      "package": "@atomicmemory/openclaw-plugin",
+      "cutover_version": "0.1.15",
+      "repository_metadata_status": "package_json_points_to_monorepo",
+      "marketplace_action": "resubmission_needed_if_listing_caches_manifest",
+      "supported_for_public_release": true
+    },
+    {
+      "host": "Hermes",
+      "monorepo_path": "plugins/hermes",
+      "manifest_paths": [
+        "plugins/hermes/plugin.yaml"
+      ],
+      "package": "@atomicmemory/hermes-plugin",
+      "cutover_version": "0.1.15",
+      "repository_metadata_status": "package_json_points_to_monorepo",
+      "marketplace_action": "resubmission_needed_if_listing_caches_manifest",
+      "supported_for_public_release": true
+    },
+    {
+      "host": "Codex",
+      "monorepo_path": "plugins/codex",
+      "manifest_paths": [
+        "plugins/codex/.codex-plugin/plugin.json",
+        "plugins/codex/.codex-mcp.json",
+        "plugins/codex/marketplace.example.json"
+      ],
+      "package": "@atomicmemory/codex-plugin",
+      "cutover_version": "0.1.15",
+      "repository_metadata_status": "source_manifest_points_to_monorepo",
+      "marketplace_action": "not_submitted_until_supported_install_path_is_ready",
+      "supported_for_public_release": false
+    },
+    {
+      "host": "Cursor",
+      "monorepo_path": "plugins/cursor",
+      "manifest_paths": [
+        "plugins/cursor/.cursor/mcp.json"
+      ],
+      "package": "@atomicmemory/cursor-plugin",
+      "cutover_version": "0.1.15",
+      "repository_metadata_status": "source_package_points_to_monorepo",
+      "marketplace_action": "not_submitted_until_supported_install_path_is_ready",
+      "supported_for_public_release": false
+    }
+  ]
+}

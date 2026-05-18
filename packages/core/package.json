@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/core",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Open-source memory engine for AI applications — semantic retrieval, AUDN mutation, and contradiction-safe claim versioning.",
   "type": "module",
   "license": "Apache-2.0",

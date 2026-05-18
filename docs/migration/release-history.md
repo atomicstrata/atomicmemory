@@ -79,6 +79,31 @@ column shows the tag prefix that future per-package releases will use.
 - Pre-migration tags are not re-created in the monorepo; they remain in
   their original repositories and the corresponding archive after archival.
 
+## Metadata cutover release queue
+
+The first monorepo-era release for each published package is a metadata-only
+cutover release. It updates npm registry metadata to point at the monorepo and
+does not intentionally change public APIs.
+
+| Package | Current registry version | Cutover version | Monorepo tag |
+| --- | --- | --- | --- |
+| `@atomicmemory/core` | 1.0.3 | 1.0.4 | `core-v1.0.4` |
+| `@atomicmemory/sdk` | 1.0.1 | 1.0.2 | `sdk-v1.0.2` |
+| `@atomicmemory/cli` | 0.1.1 | 0.1.2 | `cli-v0.1.2` |
+| `@atomicmemory/mcp-server` | 0.1.1 | 0.1.2 | `mcp-server-v0.1.2` |
+| `@atomicmemory/vercel-ai` | 0.1.0 | 0.1.1 | `vercel-ai-v0.1.1` |
+| `@atomicmemory/openai-agents` | 0.1.0 | 0.1.1 | `openai-agents-v0.1.1` |
+| `@atomicmemory/langchain` | 0.1.0 | 0.1.1 | `langchain-v0.1.1` |
+| `@atomicmemory/langgraph` | 0.1.0 | 0.1.1 | `langgraph-v0.1.1` |
+| `@atomicmemory/mastra` | 0.1.0 | 0.1.1 | `mastra-v0.1.1` |
+| `@atomicmemory/claude-code-plugin` | 0.1.14 | 0.1.15 | `claude-code-plugin-v0.1.15` |
+| `@atomicmemory/openclaw-plugin` | 0.1.14 | 0.1.15 | `openclaw-plugin-v0.1.15` |
+| `@atomicmemory/hermes-plugin` | 0.1.14 | 0.1.15 | `hermes-plugin-v0.1.15` |
+
+`@atomicmemory/codex-plugin` and `@atomicmemory/cursor-plugin` keep their source
+versions aligned with the host plugin group at `0.1.15`, but remain coming soon
+until their supported install paths are ready.
+
 ## Linking from package READMEs
 
 Each package README inside the monorepo should link back to this page when a

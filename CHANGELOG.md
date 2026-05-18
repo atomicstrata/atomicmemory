@@ -27,6 +27,8 @@ or publish pending.
   compliance.
 - Source snapshot provenance manifests for packages, adapters, plugins, and
   public validation assets.
+- Metadata-only cutover versions for published packages so npm registry
+  metadata can point at the monorepo.
 
 ### Notes
 

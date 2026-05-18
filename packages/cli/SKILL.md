@@ -1,7 +1,7 @@
 ---
 name: atomicmemory-cli
 description: Use the installed AtomicMemory CLI for memory search, ingestion, packaging, diagnostics, and agent-safe JSON output.
-version: "0.1.0"
+version: "0.1.2"
 ---
 
 # AtomicMemory CLI Skill

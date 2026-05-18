@@ -1,7 +1,7 @@
 {
   "spec_version": "5.0.0",
   "package_name": "@atomicmemory/cli",
-  "package_version": "0.1.0",
+  "package_version": "0.1.2",
   "global_options": [
     {
       "name": "--json",

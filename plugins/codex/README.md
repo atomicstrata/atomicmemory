@@ -69,7 +69,7 @@ export ATOMICMEMORY_SCOPE_USER="pip"
 # export ATOMICMEMORY_SCOPE_THREAD="<session-id>"
 ```
 
-At least one `ATOMICMEMORY_SCOPE_*` must be set — the server rejects scopeless requests. The MCP server itself is fetched from npm on first use via `npx -y --package=@atomicmemory/mcp-server@^0.1.1 atomicmemory-mcp`, so no local clone or build is required.
+At least one `ATOMICMEMORY_SCOPE_*` must be set — the server rejects scopeless requests. The MCP server itself is fetched from npm on first use via `npx -y --package=@atomicmemory/mcp-server@^0.1.2 atomicmemory-mcp`, so no local clone or build is required.
 
 ## Memory behavior
 

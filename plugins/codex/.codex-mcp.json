@@ -2,7 +2,7 @@
   "mcpServers": {
     "atomicmemory": {
       "command": "npx",
-      "args": ["-y", "--package=@atomicmemory/mcp-server@^0.1.1", "atomicmemory-mcp"],
+      "args": ["-y", "--package=@atomicmemory/mcp-server@^0.1.2", "atomicmemory-mcp"],
       "env_vars": [
         "ATOMICMEMORY_API_URL",
         "ATOMICMEMORY_API_KEY",
