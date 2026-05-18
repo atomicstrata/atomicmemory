@@ -1,0 +1,74 @@
+{
+  "$schema": "https://fallow.tools/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/browser.ts",
+    "src/storage/index.ts",
+    "src/kv-cache/index.ts",
+    "src/embedding/index.ts",
+    "src/search/index.ts",
+    "src/utils/index.ts",
+    "src/core/index.ts",
+    "src/memory/index.ts"
+  ],
+  "publicPackages": ["@atomicmemory/atomicmemory-sdk"],
+  "ignorePatterns": [
+    "**/one-offs/**",
+    "benchmarks/**"
+  ],
+  "rules": {
+    "unused-class-members": "off",
+    "unused-exports": "warn"
+  },
+  "duplicates": {
+    "ignore": [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.test.mts",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "tests/**",
+      "scripts/**",
+      "examples/**",
+      "benchmarks/**",
+      "src/embedding/wasm-semantic-processor.ts"
+    ]
+  },
+  "health": {
+    "maxCyclomatic": 25,
+    "maxCognitive": 30,
+    "ignore": [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.test.mts",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "tests/**",
+      "scripts/**",
+      "examples/**",
+      "benchmarks/**"
+    ]
+  },
+  "regression": {
+    "baseline":     {
+      "totalIssues": 0,
+      "unusedFiles": 0,
+      "unusedExports": 0,
+      "unusedTypes": 0,
+      "unusedDependencies": 0,
+      "unusedDevDependencies": 0,
+      "unusedOptionalDependencies": 0,
+      "unusedEnumMembers": 0,
+      "unusedClassMembers": 0,
+      "unresolvedImports": 0,
+      "unlistedDependencies": 0,
+      "duplicateExports": 0,
+      "circularDependencies": 0,
+      "typeOnlyDependencies": 0,
+      "testOnlyDependencies": 0,
+      "boundaryViolations": 0
+    }
+  }
+}

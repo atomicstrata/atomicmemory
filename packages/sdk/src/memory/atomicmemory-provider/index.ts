@@ -1,0 +1,65 @@
+/**
+ * @file AtomicMemory Provider Exports
+ */
+
+export { AtomicMemoryProvider } from './atomicmemory-provider';
+export type { AtomicMemoryProviderConfig } from './types';
+export { ATOMICMEMORY_DEFAULT_TIMEOUT } from './types';
+
+// AtomicMemory-specific namespaced handle — `sdk.atomicmemory.*` public types.
+export type {
+  AtomicMemoryHandle,
+  AtomicMemoryMemory,
+  AtomicMemoryIngestInput,
+  AtomicMemoryIngestResult,
+  AtomicMemorySearchRequest,
+  AtomicMemorySearchResult,
+  AtomicMemorySearchResultPage,
+  AtomicMemoryListOptions,
+  AtomicMemoryListResultPage,
+  AtomicMemoryLifecycle,
+  ConsolidationResult,
+  ConsolidationScanResult,
+  ConsolidationExecutionResult,
+  DecayResult,
+  CapCheckResult,
+  CapStatus,
+  CapRecommendation,
+  StatsResult,
+  ResetSourceResult,
+  ReconciliationResult,
+  ReconcileStatus,
+  AtomicMemoryAudit,
+  MutationType,
+  MutationSummary,
+  MutationRecord,
+  RecentMutationsResult,
+  AuditTrailEntry,
+  AuditTrailResult,
+  AtomicMemoryLessons,
+  Lesson,
+  LessonType,
+  LessonSeverity,
+  LessonsListResult,
+  LessonStats,
+  AtomicMemoryConfig,
+  EmbeddingProviderName,
+  LLMProviderName,
+  HealthConfig,
+  AtomicMemoryHealthStatus,
+  ConfigUpdates,
+  ConfigUpdateResult,
+  AtomicMemoryAgents,
+  ConflictResolution,
+  ConflictStatus,
+  SetTrustResult,
+  GetTrustResult,
+  AgentConflict,
+  ConflictsListResult,
+  ResolveConflictResult,
+  AutoResolveConflictsResult,
+  AtomicMemoryExtensionName,
+  AgentScope,
+  MemoryScope,
+} from './handle';
+export { ATOMICMEMORY_EXTENSION_NAMES } from './handle';

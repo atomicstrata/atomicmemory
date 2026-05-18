@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atomicmemory
+      POSTGRES_PASSWORD: atomicmemory
+      POSTGRES_DB: atomicmemory
+    ports:
+      - "5434:5432"
+    volumes:
+      - core_compare_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "atomicmemory", "-U", "atomicmemory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3051:3051"
+    environment:
+      DATABASE_URL: postgresql://atomicmemory:atomicmemory@postgres:5432/atomicmemory
+      PORT: "3051"
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3051/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  core_compare_pgdata:

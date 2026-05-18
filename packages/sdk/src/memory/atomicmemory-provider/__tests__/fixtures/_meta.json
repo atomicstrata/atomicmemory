@@ -1,0 +1,24 @@
+{
+  "capturedAt": "2026-04-25T19:48:07.755Z",
+  "coreSha": "7829ebdbfdec34d0fbc03742a816d7c52e8058e0",
+  "coreBranch": "main",
+  "dirty": false,
+  "dirtyOverride": false,
+  "providerConfig": {
+    "retrieval_profile": "balanced",
+    "embedding_provider": "voyage",
+    "embedding_model": "mxbai-embed-large",
+    "voyage_document_model": "voyage-4-large",
+    "voyage_query_model": "voyage-4-lite",
+    "llm_provider": "anthropic",
+    "llm_model": "claude-sonnet-4-6",
+    "clarification_conflict_threshold": 0.8,
+    "max_search_results": 12,
+    "hybrid_search_enabled": false,
+    "iterative_retrieval_enabled": false,
+    "entity_graph_enabled": true,
+    "cross_encoder_enabled": true,
+    "agentic_retrieval_enabled": false,
+    "repair_loop_enabled": true
+  }
+}

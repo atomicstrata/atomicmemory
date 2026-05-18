@@ -1,0 +1,121 @@
+{
+  "name": "@atomicmemory/core",
+  "version": "1.0.3",
+  "description": "Open-source memory engine for AI applications — semantic retrieval, AUDN mutation, and contradiction-safe claim versioning.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "AtomicMemory <support@atomicstrata.ai>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "packages/core"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "keywords": [
+    "memory",
+    "ai",
+    "llm",
+    "semantic-search",
+    "pgvector",
+    "embeddings",
+    "context",
+    "retrieval"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "atomicmemory-core": "dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./db/*": {
+      "types": "./dist/db/*.d.ts",
+      "import": "./dist/db/*.js"
+    },
+    "./services/*": {
+      "types": "./dist/services/*.d.ts",
+      "import": "./dist/services/*.js"
+    },
+    "./openapi.json": "./openapi.json",
+    "./openapi.yaml": "./openapi.yaml"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "openapi.json",
+    "openapi.yaml"
+  ],
+  "scripts": {
+    "dev": "dotenv -e .env -- tsx watch src/server.ts",
+    "start": "dotenv -e .env -- tsx src/server.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && tsx scripts/generate-schema-hash.ts",
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "check:openapi": "npm run generate:openapi && git diff --exit-code openapi.yaml openapi.json",
+    "prepublishOnly": "npm run generate:openapi && npm run build",
+    "test": "dotenv -e .env.test -- vitest run --reporter verbose",
+    "test:watch": "dotenv -e .env.test -- vitest --reporter verbose",
+    "test:deployment": "vitest run src/__tests__/deployment-config.test.ts --reporter verbose",
+    "test:docker-smoke": "./scripts/docker-smoke-test.sh",
+    "test:schema": "tests/schema/run-schemathesis.sh",
+    "migrate": "dotenv -e .env -- tsx src/db/migrate.ts",
+    "migrate:test": "dotenv -e .env.test -- tsx src/db/migrate.ts",
+    "prepare": "husky || true"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.140",
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@asteasolutions/zod-to-openapi": "^8.5.0",
+    "@aws-sdk/client-s3": "^3.1045.0",
+    "@filoz/synapse-core": "^0.5.1",
+    "@filoz/synapse-sdk": "^0.41.0",
+    "@huggingface/transformers": "^3.8.1",
+    "express": "^5.1.0",
+    "multiformats": "^13.4.1",
+    "node-pg-migrate": "8.0.4",
+    "openai": "^4.80.0",
+    "pg": "^8.18.0",
+    "pgvector": "^0.2.0",
+    "tsx": "^4.21.0",
+    "undici": "^7.24.5",
+    "viem": "^2.48.11",
+    "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@helia/unixfs": "^7.0.4",
+    "@helia/verified-fetch": "^7.2.8",
+    "@ipld/car": "^5.4.2",
+    "blockstore-core": "^6.1.3",
+    "filecoin-pin": "^0.21.0",
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "dotenv": "^16.6.1",
+    "dotenv-cli": "^8.0.0",
+    "husky": "^9.1.7",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.3",
+    "yaml": "^2.8.3"
+  }
+}

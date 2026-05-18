@@ -1,0 +1,21 @@
+{
+  "$schema": "https://fallow.tools/schema.json",
+  "ignorePatterns": [
+    "**/one-offs/**",
+    "scripts/**"
+  ],
+  "ignoreDependencies": [
+    "@helia/verified-fetch",
+    "@helia/unixfs",
+    "blockstore-core",
+    "filecoin-pin",
+    "pino",
+    "yaml"
+  ],
+  "rules": {
+    "unused-types": "off",
+    "unused-class-members": "off",
+    "duplicate-exports": "off"
+  },
+  "duplicates": {}
+}

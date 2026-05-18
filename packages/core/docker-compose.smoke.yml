@@ -1,0 +1,13 @@
+# Smoke test overlay — used by scripts/docker-smoke-test.sh
+# Overrides port and provider config for hermetic CI testing.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.smoke.yml up --build
+services:
+  app:
+    environment:
+      - EMBEDDING_PROVIDER=transformers
+      - EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
+      - EMBEDDING_DIMENSIONS=384
+      - LLM_PROVIDER=openai
+      - OPENAI_API_KEY=sk-smoke-test-dummy
+      - PORT=3050

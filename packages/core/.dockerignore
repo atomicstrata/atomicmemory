@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.test
+.env.local
+*.log
+.git
+web
+docs
+eval-results
+logs

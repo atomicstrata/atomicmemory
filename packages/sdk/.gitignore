@@ -1,0 +1,43 @@
+# Build outputs
+dist/
+*.tsbuildinfo
+.tsup/
+
+# Dependencies
+node_modules/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Test artifacts
+test-results/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Env
+.env
+.env.local
+.env.*.local
+.npmrc
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Fallow incremental cache + churn data (regenerable, not shared).
+# Baselines in .fallow/*.json ARE tracked so CI + pre-commit share a floor.
+.fallow/cache.bin
+.fallow/churn.bin
+
+# Internal tech-debt notes — never commit.
+tech-debt.md
+
+# Superpowers skill plugin output — agent-generated specs/plans, internal-only.
+docs/superpowers/

@@ -1,0 +1,143 @@
+{
+  "name": "@atomicmemory/sdk",
+  "version": "1.0.1",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "**/transformers-env-config*"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "require": "./dist/browser.cjs",
+      "default": "./dist/browser.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js",
+      "require": "./dist/storage.cjs",
+      "default": "./dist/storage.js"
+    },
+    "./kv-cache": {
+      "types": "./dist/kv-cache.d.ts",
+      "import": "./dist/kv-cache.js",
+      "require": "./dist/kv-cache.cjs",
+      "default": "./dist/kv-cache.js"
+    },
+    "./embedding": {
+      "types": "./dist/embedding.d.ts",
+      "import": "./dist/embedding.js",
+      "require": "./dist/embedding.cjs",
+      "default": "./dist/embedding.js"
+    },
+    "./search": {
+      "types": "./dist/search.d.ts",
+      "import": "./dist/search.js",
+      "require": "./dist/search.cjs",
+      "default": "./dist/search.js"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.ts",
+      "import": "./dist/utils.js",
+      "require": "./dist/utils.cjs",
+      "default": "./dist/utils.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs",
+      "default": "./dist/core.js"
+    },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "import": "./dist/memory.js",
+      "require": "./dist/memory.cjs",
+      "default": "./dist/memory.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "build:dev": "tsup --watch",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts",
+    "clean": "rm -rf dist coverage .tsup",
+    "fixtures:capture": "tsx scripts/capture-fixtures.ts",
+    "prepare": "husky"
+  },
+  "keywords": [
+    "memory",
+    "embeddings",
+    "semantic-search",
+    "rag",
+    "vector-search",
+    "llm",
+    "ai-memory"
+  ],
+  "author": "AtomicMemory <support@atomicstrata.ai>",
+  "license": "Apache-2.0",
+  "description": "Backend-agnostic memory-layer SDK with pluggable providers (AtomicMemory, Mem0), local embeddings, storage adapters, and semantic search. Apache-2.0 licensed OSS core.",
+  "devDependencies": {
+    "@types/chrome": "^0.1.19",
+    "@types/node": "^24.6.2",
+    "@vitest/coverage-istanbul": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.6",
+    "husky": "^9.1.7",
+    "jsdom": "^27.0.0",
+    "prettier": "^3.4.2",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.3",
+    "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "@protobufjs/utf8": "1.1.1",
+      "protobufjs": "7.5.6"
+    }
+  }
+}

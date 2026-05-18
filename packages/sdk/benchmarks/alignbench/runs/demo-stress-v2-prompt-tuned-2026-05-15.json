@@ -1,0 +1,969 @@
+{
+  "baseline": {
+    "recall_at_1": 0.7333333333333333,
+    "recall_at_5": 0.7333333333333333,
+    "gold_present_rate": 0.7333333333333333,
+    "meta_at_top1": 0,
+    "per_item": [
+      {
+        "id": "name-001",
+        "gold_rank": 1,
+        "gold_score": 0.3960303068161011,
+        "top1_score": 0.3960303068161011,
+        "top1_text": "The user's name is Alex.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "name-002",
+        "gold_rank": 1,
+        "gold_score": 0.24057143926620483,
+        "top1_score": 0.24057143926620483,
+        "top1_text": "The user goes by Sam.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "name-003",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "name-004",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "pet-001",
+        "gold_rank": 1,
+        "gold_score": 0.46046364307403564,
+        "top1_score": 0.46046364307403564,
+        "top1_text": "The user has a golden retriever named Apollo.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "pet-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "pet-003",
+        "gold_rank": 1,
+        "gold_score": 0.4039832651615143,
+        "top1_score": 0.4039832651615143,
+        "top1_text": "The user adopted a beagle puppy named Penny.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "job-001",
+        "gold_rank": 1,
+        "gold_score": 0.18614771962165833,
+        "top1_score": 0.18614771962165833,
+        "top1_text": "The user works as a software engineer at a startup.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "job-002",
+        "gold_rank": 1,
+        "gold_score": 0.2045474350452423,
+        "top1_score": 0.2045474350452423,
+        "top1_text": "The user is a high school chemistry teacher.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "job-003",
+        "gold_rank": 1,
+        "gold_score": 0.3352947533130646,
+        "top1_score": 0.3352947533130646,
+        "top1_text": "The user freelances as a graphic designer.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "city-001",
+        "gold_rank": 1,
+        "gold_score": 0.2956629991531372,
+        "top1_score": 0.2956629991531372,
+        "top1_text": "The user lives in Lisbon.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "city-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "city-003",
+        "gold_rank": 1,
+        "gold_score": 0.33762556314468384,
+        "top1_score": 0.33762556314468384,
+        "top1_text": "The user is based in Toronto.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "food-001",
+        "gold_rank": 1,
+        "gold_score": 0.459760457277298,
+        "top1_score": 0.459760457277298,
+        "top1_text": "The user is vegetarian.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "food-002",
+        "gold_rank": 1,
+        "gold_score": 0.38580864667892456,
+        "top1_score": 0.38580864667892456,
+        "top1_text": "The user is severely allergic to peanuts.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "food-003",
+        "gold_rank": 1,
+        "gold_score": 0.30525362491607666,
+        "top1_score": 0.30525362491607666,
+        "top1_text": "The user does not drink coffee and only drinks tea.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "hobby-001",
+        "gold_rank": 1,
+        "gold_score": 0.38078930974006653,
+        "top1_score": 0.38078930974006653,
+        "top1_text": "The user plays classical piano.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "hobby-002",
+        "gold_rank": 1,
+        "gold_score": 0.38707590103149414,
+        "top1_score": 0.38707590103149414,
+        "top1_text": "The user's main sport is rock climbing.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "hobby-003",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "family-001",
+        "gold_rank": 1,
+        "gold_score": 0.28777992725372314,
+        "top1_score": 0.28777992725372314,
+        "top1_text": "The user has two children named Maya and Theo.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "family-002",
+        "gold_rank": 1,
+        "gold_score": 0.5129046440124512,
+        "top1_score": 0.5129046440124512,
+        "top1_text": "The user's partner's name is Casey.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "family-003",
+        "gold_rank": 1,
+        "gold_score": 0.6085690259933472,
+        "top1_score": 0.6085690259933472,
+        "top1_text": "The user's mother lives in Vancouver.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "vehicle-001",
+        "gold_rank": 1,
+        "gold_score": 0.33847203850746155,
+        "top1_score": 0.33847203850746155,
+        "top1_text": "The user drives a blue Subaru Outback.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "vehicle-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_score": 0.410287082195282,
+        "top1_text": "The user does not own a car and bikes everywhere.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "edu-001",
+        "gold_rank": 1,
+        "gold_score": 0.45382001996040344,
+        "top1_score": 0.45382001996040344,
+        "top1_text": "The user studied applied mathematics in college.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "edu-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "tech-001",
+        "gold_rank": 1,
+        "gold_score": 0.30372458696365356,
+        "top1_score": 0.30372458696365356,
+        "top1_text": "The user's main laptop is a 16-inch MacBook Pro.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "tech-002",
+        "gold_rank": 1,
+        "gold_score": 0.3180965483188629,
+        "top1_score": 0.3180965483188629,
+        "top1_text": "The user prefers Neovim over VS Code.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "music-001",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "music-002",
+        "gold_rank": 1,
+        "gold_score": 0.5527178049087524,
+        "top1_score": 0.5527178049087524,
+        "top1_text": "The user's all-time favorite band is Radiohead.",
+        "top1_is_meta": false
+      }
+    ]
+  },
+  "filtered": {
+    "recall_at_1": 0.7333333333333333,
+    "recall_at_5": 0.7333333333333333,
+    "gold_present_rate": 0.7333333333333333,
+    "meta_at_top1": 0,
+    "per_item": [
+      {
+        "id": "name-001",
+        "gold_rank": 1,
+        "gold_score": 0.3960303068161011,
+        "top1_score": 0.3960303068161011,
+        "top1_text": "The user's name is Alex.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "name-002",
+        "gold_rank": 1,
+        "gold_score": 0.24057143926620483,
+        "top1_score": 0.24057143926620483,
+        "top1_text": "The user goes by Sam.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "name-003",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "name-004",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "pet-001",
+        "gold_rank": 1,
+        "gold_score": 0.46046364307403564,
+        "top1_score": 0.46046364307403564,
+        "top1_text": "The user has a golden retriever named Apollo.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "pet-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "pet-003",
+        "gold_rank": 1,
+        "gold_score": 0.4039832651615143,
+        "top1_score": 0.4039832651615143,
+        "top1_text": "The user adopted a beagle puppy named Penny.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "job-001",
+        "gold_rank": 1,
+        "gold_score": 0.18614771962165833,
+        "top1_score": 0.18614771962165833,
+        "top1_text": "The user works as a software engineer at a startup.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "job-002",
+        "gold_rank": 1,
+        "gold_score": 0.2045474350452423,
+        "top1_score": 0.2045474350452423,
+        "top1_text": "The user is a high school chemistry teacher.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "job-003",
+        "gold_rank": 1,
+        "gold_score": 0.3352947533130646,
+        "top1_score": 0.3352947533130646,
+        "top1_text": "The user freelances as a graphic designer.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "city-001",
+        "gold_rank": 1,
+        "gold_score": 0.2956629991531372,
+        "top1_score": 0.2956629991531372,
+        "top1_text": "The user lives in Lisbon.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "city-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "city-003",
+        "gold_rank": 1,
+        "gold_score": 0.33762556314468384,
+        "top1_score": 0.33762556314468384,
+        "top1_text": "The user is based in Toronto.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "food-001",
+        "gold_rank": 1,
+        "gold_score": 0.459760457277298,
+        "top1_score": 0.459760457277298,
+        "top1_text": "The user is vegetarian.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "food-002",
+        "gold_rank": 1,
+        "gold_score": 0.38580864667892456,
+        "top1_score": 0.38580864667892456,
+        "top1_text": "The user is severely allergic to peanuts.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "food-003",
+        "gold_rank": 1,
+        "gold_score": 0.30525362491607666,
+        "top1_score": 0.30525362491607666,
+        "top1_text": "The user does not drink coffee and only drinks tea.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "hobby-001",
+        "gold_rank": 1,
+        "gold_score": 0.38078930974006653,
+        "top1_score": 0.38078930974006653,
+        "top1_text": "The user plays classical piano.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "hobby-002",
+        "gold_rank": 1,
+        "gold_score": 0.38707590103149414,
+        "top1_score": 0.38707590103149414,
+        "top1_text": "The user's main sport is rock climbing.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "hobby-003",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "family-001",
+        "gold_rank": 1,
+        "gold_score": 0.28777992725372314,
+        "top1_score": 0.28777992725372314,
+        "top1_text": "The user has two children named Maya and Theo.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "family-002",
+        "gold_rank": 1,
+        "gold_score": 0.5129046440124512,
+        "top1_score": 0.5129046440124512,
+        "top1_text": "The user's partner's name is Casey.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "family-003",
+        "gold_rank": 1,
+        "gold_score": 0.6085690259933472,
+        "top1_score": 0.6085690259933472,
+        "top1_text": "The user's mother lives in Vancouver.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "vehicle-001",
+        "gold_rank": 1,
+        "gold_score": 0.33847203850746155,
+        "top1_score": 0.33847203850746155,
+        "top1_text": "The user drives a blue Subaru Outback.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "vehicle-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_score": 0.410287082195282,
+        "top1_text": "The user does not own a car and bikes everywhere.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "edu-001",
+        "gold_rank": 1,
+        "gold_score": 0.45382001996040344,
+        "top1_score": 0.45382001996040344,
+        "top1_text": "The user studied applied mathematics in college.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "edu-002",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "tech-001",
+        "gold_rank": 1,
+        "gold_score": 0.30372458696365356,
+        "top1_score": 0.30372458696365356,
+        "top1_text": "The user's main laptop is a 16-inch MacBook Pro.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "tech-002",
+        "gold_rank": 1,
+        "gold_score": 0.3180965483188629,
+        "top1_score": 0.3180965483188629,
+        "top1_text": "The user prefers Neovim over VS Code.",
+        "top1_is_meta": false
+      },
+      {
+        "id": "music-001",
+        "gold_rank": null,
+        "gold_score": null,
+        "top1_is_meta": false,
+        "top1_text": null
+      },
+      {
+        "id": "music-002",
+        "gold_rank": 1,
+        "gold_score": 0.5527178049087524,
+        "top1_score": 0.5527178049087524,
+        "top1_text": "The user's all-time favorite band is Radiohead.",
+        "top1_is_meta": false
+      }
+    ]
+  },
+  "n": 30,
+  "rows": [
+    {
+      "id": "name-001",
+      "turns": [
+        "My name is Alex.",
+        "Got it."
+      ],
+      "query": "what is my name?",
+      "gold": "name is Alex",
+      "facts": [
+        "The user's name is Alex."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "name-002",
+      "turns": [
+        "I go by Sam.",
+        "OK Sam."
+      ],
+      "query": "what's my name?",
+      "gold": "go by Sam",
+      "facts": [
+        "The user goes by Sam."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "name-003",
+      "turns": [
+        "You can call me Riley.",
+        "Hi Riley."
+      ],
+      "query": "what should you call me?",
+      "gold": "call me Riley",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "name-004",
+      "turns": [
+        "I'm Jordan.",
+        "Nice to meet you."
+      ],
+      "query": "who am I?",
+      "gold": "Jordan",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "pet-001",
+      "turns": [
+        "I have a golden retriever named Apollo.",
+        "How sweet."
+      ],
+      "query": "what is my dog's name?",
+      "gold": "Apollo",
+      "facts": [
+        "The user has a golden retriever named Apollo."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "pet-002",
+      "turns": [
+        "My cat Luna sleeps on my keyboard.",
+        "Classic cat."
+      ],
+      "query": "what's my cat's name?",
+      "gold": "Luna",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "pet-003",
+      "turns": [
+        "I just adopted a beagle puppy. Her name is Penny.",
+        "Congrats!"
+      ],
+      "query": "what kind of dog do I have?",
+      "gold": "beagle",
+      "facts": [
+        "The user adopted a beagle puppy named Penny."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "job-001",
+      "turns": [
+        "I work as a software engineer at a startup.",
+        "Cool field."
+      ],
+      "query": "what do I do for work?",
+      "gold": "software engineer",
+      "facts": [
+        "The user works as a software engineer at a startup."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "job-002",
+      "turns": [
+        "I'm a high school chemistry teacher.",
+        "That's important work."
+      ],
+      "query": "what is my profession?",
+      "gold": "chemistry teacher",
+      "facts": [
+        "The user is a high school chemistry teacher."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "job-003",
+      "turns": [
+        "I freelance as a graphic designer.",
+        "Nice."
+      ],
+      "query": "what's my job?",
+      "gold": "graphic designer",
+      "facts": [
+        "The user freelances as a graphic designer."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "city-001",
+      "turns": [
+        "I live in Lisbon now.",
+        "Beautiful city."
+      ],
+      "query": "where do I live?",
+      "gold": "Lisbon",
+      "facts": [
+        "The user lives in Lisbon."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "city-002",
+      "turns": [
+        "I just moved to Berlin last month.",
+        "Welcome to Berlin."
+      ],
+      "query": "what city am I in?",
+      "gold": "Berlin",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "city-003",
+      "turns": [
+        "I'm based in Toronto.",
+        "Cold this time of year."
+      ],
+      "query": "where am I located?",
+      "gold": "Toronto",
+      "facts": [
+        "The user is based in Toronto."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "food-001",
+      "turns": [
+        "I'm vegetarian.",
+        "Got it."
+      ],
+      "query": "do I eat meat?",
+      "gold": "vegetarian",
+      "facts": [
+        "The user is vegetarian."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "food-002",
+      "turns": [
+        "I'm severely allergic to peanuts.",
+        "Noted, will avoid."
+      ],
+      "query": "do I have any allergies?",
+      "gold": "peanut",
+      "facts": [
+        "The user is severely allergic to peanuts."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "food-003",
+      "turns": [
+        "I don't drink coffee \u2014 only tea.",
+        "Tea is great too."
+      ],
+      "query": "what do I drink in the morning?",
+      "gold": "tea",
+      "facts": [
+        "The user does not drink coffee and only drinks tea."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "hobby-001",
+      "turns": [
+        "I play classical piano.",
+        "Lovely hobby."
+      ],
+      "query": "what instrument do I play?",
+      "gold": "piano",
+      "facts": [
+        "The user plays classical piano."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "hobby-002",
+      "turns": [
+        "My main sport is rock climbing.",
+        "Cool."
+      ],
+      "query": "what sport do I do?",
+      "gold": "rock climbing",
+      "facts": [
+        "The user's main sport is rock climbing."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "hobby-003",
+      "turns": [
+        "I've been knitting for about ten years.",
+        "Impressive."
+      ],
+      "query": "what's a hobby I have?",
+      "gold": "knitting",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "family-001",
+      "turns": [
+        "I have two kids, Maya and Theo.",
+        "What ages?"
+      ],
+      "query": "how many children do I have?",
+      "gold": "two",
+      "facts": [
+        "The user has two children named Maya and Theo."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "family-002",
+      "turns": [
+        "My partner's name is Casey.",
+        "Nice."
+      ],
+      "query": "who is my partner?",
+      "gold": "Casey",
+      "facts": [
+        "The user's partner's name is Casey."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "family-003",
+      "turns": [
+        "My mom lives in Vancouver.",
+        "Far from you?"
+      ],
+      "query": "where does my mom live?",
+      "gold": "Vancouver",
+      "facts": [
+        "The user's mother lives in Vancouver."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "vehicle-001",
+      "turns": [
+        "I drive a blue Subaru Outback.",
+        "Reliable car."
+      ],
+      "query": "what kind of car do I have?",
+      "gold": "Subaru",
+      "facts": [
+        "The user drives a blue Subaru Outback."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "vehicle-002",
+      "turns": [
+        "I don't own a car. I bike everywhere.",
+        "Healthy lifestyle."
+      ],
+      "query": "do I have a car?",
+      "gold": "don't own",
+      "facts": [
+        "The user does not own a car and bikes everywhere."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "edu-001",
+      "turns": [
+        "I studied applied mathematics in college.",
+        "Tough major."
+      ],
+      "query": "what was my major?",
+      "gold": "applied mathematics",
+      "facts": [
+        "The user studied applied mathematics in college."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "edu-002",
+      "turns": [
+        "I got my MBA from UCLA two years ago.",
+        "Congrats."
+      ],
+      "query": "where did I get my MBA?",
+      "gold": "UCLA",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "tech-001",
+      "turns": [
+        "My main laptop is a 16-inch MacBook Pro.",
+        "Solid machine."
+      ],
+      "query": "what computer do I use?",
+      "gold": "MacBook",
+      "facts": [
+        "The user's main laptop is a 16-inch MacBook Pro."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "tech-002",
+      "turns": [
+        "I prefer Neovim over VS Code.",
+        "Editor preferences are personal."
+      ],
+      "query": "what editor do I use?",
+      "gold": "Neovim",
+      "facts": [
+        "The user prefers Neovim over VS Code."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    },
+    {
+      "id": "music-001",
+      "turns": [
+        "I've been getting into bluegrass lately.",
+        "Fun genre."
+      ],
+      "query": "what music am I into these days?",
+      "gold": "bluegrass",
+      "facts": [],
+      "meta_mask": [],
+      "n_facts": 0,
+      "n_meta": 0
+    },
+    {
+      "id": "music-002",
+      "turns": [
+        "My all-time favorite band is Radiohead.",
+        "Great band."
+      ],
+      "query": "what's my favorite band?",
+      "gold": "Radiohead",
+      "facts": [
+        "The user's all-time favorite band is Radiohead."
+      ],
+      "meta_mask": [
+        false
+      ],
+      "n_facts": 1,
+      "n_meta": 0
+    }
+  ]
+}

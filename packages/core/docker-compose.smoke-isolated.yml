@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atomicmemory
+      POSTGRES_PASSWORD: atomicmemory
+      POSTGRES_DB: atomicmemory
+    ports:
+      - "${POSTGRES_PORT:-5444}:5432"
+    volumes:
+      - smoke_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "atomicmemory", "-U", "atomicmemory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3061}:3050"
+    environment:
+      DATABASE_URL: postgresql://atomicmemory:atomicmemory@postgres:5432/atomicmemory
+      PORT: "3050"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      EMBEDDING_PROVIDER: transformers
+      EMBEDDING_MODEL: Xenova/all-MiniLM-L6-v2
+      EMBEDDING_DIMENSIONS: "384"
+      LLM_PROVIDER: openai
+      OPENAI_API_KEY: sk-smoke-test-dummy
+      # Phase 1 Filecoin provider made this knob startup-required. The
+      # smoke compose runs `pointer_only` mode (no managed-blob path), so
+      # `local` is the right value to satisfy the validator without
+      # opening the dual-opt-in plaintext-Filecoin escape hatch.
+      RAW_STORAGE_DEPLOYMENT_ENV: local
+      # `CORE_API_KEY` and `STORAGE_KEY_HMAC_SECRET` are required at
+      # startup; the app container `throw`s and exits if either is
+      # missing. The smoke-isolated stack only verifies wire shape via
+      # Schemathesis, so the values are dummy placeholders that match
+      # `.env.test`. NEVER reuse these strings in a real deployment.
+      CORE_API_KEY: test-core-api-key-do-not-leak
+      # Schemathesis fuzzes the whole OpenAPI surface, including the optional
+      # admin cleanup route. Enable it only in this disposable smoke stack so
+      # the documented /v1/admin/scope path is mounted during schema fuzzing.
+      CORE_ADMIN_API_KEY: test-core-api-key-do-not-leak
+      CORE_TEST_SCOPE_ALLOW_PATTERN: "^schemathesis-fuzz-user$"
+      STORAGE_KEY_HMAC_SECRET: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3050/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  smoke_pgdata:

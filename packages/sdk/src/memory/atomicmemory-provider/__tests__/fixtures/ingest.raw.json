@@ -1,0 +1,14 @@
+{
+  "episode_id": "FIXTURE-EP-1",
+  "facts_extracted": 1,
+  "memories_stored": 1,
+  "memories_updated": 0,
+  "memories_deleted": 0,
+  "memories_skipped": 0,
+  "stored_memory_ids": [
+    "FIXTURE-MEM-1"
+  ],
+  "updated_memory_ids": [],
+  "links_created": 0,
+  "composites_created": 0
+}

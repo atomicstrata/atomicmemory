@@ -1,0 +1,36 @@
+[
+  {
+    "id": "FIXTURE-MEM-2",
+    "content": "user's library card expires in March 2027.",
+    "scope": {
+      "user": "fixture-capture",
+      "namespace": "site/fixture/quick/ingest"
+    },
+    "createdAt": "2026-04-24T10:00:00.000Z",
+    "provenance": {
+      "source": "fixture-quick-ingest",
+      "sourceUrl": "https://example.com/fixtures/quick-ingest-doc"
+    },
+    "metadata": {
+      "importance": 0.6,
+      "episodeId": "FIXTURE-EP-2"
+    }
+  },
+  {
+    "id": "FIXTURE-MEM-1",
+    "content": "User prefers aisle seats on flights longer than four hours.",
+    "scope": {
+      "user": "fixture-capture",
+      "namespace": "site/fixture/full/ingest"
+    },
+    "createdAt": "2026-04-24T10:00:00.000Z",
+    "provenance": {
+      "source": "fixture-full-ingest",
+      "sourceUrl": "https://example.com/fixtures/full-ingest-doc"
+    },
+    "metadata": {
+      "importance": 0.6,
+      "episodeId": "FIXTURE-EP-1"
+    }
+  }
+]

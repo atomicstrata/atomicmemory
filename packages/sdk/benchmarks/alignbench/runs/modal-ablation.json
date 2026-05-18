@@ -1,0 +1,346 @@
+{
+  "models": [
+    {
+      "model": "sentence-transformers/all-MiniLM-L6-v2",
+      "wall_seconds": 5.9,
+      "composite": {
+        "recall_at_1": 0.7333333333333333,
+        "recall_at_5": 0.9333333333333333,
+        "distractor_top1_rate": 0.06666666666666667,
+        "n": 60
+      },
+      "per_axis": [
+        {
+          "axis": "pronoun",
+          "n": 20,
+          "recall_at_1": 0.7,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.3,
+          "median_gold_margin": 0.04656702280044556,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "temporal",
+          "n": 14,
+          "recall_at_1": 0.5,
+          "recall_at_5": 0.7142857142857143,
+          "mean_gold_rank": 5.5,
+          "median_gold_margin": 0.04994499683380127,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "specificity",
+          "n": 14,
+          "recall_at_1": 0.8571428571428571,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.2142857142857142,
+          "median_gold_margin": 0.14383524656295776,
+          "distractor_at_top1": 0
+        },
+        {
+          "axis": "negation",
+          "n": 12,
+          "recall_at_1": 0.9166666666666666,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.0833333333333333,
+          "median_gold_margin": 0.2676225006580353,
+          "distractor_at_top1": 0
+        },
+        {
+          "axis": "control",
+          "n": 10,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mean_gold_rank": null,
+          "median_gold_margin": null,
+          "distractor_at_top1": 0
+        }
+      ]
+    },
+    {
+      "model": "sentence-transformers/all-mpnet-base-v2",
+      "wall_seconds": 6.8,
+      "composite": {
+        "recall_at_1": 0.7333333333333333,
+        "recall_at_5": 0.95,
+        "distractor_top1_rate": 0.08333333333333333,
+        "n": 60
+      },
+      "per_axis": [
+        {
+          "axis": "pronoun",
+          "n": 20,
+          "recall_at_1": 0.55,
+          "recall_at_5": 0.95,
+          "mean_gold_rank": 1.8,
+          "median_gold_margin": 0.0059460848569869995,
+          "distractor_at_top1": 3
+        },
+        {
+          "axis": "temporal",
+          "n": 14,
+          "recall_at_1": 0.5714285714285714,
+          "recall_at_5": 0.8571428571428571,
+          "mean_gold_rank": 6.5,
+          "median_gold_margin": 0.054799675941467285,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "specificity",
+          "n": 14,
+          "recall_at_1": 0.9285714285714286,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.0714285714285714,
+          "median_gold_margin": 0.12878745794296265,
+          "distractor_at_top1": 0
+        },
+        {
+          "axis": "negation",
+          "n": 12,
+          "recall_at_1": 1.0,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.0,
+          "median_gold_margin": 0.20404121279716492,
+          "distractor_at_top1": 0
+        },
+        {
+          "axis": "control",
+          "n": 10,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mean_gold_rank": null,
+          "median_gold_margin": null,
+          "distractor_at_top1": 0
+        }
+      ]
+    },
+    {
+      "model": "BAAI/bge-small-en-v1.5",
+      "wall_seconds": 5.9,
+      "composite": {
+        "recall_at_1": 0.5333333333333333,
+        "recall_at_5": 0.8,
+        "distractor_top1_rate": 0.36666666666666664,
+        "n": 60
+      },
+      "per_axis": [
+        {
+          "axis": "pronoun",
+          "n": 20,
+          "recall_at_1": 0.5,
+          "recall_at_5": 0.8,
+          "mean_gold_rank": 3.6,
+          "median_gold_margin": 0.0,
+          "distractor_at_top1": 8
+        },
+        {
+          "axis": "temporal",
+          "n": 14,
+          "recall_at_1": 0.21428571428571427,
+          "recall_at_5": 0.42857142857142855,
+          "mean_gold_rank": 9.714285714285714,
+          "median_gold_margin": -0.042997002601623535,
+          "distractor_at_top1": 10
+        },
+        {
+          "axis": "specificity",
+          "n": 14,
+          "recall_at_1": 0.7142857142857143,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.6428571428571428,
+          "median_gold_margin": 0.07060164213180542,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "negation",
+          "n": 12,
+          "recall_at_1": 0.75,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.5,
+          "median_gold_margin": 0.07531774044036865,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "control",
+          "n": 10,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mean_gold_rank": null,
+          "median_gold_margin": null,
+          "distractor_at_top1": 0
+        }
+      ]
+    },
+    {
+      "model": "BAAI/bge-base-en-v1.5",
+      "wall_seconds": 6.1,
+      "composite": {
+        "recall_at_1": 0.6166666666666667,
+        "recall_at_5": 0.7833333333333333,
+        "distractor_top1_rate": 0.25,
+        "n": 60
+      },
+      "per_axis": [
+        {
+          "axis": "pronoun",
+          "n": 20,
+          "recall_at_1": 0.7,
+          "recall_at_5": 0.9,
+          "mean_gold_rank": 2.35,
+          "median_gold_margin": 0.0298384428024292,
+          "distractor_at_top1": 5
+        },
+        {
+          "axis": "temporal",
+          "n": 14,
+          "recall_at_1": 0.2857142857142857,
+          "recall_at_5": 0.42857142857142855,
+          "mean_gold_rank": 10.357142857142858,
+          "median_gold_margin": -0.050244808197021484,
+          "distractor_at_top1": 7
+        },
+        {
+          "axis": "specificity",
+          "n": 14,
+          "recall_at_1": 0.7142857142857143,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.5,
+          "median_gold_margin": 0.07876402139663696,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "negation",
+          "n": 12,
+          "recall_at_1": 0.75,
+          "recall_at_5": 0.75,
+          "mean_gold_rank": 3.5,
+          "median_gold_margin": 0.03547412157058716,
+          "distractor_at_top1": 1
+        },
+        {
+          "axis": "control",
+          "n": 10,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mean_gold_rank": null,
+          "median_gold_margin": null,
+          "distractor_at_top1": 0
+        }
+      ]
+    },
+    {
+      "model": "intfloat/e5-small-v2",
+      "wall_seconds": 6.4,
+      "composite": {
+        "recall_at_1": 0.45,
+        "recall_at_5": 0.7166666666666667,
+        "distractor_top1_rate": 0.4166666666666667,
+        "n": 60
+      },
+      "per_axis": [
+        {
+          "axis": "pronoun",
+          "n": 20,
+          "recall_at_1": 0.35,
+          "recall_at_5": 0.85,
+          "mean_gold_rank": 3.6,
+          "median_gold_margin": -0.008539855480194092,
+          "distractor_at_top1": 10
+        },
+        {
+          "axis": "temporal",
+          "n": 14,
+          "recall_at_1": 0.35714285714285715,
+          "recall_at_5": 0.42857142857142855,
+          "mean_gold_rank": 9.785714285714286,
+          "median_gold_margin": -0.02019256353378296,
+          "distractor_at_top1": 7
+        },
+        {
+          "axis": "specificity",
+          "n": 14,
+          "recall_at_1": 0.6428571428571429,
+          "recall_at_5": 0.7142857142857143,
+          "mean_gold_rank": 3.2857142857142856,
+          "median_gold_margin": 0.011939942836761475,
+          "distractor_at_top1": 3
+        },
+        {
+          "axis": "negation",
+          "n": 12,
+          "recall_at_1": 0.5,
+          "recall_at_5": 0.8333333333333334,
+          "mean_gold_rank": 3.0,
+          "median_gold_margin": 0.0028389692306518555,
+          "distractor_at_top1": 5
+        },
+        {
+          "axis": "control",
+          "n": 10,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mean_gold_rank": null,
+          "median_gold_margin": null,
+          "distractor_at_top1": 0
+        }
+      ]
+    },
+    {
+      "model": "intfloat/e5-base-v2",
+      "wall_seconds": 6.6,
+      "composite": {
+        "recall_at_1": 0.7166666666666667,
+        "recall_at_5": 0.9333333333333333,
+        "distractor_top1_rate": 0.2,
+        "n": 60
+      },
+      "per_axis": [
+        {
+          "axis": "pronoun",
+          "n": 20,
+          "recall_at_1": 0.65,
+          "recall_at_5": 0.95,
+          "mean_gold_rank": 1.95,
+          "median_gold_margin": 0.0074617862701416016,
+          "distractor_at_top1": 6
+        },
+        {
+          "axis": "temporal",
+          "n": 14,
+          "recall_at_1": 0.7142857142857143,
+          "recall_at_5": 0.7857142857142857,
+          "mean_gold_rank": 6.214285714285714,
+          "median_gold_margin": 0.007385969161987305,
+          "distractor_at_top1": 3
+        },
+        {
+          "axis": "specificity",
+          "n": 14,
+          "recall_at_1": 0.7142857142857143,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.5714285714285714,
+          "median_gold_margin": 0.02679300308227539,
+          "distractor_at_top1": 2
+        },
+        {
+          "axis": "negation",
+          "n": 12,
+          "recall_at_1": 0.8333333333333334,
+          "recall_at_5": 1.0,
+          "mean_gold_rank": 1.3333333333333333,
+          "median_gold_margin": 0.03661489486694336,
+          "distractor_at_top1": 1
+        },
+        {
+          "axis": "control",
+          "n": 10,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mean_gold_rank": null,
+          "median_gold_margin": null,
+          "distractor_at_top1": 0
+        }
+      ]
+    }
+  ]
+}

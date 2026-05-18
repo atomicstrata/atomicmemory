@@ -1,0 +1,72 @@
+{
+  "count": 2,
+  "retrieval_mode": "flat",
+  "scope": {
+    "kind": "user",
+    "user_id": "fixture-capture"
+  },
+  "memories": [
+    {
+      "id": "FIXTURE-MEM-2",
+      "content": "user's library card expires in March 2027.",
+      "similarity": 0.14691642279927353,
+      "semantic_similarity": 0.14691642279927353,
+      "score": 4.3938328690927975,
+      "ranking_score": 4.3938328690927975,
+      "relevance": 0.14691642279927353,
+      "importance": 0.6,
+      "source_site": "fixture-quick-ingest",
+      "session_id": "fixture-fast-thread-quick",
+      "created_at": "2026-04-24T10:00:00.000Z"
+    },
+    {
+      "id": "FIXTURE-MEM-1",
+      "content": "User prefers aisle seats on flights longer than four hours.",
+      "similarity": 0.6055988308430426,
+      "semantic_similarity": 0.6055988308430426,
+      "score": 4.06119768667802,
+      "ranking_score": 4.06119768667802,
+      "relevance": 0.6055988308430426,
+      "importance": 0.6,
+      "source_site": "fixture-full-ingest",
+      "session_id": "fixture-fast-thread-full",
+      "created_at": "2026-04-24T10:00:00.000Z"
+    }
+  ],
+  "injection_text": "### Subject: site/fixture/quick/ingest\n- [2026-04-25] [answer] user's library card expires in March 2027.\n\n### Subject: site/fixture/full/ingest\n- [2026-04-25] [context] User prefers aisle seats on flights longer than four hours.",
+  "citations": [
+    "FIXTURE-MEM-2",
+    "FIXTURE-MEM-1"
+  ],
+  "observability": {
+    "packaging": {
+      "package_type": "subject-pack",
+      "included_ids": [
+        "FIXTURE-MEM-2",
+        "FIXTURE-MEM-1"
+      ],
+      "dropped_ids": [],
+      "evidence_roles": {
+        "FIXTURE-MEM-2": "primary",
+        "FIXTURE-MEM-1": "supporting"
+      },
+      "episode_count": 2,
+      "date_count": 1,
+      "has_current_marker": false,
+      "has_conflict_block": false,
+      "token_cost": 57
+    },
+    "assembly": {
+      "final_ids": [
+        "FIXTURE-MEM-2",
+        "FIXTURE-MEM-1"
+      ],
+      "final_token_cost": 57,
+      "token_budget": null,
+      "primary_evidence_position": 1,
+      "blocks": [
+        "subject"
+      ]
+    }
+  }
+}

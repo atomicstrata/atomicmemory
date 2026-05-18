@@ -1,0 +1,173 @@
+{
+  "version": "v0",
+  "created": "2026-05-14",
+  "description": "100 fact/query pairs across 5 variation axes to probe stored↔query phrasing alignment in embedding-based recall.",
+  "axes": {
+    "pronoun": {
+      "description": "first-person query vs third-person stored fact (and reverse)",
+      "facts": [
+        "The user's name is Alex.",
+        "The user works as a software engineer at Acme.",
+        "The user's dog is named Apollo.",
+        "The user lives in Lisbon.",
+        "The user's birthday is March 14.",
+        "The user has two children, Maya and Theo.",
+        "The user's favorite coffee order is an oat-milk flat white.",
+        "The user studied applied mathematics at university.",
+        "The user is allergic to peanuts.",
+        "The user drives a 2019 Toyota Corolla."
+      ],
+      "items": [
+        { "id": "pronoun-001", "fact_index": 0, "query": "what is my name?",                                "gold_in_topk": true, "gold_answer": "Alex" },
+        { "id": "pronoun-002", "fact_index": 0, "query": "what's the user's name?",                         "gold_in_topk": true, "gold_answer": "Alex" },
+        { "id": "pronoun-003", "fact_index": 0, "query": "who am I?",                                       "gold_in_topk": true, "gold_answer": "Alex" },
+        { "id": "pronoun-004", "fact_index": 1, "query": "what do I do for work?",                          "gold_in_topk": true, "gold_answer": "software engineer at Acme" },
+        { "id": "pronoun-005", "fact_index": 1, "query": "what is the user's job?",                         "gold_in_topk": true, "gold_answer": "software engineer at Acme" },
+        { "id": "pronoun-006", "fact_index": 1, "query": "where does the user work?",                       "gold_in_topk": true, "gold_answer": "Acme" },
+        { "id": "pronoun-007", "fact_index": 2, "query": "what is my dog's name?",                          "gold_in_topk": true, "gold_answer": "Apollo" },
+        { "id": "pronoun-008", "fact_index": 2, "query": "who is Apollo?",                                  "gold_in_topk": true, "gold_answer": "the user's dog" },
+        { "id": "pronoun-009", "fact_index": 3, "query": "where do I live?",                                "gold_in_topk": true, "gold_answer": "Lisbon" },
+        { "id": "pronoun-010", "fact_index": 3, "query": "what city does the user live in?",               "gold_in_topk": true, "gold_answer": "Lisbon" },
+        { "id": "pronoun-011", "fact_index": 4, "query": "when is my birthday?",                            "gold_in_topk": true, "gold_answer": "March 14" },
+        { "id": "pronoun-012", "fact_index": 4, "query": "when was the user born?",                         "gold_in_topk": true, "gold_answer": "March 14" },
+        { "id": "pronoun-013", "fact_index": 5, "query": "do I have kids?",                                 "gold_in_topk": true, "gold_answer": "yes, two — Maya and Theo" },
+        { "id": "pronoun-014", "fact_index": 5, "query": "how many children does the user have?",           "gold_in_topk": true, "gold_answer": "two" },
+        { "id": "pronoun-015", "fact_index": 6, "query": "what is my usual coffee order?",                  "gold_in_topk": true, "gold_answer": "oat-milk flat white" },
+        { "id": "pronoun-016", "fact_index": 6, "query": "what coffee does the user drink?",                "gold_in_topk": true, "gold_answer": "oat-milk flat white" },
+        { "id": "pronoun-017", "fact_index": 7, "query": "what did I study?",                               "gold_in_topk": true, "gold_answer": "applied mathematics" },
+        { "id": "pronoun-018", "fact_index": 8, "query": "do I have any allergies?",                        "gold_in_topk": true, "gold_answer": "peanuts" },
+        { "id": "pronoun-019", "fact_index": 8, "query": "what is the user allergic to?",                   "gold_in_topk": true, "gold_answer": "peanuts" },
+        { "id": "pronoun-020", "fact_index": 9, "query": "what kind of car do I drive?",                    "gold_in_topk": true, "gold_answer": "2019 Toyota Corolla" }
+      ]
+    },
+    "temporal": {
+      "description": "current vs past vs date-anchored phrasings of evolving state",
+      "facts": [
+        "As of January 2026, the user lives in Lisbon.",
+        "Before 2024, the user lived in Berlin.",
+        "The user moved from Berlin to Lisbon in 2024.",
+        "As of April 2026, the user is reading 'The Power Broker'.",
+        "Last year the user read 'Project Hail Mary'.",
+        "The user is currently working on a memory benchmark project.",
+        "The user finished the Sprint-4 reranker training last month.",
+        "As of May 2026, the user's preferred LLM is Claude Sonnet 4.6.",
+        "The user used GPT-4 as their primary model in 2024.",
+        "The user upgraded their phone to an iPhone 17 in March 2026."
+      ],
+      "items": [
+        { "id": "temporal-001", "fact_index": 0, "query": "where does the user live now?",                  "gold_in_topk": true, "gold_answer": "Lisbon" },
+        { "id": "temporal-002", "fact_index": 1, "query": "where did the user used to live?",               "gold_in_topk": true, "gold_answer": "Berlin" },
+        { "id": "temporal-003", "fact_index": 2, "query": "when did the user move?",                        "gold_in_topk": true, "gold_answer": "2024" },
+        { "id": "temporal-004", "fact_index": 0, "query": "where is the user currently based?",             "gold_in_topk": true, "gold_answer": "Lisbon" },
+        { "id": "temporal-005", "fact_index": 3, "query": "what is the user reading?",                      "gold_in_topk": true, "gold_answer": "The Power Broker" },
+        { "id": "temporal-006", "fact_index": 4, "query": "what did the user read last year?",              "gold_in_topk": true, "gold_answer": "Project Hail Mary" },
+        { "id": "temporal-007", "fact_index": 5, "query": "what is the user working on these days?",        "gold_in_topk": true, "gold_answer": "memory benchmark project" },
+        { "id": "temporal-008", "fact_index": 6, "query": "what did the user finish last month?",           "gold_in_topk": true, "gold_answer": "Sprint-4 reranker training" },
+        { "id": "temporal-009", "fact_index": 7, "query": "what LLM does the user prefer?",                 "gold_in_topk": true, "gold_answer": "Claude Sonnet 4.6" },
+        { "id": "temporal-010", "fact_index": 8, "query": "which model did the user use before?",           "gold_in_topk": true, "gold_answer": "GPT-4" },
+        { "id": "temporal-011", "fact_index": 9, "query": "did the user get a new phone recently?",         "gold_in_topk": true, "gold_answer": "yes, iPhone 17 in March 2026" },
+        { "id": "temporal-012", "fact_index": 0, "query": "is the user still in Berlin?",                   "gold_in_topk": true, "gold_answer": "no — the user lives in Lisbon now" },
+        { "id": "temporal-013", "fact_index": 5, "query": "what is the user up to?",                        "gold_in_topk": true, "gold_answer": "memory benchmark project" },
+        { "id": "temporal-014", "fact_index": 7, "query": "which model is the user on right now?",          "gold_in_topk": true, "gold_answer": "Claude Sonnet 4.6" }
+      ]
+    },
+    "specificity": {
+      "description": "specific entity vs generic-class query",
+      "facts": [
+        "The user's dog Apollo is a golden retriever, age 4.",
+        "The user owns a Bianchi road bike.",
+        "The user's primary laptop is a 16-inch MacBook Pro M4.",
+        "The user has a Yamaha P-125 digital piano in the living room.",
+        "The user uses Logseq for personal notes and Notion for work.",
+        "The user's favorite restaurant in Lisbon is Cervejaria Ramiro.",
+        "The user wears Smith Lowdown sunglasses.",
+        "The user reads on a Kindle Paperwhite 11th-gen.",
+        "The user's home espresso machine is a Lelit Bianca v3.",
+        "The user wears Allbirds Wool Runners daily."
+      ],
+      "items": [
+        { "id": "specificity-001", "fact_index": 0, "query": "tell me about my dog",                        "gold_in_topk": true, "gold_answer": "Apollo, golden retriever, age 4" },
+        { "id": "specificity-002", "fact_index": 0, "query": "what kind of pet do I have?",                 "gold_in_topk": true, "gold_answer": "a dog" },
+        { "id": "specificity-003", "fact_index": 1, "query": "do I own a bike?",                            "gold_in_topk": true, "gold_answer": "yes, a Bianchi road bike" },
+        { "id": "specificity-004", "fact_index": 1, "query": "what brand of bike does the user have?",      "gold_in_topk": true, "gold_answer": "Bianchi" },
+        { "id": "specificity-005", "fact_index": 2, "query": "what computer do I use?",                     "gold_in_topk": true, "gold_answer": "16-inch MacBook Pro M4" },
+        { "id": "specificity-006", "fact_index": 2, "query": "what laptop does the user have?",             "gold_in_topk": true, "gold_answer": "16-inch MacBook Pro M4" },
+        { "id": "specificity-007", "fact_index": 3, "query": "do I have any musical instruments?",          "gold_in_topk": true, "gold_answer": "Yamaha P-125 digital piano" },
+        { "id": "specificity-008", "fact_index": 4, "query": "which note-taking app do I use?",             "gold_in_topk": true, "gold_answer": "Logseq for personal, Notion for work" },
+        { "id": "specificity-009", "fact_index": 5, "query": "where do I like to eat in Lisbon?",           "gold_in_topk": true, "gold_answer": "Cervejaria Ramiro" },
+        { "id": "specificity-010", "fact_index": 6, "query": "what brand sunglasses does the user wear?",   "gold_in_topk": true, "gold_answer": "Smith Lowdown" },
+        { "id": "specificity-011", "fact_index": 7, "query": "do I read on a Kindle?",                      "gold_in_topk": true, "gold_answer": "yes, Paperwhite 11th-gen" },
+        { "id": "specificity-012", "fact_index": 8, "query": "what espresso machine does the user own?",    "gold_in_topk": true, "gold_answer": "Lelit Bianca v3" },
+        { "id": "specificity-013", "fact_index": 9, "query": "what shoes do I wear?",                       "gold_in_topk": true, "gold_answer": "Allbirds Wool Runners" },
+        { "id": "specificity-014", "fact_index": 9, "query": "what brand are the user's everyday shoes?",   "gold_in_topk": true, "gold_answer": "Allbirds" }
+      ]
+    },
+    "negation": {
+      "description": "polarity sensitivity — facts encoding what the user does NOT do/like",
+      "facts": [
+        "The user does not drink coffee. They prefer tea.",
+        "The user is not vegetarian, but avoids red meat.",
+        "The user does not use Twitter; they use Bluesky and Mastodon.",
+        "The user does not own a car; they bike or use public transit.",
+        "The user is not on LinkedIn anymore.",
+        "The user dislikes cilantro intensely.",
+        "The user has never been to Asia.",
+        "The user does not enjoy horror movies.",
+        "The user does not eat shellfish.",
+        "The user is not currently learning any new languages."
+      ],
+      "items": [
+        { "id": "negation-001", "fact_index": 0, "query": "does the user drink coffee?",                    "gold_in_topk": true, "gold_answer": "no, the user prefers tea" },
+        { "id": "negation-002", "fact_index": 0, "query": "what does the user drink in the morning?",       "gold_in_topk": true, "gold_answer": "tea (not coffee)" },
+        { "id": "negation-003", "fact_index": 1, "query": "am I vegetarian?",                               "gold_in_topk": true, "gold_answer": "no, but avoids red meat" },
+        { "id": "negation-004", "fact_index": 2, "query": "is the user on Twitter?",                        "gold_in_topk": true, "gold_answer": "no, uses Bluesky and Mastodon" },
+        { "id": "negation-005", "fact_index": 2, "query": "which social networks does the user use?",       "gold_in_topk": true, "gold_answer": "Bluesky and Mastodon" },
+        { "id": "negation-006", "fact_index": 3, "query": "does the user own a car?",                       "gold_in_topk": true, "gold_answer": "no, bikes or public transit" },
+        { "id": "negation-007", "fact_index": 4, "query": "is the user active on LinkedIn?",                "gold_in_topk": true, "gold_answer": "no, not anymore" },
+        { "id": "negation-008", "fact_index": 5, "query": "any foods the user hates?",                      "gold_in_topk": true, "gold_answer": "cilantro" },
+        { "id": "negation-009", "fact_index": 6, "query": "has the user traveled to Asia?",                 "gold_in_topk": true, "gold_answer": "no, never" },
+        { "id": "negation-010", "fact_index": 7, "query": "does the user like horror movies?",              "gold_in_topk": true, "gold_answer": "no" },
+        { "id": "negation-011", "fact_index": 8, "query": "can the user eat shrimp?",                       "gold_in_topk": true, "gold_answer": "no — does not eat shellfish" },
+        { "id": "negation-012", "fact_index": 9, "query": "is the user learning a new language?",           "gold_in_topk": true, "gold_answer": "no, not currently" }
+      ]
+    },
+    "distractors": {
+      "description": "Extraction-style meta-facts that pollute real SDK stores. Observed verbatim or near-verbatim in the partner demo (e.g. 'The user asked for the user's name', 'The user is me', 'As of <date>, X is a term mentioned in the conversation'). These should NEVER be a top-1 match for any user-fact query, but in the real failure they outranked the gold.",
+      "facts": [
+        "The user asked for the user's name.",
+        "The user is me.",
+        "The user is asking a question.",
+        "The user requested information.",
+        "The user said something.",
+        "As of May 14, 2026, Apollo is a term mentioned in the conversation.",
+        "As of May 14, 2026, the user is a term mentioned in the conversation.",
+        "A name was mentioned in the conversation.",
+        "The conversation involves the user.",
+        "The user has started a conversation."
+      ],
+      "items": []
+    },
+    "control": {
+      "description": "queries that should NOT match the user-fact pool — measures false positives",
+      "facts": [
+        "The user's name is Alex.",
+        "The user lives in Lisbon.",
+        "The user has a dog named Apollo.",
+        "The user works at Acme as a software engineer.",
+        "The user's favorite restaurant is Cervejaria Ramiro."
+      ],
+      "items": [
+        { "id": "control-001", "query": "what is the airspeed velocity of an unladen swallow?",             "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-002", "query": "who is the current president of France?",                          "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-003", "query": "what is the capital of Mongolia?",                                 "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-004", "query": "how does photosynthesis work?",                                    "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-005", "query": "translate 'goodnight' to Japanese",                                "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-006", "query": "what year did World War II end?",                                  "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-007", "query": "explain entropy in thermodynamics",                                "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-008", "query": "best way to debug a segfault in C",                                "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-009", "query": "what's the weather going to be tomorrow?",                         "gold_in_topk": false, "gold_answer": null },
+        { "id": "control-010", "query": "give me a recipe for tiramisu",                                    "gold_in_topk": false, "gold_answer": null }
+      ]
+    }
+  }
+}

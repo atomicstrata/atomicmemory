@@ -1,0 +1,44 @@
+[
+  {
+    "memory": {
+      "id": "FIXTURE-MEM-2",
+      "content": "user's library card expires in March 2027.",
+      "scope": {
+        "user": "fixture-capture",
+        "thread": "fixture-fast-thread-quick"
+      },
+      "createdAt": "2026-04-24T10:00:00.000Z",
+      "provenance": {
+        "source": "fixture-quick-ingest"
+      },
+      "metadata": {
+        "importance": 0.6
+      }
+    },
+    "score": 4.3938328690927975,
+    "similarity": 0.14691642279927353,
+    "rankingScore": 4.3938328690927975,
+    "relevance": 0.14691642279927353
+  },
+  {
+    "memory": {
+      "id": "FIXTURE-MEM-1",
+      "content": "User prefers aisle seats on flights longer than four hours.",
+      "scope": {
+        "user": "fixture-capture",
+        "thread": "fixture-fast-thread-full"
+      },
+      "createdAt": "2026-04-24T10:00:00.000Z",
+      "provenance": {
+        "source": "fixture-full-ingest"
+      },
+      "metadata": {
+        "importance": 0.6
+      }
+    },
+    "score": 4.06119768667802,
+    "similarity": 0.6055988308430426,
+    "rankingScore": 4.06119768667802,
+    "relevance": 0.6055988308430426
+  }
+]
