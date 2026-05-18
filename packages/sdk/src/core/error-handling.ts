@@ -1,12 +1,7 @@
 /**
- * @file AtomicMemory SDK Error Handling (Legacy Re-export)
- *
- * This file re-exports all error handling functionality from the modular
- * error-handling directory for backward compatibility.
- *
- * @deprecated Import directly from './error-handling/' subdirectory for better tree-shaking
+ * @file Legacy flat re-export of the error-handling module.
+ * @deprecated Import from `./error-handling/` directly for better tree-shaking.
  */
 
-// Re-export everything from the modular error-handling system
-// Note: Explicitly reference index to avoid resolving to this file name first
+// Explicit index path so resolution doesn't loop back to this file.
 export * from './error-handling/index';

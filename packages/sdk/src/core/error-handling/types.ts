@@ -1,21 +1,4 @@
-/**
- * @file Error Handling Type Definitions
- *
- * This file provides precise TypeScript types for the AtomicMemory SDK error handling system,
- * replacing generic Record<string, any> types with specific interfaces for better
- * type safety and error context management.
- *
- * @example
- * ```typescript
- * import { ErrorContextData, AtomicMemoryErrorOptions } from './types';
- *
- * const context: ErrorContextData = {
- *   operation: 'contextSearch',
- *   query: 'machine learning',
- *   timestamp: Date.now()
- * };
- * ```
- */
+/** @file Typed shapes for the SDK error system (context payloads, severity, options). */
 
 /**
  * Error severity levels

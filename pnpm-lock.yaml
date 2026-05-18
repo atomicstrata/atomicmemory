@@ -29,7 +29,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
     devDependencies:
       '@langchain/core':
         specifier: ^0.3.0
@@ -39,7 +39,7 @@ importers:
         version: 20.19.41
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -51,7 +51,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
       '@langchain/langgraph':
         specifier: ^0.4.0
         version: 0.4.9(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.38.0(ws@8.20.1)(zod@4.4.3)))(react@19.2.6)(zod-to-json-schema@3.25.2(zod@4.4.3))
@@ -61,7 +61,7 @@ importers:
         version: 20.19.41
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -70,7 +70,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
     devDependencies:
       '@mastra/core':
         specifier: ^1.35.0
@@ -80,7 +80,7 @@ importers:
         version: 20.19.41
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -92,7 +92,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
       '@openai/agents':
         specifier: ^0.8.5
         version: 0.8.5(@cfworker/json-schema@4.1.1)(ws@8.20.1)(zod@4.4.3)
@@ -105,7 +105,7 @@ importers:
         version: 20.19.41
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -114,14 +114,14 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.41
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -130,7 +130,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../sdk
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -152,7 +152,7 @@ importers:
         version: 19.2.14
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -191,19 +191,19 @@ importers:
         version: 13.4.2
       node-pg-migrate:
         specifier: 8.0.4
-        version: 8.0.4(@types/pg@8.20.0)(pg@8.20.0)
+        version: 8.0.4(@types/pg@8.20.0)(pg@8.21.0)
       openai:
         specifier: ^4.80.0
         version: 4.104.0(ws@8.18.3)(zod@4.4.3)
       pg:
         specifier: ^8.18.0
-        version: 8.20.0
+        version: 8.21.0
       pgvector:
         specifier: ^0.2.0
         version: 0.2.1
       tsx:
         specifier: ^4.21.0
-        version: 4.22.1
+        version: 4.22.2
       undici:
         specifier: ^7.24.5
         version: 7.25.0
@@ -256,7 +256,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.3
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))
+        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))
       yaml:
         specifier: ^2.8.3
         version: 2.9.0
@@ -265,7 +265,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
@@ -278,7 +278,7 @@ importers:
         version: 20.19.41
       tsx:
         specifier: ^4.19.0
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -312,19 +312,19 @@ importers:
         version: 3.8.3
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(postcss@8.5.14)(tsx@4.22.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(postcss@8.5.14)(tsx@4.22.2)(typescript@5.9.3)(yaml@2.9.0)
       tsx:
         specifier: ^4.20.5
-        version: 4.22.1
+        version: 4.22.2
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
       vite:
         specifier: ^7.3.3
-        version: 7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)
+        version: 7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)
       vitest:
         specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))
+        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))
 
   plugins/claude-code: {}
 
@@ -338,7 +338,7 @@ importers:
     dependencies:
       '@atomicmemory/mcp-server':
         specifier: ^0.1.0
-        version: 0.1.1(@cfworker/json-schema@4.1.1)
+        version: link:../../packages/mcp-server
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -497,15 +497,6 @@ packages:
     resolution: {integrity: sha512-SABbKiObg5dLRiTFnqiW1WWwGcg1BJfmHtT2asIBnBHg6Smy/Ms2KHc650+JI4Hw7lSkdiNebEGXpwoxfben8Q==}
     peerDependencies:
       zod: ^4.0.0
-
-  '@atomicmemory/mcp-server@0.1.1':
-    resolution: {integrity: sha512-gOFj9Iazm7KhfJCSrcbxE8wzSBFqXsmzVDOUnC4fnKWAhXo1sO6STC6m81lkNXOUhH93eT5g7EJXrZMxMdJJFQ==}
-    engines: {node: '>=20'}
-    hasBin: true
-
-  '@atomicmemory/sdk@1.0.1':
-    resolution: {integrity: sha512-IfttcyV+XoS9+2gj8eNg6jOA0c+vaXTOjdiMa75uBYcPr9oZMnob902Ytab+bhQgFmm4rKkkQOXgzUZChNhetg==}
-    engines: {node: '>=22'}
 
   '@aws-crypto/crc32@5.2.0':
     resolution: {integrity: sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg==}
@@ -2911,8 +2902,17 @@ packages:
   character-entities@2.0.2:
     resolution: {integrity: sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ==}
 
-  chat@4.28.1:
-    resolution: {integrity: sha512-oKBeLQ746rSmHWGoXmPgDOqMVdIe9cWFQBQ1G2pw0l2vV4sAsZgfEJmc1UYqSJR4kYy4PxKgRFy31pe4RJ644Q==}
+  chat@4.29.0:
+    resolution: {integrity: sha512-KdPfzaie5ivYytyRICTERg5xT+LeCbYefokvNAqTHe92eqkFaoTMXXkSitikxJVWhZIb2YoXF1b9UZHyzSzKzw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      ai: ^6.0.182
+      zod: ^3.0.0 || ^4.0.0
+    peerDependenciesMeta:
+      ai:
+        optional: true
+      zod:
+        optional: true
 
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
@@ -4375,8 +4375,8 @@ packages:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
 
-  lru-cache@11.3.6:
-    resolution: {integrity: sha512-Gf/KoL3C/MlI7Bt0PGI9I+TeTC/I6r/csU58N4BSNc4lppLBeKsOdFYkK+dX0ABDUMJNfCHTyPpzwwO21Awd3A==}
+  lru-cache@11.4.0:
+    resolution: {integrity: sha512-W+R+kFL4HgVxONq2bhXPi3bGpzGe/yEhVOp233qw9wCRtgncJ15P3bC+e4zZMu4Cq7d+WAJjXGW0uUkifhcatA==}
     engines: {node: 20 || >=22}
 
   lru-cache@5.1.1:
@@ -5023,30 +5023,30 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
-  pg-cloudflare@1.3.0:
-    resolution: {integrity: sha512-6lswVVSztmHiRtD6I8hw4qP/nDm1EJbKMRhf3HCYaqud7frGysPv7FYJ5noZQdhQtN2xJnimfMtvQq21pdbzyQ==}
+  pg-cloudflare@1.4.0:
+    resolution: {integrity: sha512-Vo7z/6rrQYxpNRylp4Tlob2elzbh+N/MOQbxFVWCxS7oEx6jF53GTJFxK2WWpKuBRkmiin4Mt+xofFDjx09R0A==}
 
-  pg-connection-string@2.12.0:
-    resolution: {integrity: sha512-U7qg+bpswf3Cs5xLzRqbXbQl85ng0mfSV/J0nnA31MCLgvEaAo7CIhmeyrmJpOr7o+zm0rXK+hNnT5l9RHkCkQ==}
+  pg-connection-string@2.13.0:
+    resolution: {integrity: sha512-EMnU9E2fSULdsbErBbMaXJvFeD9B4+nPcM3f+4lsiCR0BHLPrLVjv3DbyM2hgQQviKJaTWIRRTjKjWlHg3p2ig==}
 
   pg-int8@1.0.1:
     resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
     engines: {node: '>=4.0.0'}
 
-  pg-pool@3.13.0:
-    resolution: {integrity: sha512-gB+R+Xud1gLFuRD/QgOIgGOBE2KCQPaPwkzBBGC9oG69pHTkhQeIuejVIk3/cnDyX39av2AxomQiyPT13WKHQA==}
+  pg-pool@3.14.0:
+    resolution: {integrity: sha512-gKtPkFdQPU3DksooVLi9LsjZxrsBUZIpa+7aVx+LV5pNh0KzP4Zleud2po+ConrxbuXGBJ6Hfer6hdgpIBpBaw==}
     peerDependencies:
       pg: '>=8.0'
 
-  pg-protocol@1.13.0:
-    resolution: {integrity: sha512-zzdvXfS6v89r6v7OcFCHfHlyG/wvry1ALxZo4LqgUoy7W9xhBDMaqOuMiF3qEV45VqsN6rdlcehHrfDtlCPc8w==}
+  pg-protocol@1.14.0:
+    resolution: {integrity: sha512-n5taZ1kO3s9ngDTVxsEznOqCyToTgz0FLuPq0B33COy5pPpuWJpY3/2oRBVETuOgzdqRXfWpM9HIhp2LBBT1BA==}
 
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
     engines: {node: '>=4'}
 
-  pg@8.20.0:
-    resolution: {integrity: sha512-ldhMxz2r8fl/6QkXnBD3CR9/xg694oT6DZQ2s6c/RI28OjtSOpxnPrUCGOBJ46RCUxcWdx3p6kw/xnDHjKvaRA==}
+  pg@8.21.0:
+    resolution: {integrity: sha512-AUP1EYJuHraQGsVoCQVIcM7TEJVGtDzxWtGFZd8rds9d+CCXlU5Js1rYgfLNvxy9iJrpHjGrRjoi/3BT9fRyiA==}
     engines: {node: '>= 16.0.0'}
     peerDependencies:
       pg-native: '>=3.0.1'
@@ -5875,8 +5875,8 @@ packages:
       typescript:
         optional: true
 
-  tsx@4.22.1:
-    resolution: {integrity: sha512-TvncJykhxAzFCk0VQZKBTClall4Pm7qXDSodb6uxi8QFa8X8mT6ABjxxsQ2opDRYxG7AzcRWXaFtruz5HJKuWg==}
+  tsx@4.22.2:
+    resolution: {integrity: sha512-6w9FwtT8WQqRAyTNR+Z+86kghRqpmOLjXUrBlBT6T+CQGDuIMm0VmAqaFUFBIeKDTGobE6/YSigZYLeomzBaRg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -6499,7 +6499,7 @@ snapshots:
       '@csstools/css-color-parser': 4.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
-      lru-cache: 11.3.6
+      lru-cache: 11.4.0
 
   '@asamuzakjp/dom-selector@6.8.1':
     dependencies:
@@ -6507,7 +6507,7 @@ snapshots:
       bidi-js: 1.0.3
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
-      lru-cache: 11.3.6
+      lru-cache: 11.4.0
 
   '@asamuzakjp/nwsapi@2.3.9': {}
 
@@ -6518,19 +6518,6 @@ snapshots:
     dependencies:
       openapi3-ts: 4.5.0
       zod: 4.4.3
-
-  '@atomicmemory/mcp-server@0.1.1(@cfworker/json-schema@4.1.1)':
-    dependencies:
-      '@atomicmemory/sdk': 1.0.1
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - supports-color
-
-  '@atomicmemory/sdk@1.0.1':
-    dependencies:
-      '@huggingface/transformers': 3.8.1
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
@@ -8362,7 +8349,7 @@ snapshots:
       '@sindresorhus/slugify': 2.2.1
       '@standard-schema/spec': 1.1.0
       ajv: 8.20.0
-      chat: 4.28.1
+      chat: 4.29.0(zod@3.25.76)
       croner: 10.0.1
       dotenv: 17.4.2
       execa: 9.6.1
@@ -8372,7 +8359,7 @@ snapshots:
       hono-openapi: 1.3.0(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@3.25.76))(@types/json-schema@7.0.15)(hono@4.12.19)(openapi-types@12.1.3)
       ignore: 7.0.5
       json-schema: 0.4.0
-      lru-cache: 11.3.6
+      lru-cache: 11.4.0
       p-map: 7.0.4
       p-retry: 7.1.1
       picomatch: 4.0.4
@@ -8388,6 +8375,7 @@ snapshots:
       - '@standard-community/standard-json'
       - '@standard-community/standard-openapi'
       - '@types/json-schema'
+      - ai
       - bufferutil
       - express
       - openapi-types
@@ -9371,7 +9359,7 @@ snapshots:
 
   '@types/dns-packet@5.6.5':
     dependencies:
-      '@types/node': 24.12.4
+      '@types/node': 22.19.19
     optional: true
 
   '@types/estree@1.0.8': {}
@@ -9425,12 +9413,12 @@ snapshots:
   '@types/multicast-dns@7.2.4':
     dependencies:
       '@types/dns-packet': 5.6.5
-      '@types/node': 24.12.4
+      '@types/node': 22.19.19
     optional: true
 
   '@types/mysql@2.15.27':
     dependencies:
-      '@types/node': 24.12.4
+      '@types/node': 22.19.19
     optional: true
 
   '@types/node-fetch@2.6.13':
@@ -9461,15 +9449,15 @@ snapshots:
 
   '@types/pg@8.15.6':
     dependencies:
-      '@types/node': 24.12.4
-      pg-protocol: 1.13.0
+      '@types/node': 22.19.19
+      pg-protocol: 1.14.0
       pg-types: 2.2.0
     optional: true
 
   '@types/pg@8.20.0':
     dependencies:
       '@types/node': 22.19.19
-      pg-protocol: 1.13.0
+      pg-protocol: 1.14.0
       pg-types: 2.2.0
 
   '@types/qs@6.15.1': {}
@@ -9493,7 +9481,7 @@ snapshots:
 
   '@types/tedious@4.0.14':
     dependencies:
-      '@types/node': 24.12.4
+      '@types/node': 22.19.19
     optional: true
 
   '@types/unist@3.0.3': {}
@@ -9576,7 +9564,7 @@ snapshots:
       magicast: 0.5.3
       obug: 2.1.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))
+      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -9592,7 +9580,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))
+      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))
 
   '@vitest/expect@4.1.6':
     dependencies:
@@ -9603,21 +9591,21 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.6(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.6(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.6
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)
+      vite: 7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)
 
-  '@vitest/mocker@4.1.6(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.6(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.6
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)
+      vite: 7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.6':
     dependencies:
@@ -9986,7 +9974,7 @@ snapshots:
 
   character-entities@2.0.2: {}
 
-  chat@4.28.1:
+  chat@4.29.0(zod@3.25.76):
     dependencies:
       '@workflow/serde': 4.1.0-beta.2
       mdast-util-to-string: 4.0.0
@@ -9995,6 +9983,8 @@ snapshots:
       remark-stringify: 11.0.0
       remend: 1.3.0
       unified: 11.0.5
+    optionalDependencies:
+      zod: 3.25.76
     transitivePeerDependencies:
       - supports-color
 
@@ -10158,7 +10148,7 @@ snapshots:
       '@asamuzakjp/css-color': 4.1.2
       '@csstools/css-syntax-patches-for-csstree': 1.1.4(css-tree@3.2.1)
       css-tree: 3.2.1
-      lru-cache: 11.3.6
+      lru-cache: 11.4.0
 
   csstype@3.2.3: {}
 
@@ -11951,7 +11941,7 @@ snapshots:
       js-tokens: 4.0.0
     optional: true
 
-  lru-cache@11.3.6: {}
+  lru-cache@11.4.0: {}
 
   lru-cache@5.1.1:
     dependencies:
@@ -12629,10 +12619,10 @@ snapshots:
   node-int64@0.4.0:
     optional: true
 
-  node-pg-migrate@8.0.4(@types/pg@8.20.0)(pg@8.20.0):
+  node-pg-migrate@8.0.4(@types/pg@8.20.0)(pg@8.21.0):
     dependencies:
       glob: 11.1.0
-      pg: 8.20.0
+      pg: 8.21.0
       yargs: 17.7.2
     optionalDependencies:
       '@types/pg': 8.20.0
@@ -12883,25 +12873,25 @@ snapshots:
 
   path-scurry@2.0.2:
     dependencies:
-      lru-cache: 11.3.6
+      lru-cache: 11.4.0
       minipass: 7.1.3
 
   path-to-regexp@8.4.2: {}
 
   pathe@2.0.3: {}
 
-  pg-cloudflare@1.3.0:
+  pg-cloudflare@1.4.0:
     optional: true
 
-  pg-connection-string@2.12.0: {}
+  pg-connection-string@2.13.0: {}
 
   pg-int8@1.0.1: {}
 
-  pg-pool@3.13.0(pg@8.20.0):
+  pg-pool@3.14.0(pg@8.21.0):
     dependencies:
-      pg: 8.20.0
+      pg: 8.21.0
 
-  pg-protocol@1.13.0: {}
+  pg-protocol@1.14.0: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -12911,15 +12901,15 @@ snapshots:
       postgres-date: 1.0.7
       postgres-interval: 1.2.0
 
-  pg@8.20.0:
+  pg@8.21.0:
     dependencies:
-      pg-connection-string: 2.12.0
-      pg-pool: 3.13.0(pg@8.20.0)
-      pg-protocol: 1.13.0
+      pg-connection-string: 2.13.0
+      pg-pool: 3.14.0(pg@8.21.0)
+      pg-protocol: 1.14.0
       pg-types: 2.2.0
       pgpass: 1.0.5
     optionalDependencies:
-      pg-cloudflare: 1.3.0
+      pg-cloudflare: 1.4.0
 
   pgpass@1.0.5:
     dependencies:
@@ -12972,12 +12962,12 @@ snapshots:
   possible-typed-array-names@1.1.0:
     optional: true
 
-  postcss-load-config@6.0.1(postcss@8.5.14)(tsx@4.22.1)(yaml@2.9.0):
+  postcss-load-config@6.0.1(postcss@8.5.14)(tsx@4.22.2)(yaml@2.9.0):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       postcss: 8.5.14
-      tsx: 4.22.1
+      tsx: 4.22.2
       yaml: 2.9.0
 
   postcss@8.5.14:
@@ -13056,7 +13046,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.1
-      '@types/node': 24.12.4
+      '@types/node': 22.19.19
       long: 5.3.2
 
   protons-runtime@5.6.0:
@@ -13977,7 +13967,7 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  tsup@8.5.1(postcss@8.5.14)(tsx@4.22.1)(typescript@5.9.3)(yaml@2.9.0):
+  tsup@8.5.1(postcss@8.5.14)(tsx@4.22.2)(typescript@5.9.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -13988,7 +13978,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(postcss@8.5.14)(tsx@4.22.1)(yaml@2.9.0)
+      postcss-load-config: 6.0.1(postcss@8.5.14)(tsx@4.22.2)(yaml@2.9.0)
       resolve-from: 5.0.0
       rollup: 4.60.4
       source-map: 0.7.6
@@ -14005,7 +13995,7 @@ snapshots:
       - tsx
       - yaml
 
-  tsx@4.22.1:
+  tsx@4.22.2:
     dependencies:
       esbuild: 0.28.0
     optionalDependencies:
@@ -14240,7 +14230,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0):
+  vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -14252,10 +14242,10 @@ snapshots:
       '@types/node': 22.19.19
       fsevents: 2.3.3
       terser: 5.47.1
-      tsx: 4.22.1
+      tsx: 4.22.2
       yaml: 2.9.0
 
-  vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0):
+  vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -14267,13 +14257,13 @@ snapshots:
       '@types/node': 24.12.4
       fsevents: 2.3.3
       terser: 5.47.1
-      tsx: 4.22.1
+      tsx: 4.22.2
       yaml: 2.9.0
 
-  vitest@4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)):
+  vitest@4.1.6(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.6
-      '@vitest/mocker': 4.1.6(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.6(vite@7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.6
       '@vitest/runner': 4.1.6
       '@vitest/snapshot': 4.1.6
@@ -14290,7 +14280,7 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)
+      vite: 7.3.3(@types/node@22.19.19)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
@@ -14301,10 +14291,10 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)):
+  vitest@4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(@vitest/coverage-istanbul@4.1.6)(@vitest/coverage-v8@4.1.6)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.6
-      '@vitest/mocker': 4.1.6(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.6(vite@7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.6
       '@vitest/runner': 4.1.6
       '@vitest/snapshot': 4.1.6
@@ -14321,7 +14311,7 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.1)(yaml@2.9.0)
+      vite: 7.3.3(@types/node@24.12.4)(terser@5.47.1)(tsx@4.22.2)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1

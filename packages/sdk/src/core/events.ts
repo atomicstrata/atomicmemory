@@ -1,30 +1,4 @@
-/**
- * @file AtomicMemory SDK Event System
- *
- * This file provides a strongly-typed event system for the AtomicMemory SDK.
- * It enables communication between different SDK components and allows
- * consumers to listen for SDK lifecycle events, operations, and errors.
- *
- * The event system features:
- * - Strongly typed events with TypeScript
- * - Type-safe event listeners and emitters
- * - Automatic cleanup and memory management
- * - Support for once-only listeners
- * - Error handling for event listeners
- *
- * @example
- * ```typescript
- * import { EventEmitter } from './events';
- *
- * const emitter = new EventEmitter();
- *
- * emitter.on('contextAdded', (event) => {
- *   console.log(`Added context: ${event.contextId}`);
- * });
- *
- * emitter.emit('contextAdded', { contextId: 'user-123', content: 'data' });
- * ```
- */
+/** @file Typed event emitter for SDK lifecycle, operation, and error events. */
 
 import { getLogger } from '../utils/logger';
 

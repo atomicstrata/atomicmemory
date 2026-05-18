@@ -1,0 +1,34 @@
+# Build-context exclusions for any Dockerfile that uses the workspace root as
+# its build context (e.g. packages/core/Dockerfile).
+
+**/node_modules
+**/.turbo
+**/dist
+**/coverage
+**/.next
+**/.cache
+**/eval-results
+**/logs
+**/test-results
+**/tmp
+**/.DS_Store
+**/*.log
+
+# Secrets — never bake into images. Templates are allowed.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.test.example
+
+# Local checkout-only state.
+.git
+.github
+.husky
+.changeset
+
+# Docs and assets that are not needed by the runtime image.
+docs
+web
+*.md
+!packages/core/README.md
+!README.md

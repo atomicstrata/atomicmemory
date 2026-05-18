@@ -42,6 +42,45 @@ export class InvalidScopeError extends MemoryProviderError {
   }
 }
 
+/**
+ * Transport-layer failure reaching the provider — connection refused,
+ * timeout, DNS failure, abort, etc. Distinguished from `MemoryProviderError`
+ * because callers (CLIs, hooks) usually need to surface an actionable
+ * "service unreachable at <url>" message rather than the bare cause text.
+ */
+export class NetworkError extends MemoryProviderError {
+  readonly url: string;
+  readonly code: string | null;
+
+  constructor(provider: string, operation: string, url: string, cause: Error) {
+    const code = extractNetworkErrorCode(cause);
+    const reason = code ? `${code}` : cause.message || 'network error';
+    super(
+      `cannot reach ${provider} at ${url} (${reason}); is the service running?`,
+      provider,
+      operation,
+      cause,
+    );
+    this.name = 'NetworkError';
+    this.url = url;
+    this.code = code;
+  }
+}
+
+/** Internal: walk an Error chain and pull out a node-style errno code. */
+function extractNetworkErrorCode(err: Error): string | null {
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    const code = (current as Error & { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0) return code;
+    if (current.name === 'AbortError' || current.name === 'TimeoutError') {
+      return current.name;
+    }
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return null;
+}
+
 /** Provider-side rate limit or quota exceeded. */
 export class RateLimitError extends MemoryProviderError {
   readonly retryAfterMs?: number;

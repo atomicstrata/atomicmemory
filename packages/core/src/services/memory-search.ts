@@ -460,7 +460,15 @@ function packageSearchOutput(
 ): PackagedSearchOutput {
   const mode = retrievalOptions?.retrievalMode ?? 'flat';
   const packaged = applyFlatPackagingPolicy(postProcessed.memories, query, mode, activeTrace);
-  const baseOrdered = isCurrentStateQuery(query) ? packaged.sort((a, b) => b.score - a.score) : packaged;
+  // Sort current-state queries by `ranking_score` (floor-gated) rather than
+  // the raw `score` formula. The raw `score` ignores the
+  // `ranking-min-similarity` floor and lets a high-importance / heavily-linked
+  // memory dominate the response even when its semantic similarity is low —
+  // see the "what editor does the user prefer" regression where a low-sim
+  // composite outranked the actually-relevant Neovim memory.
+  const baseOrdered = isCurrentStateQuery(query)
+    ? packaged.sort((a, b) => (b.ranking_score ?? b.score) - (a.ranking_score ?? a.score))
+    : packaged;
   const outputMemories = maybeApplyKuRecencySort(baseOrdered, query, questionType, runtimeConfig, activeTrace);
   const buildResult = buildInjection(
     outputMemories, query, mode, retrievalOptions?.tokenBudget,

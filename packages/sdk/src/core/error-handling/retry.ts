@@ -1,20 +1,4 @@
-/**
- * @file AtomicMemory SDK Retry System
- *
- * This file provides retry mechanisms with exponential backoff for the AtomicMemory SDK.
- * It includes configurable retry policies and automatic retry logic for operations
- * that may fail due to transient issues.
- *
- * @example
- * ```typescript
- * import { RetryableOperation, withRetry } from './retry';
- *
- * const result = await withRetry(
- *   () => riskyOperation(),
- *   { maxAttempts: 3, initialDelay: 1000 }
- * );
- * ```
- */
+/** @file Retry helpers with exponential backoff + jitter for transient SDK failures. */
 
 import { AtomicMemoryError } from './errors';
 

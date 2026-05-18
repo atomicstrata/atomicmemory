@@ -1,21 +1,4 @@
-/**
- * @file AtomicMemory SDK Error Utilities
- *
- * This file provides utility functions and classes for error handling,
- * including error context building, error classification, and logging utilities.
- *
- * @example
- * ```typescript
- * import { ErrorContext, ErrorUtils } from './error-utils';
- *
- * const context = new ErrorContext()
- *   .add('operation', 'contextSearch')
- *   .add('query', searchQuery)
- *   .build();
- *
- * ErrorUtils.logError(error, context);
- * ```
- */
+/** @file Error context builders, classifiers, and logging helpers for SDK errors. */
 
 import { AtomicMemoryError } from './errors';
 import {
