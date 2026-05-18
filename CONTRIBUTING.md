@@ -68,7 +68,7 @@ lands in `packages/`, `adapters/`, or `plugins/`. Each package owns its own
 
 - Default branch: `main`. Direct pushes to `main` are not permitted.
 - Branch from `main` using a descriptive name (`feat/...`, `fix/...`,
-  `docs/...`, `chore/...`).
+  `chore/...`).
 - Keep commits small and focused. Use Conventional Commits style messages when
   practical (`feat(sdk): ...`, `fix(adapters/langchain): ...`).
 - Sign your commits where you can. Branch protection may require verified
@@ -109,7 +109,6 @@ must be green before merge.
 | `plugins/` | Host integrations. Directory uses the bare host name; package uses the `-plugin` suffix. |
 | `examples/` | Reserved for phase 2+. Only land examples with owners and CI coverage. |
 | `tests/smoke/` | Public, contributor-safe smoke tests and docs contracts. |
-| `docs/` | Public docs surface that ships from this repository. |
 
 Release orchestration, marketplace operations, sensitive service configuration,
 and any path under `/Users/...` are out of scope for this repository. If a
