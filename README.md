@@ -268,7 +268,7 @@ adapters/      framework integrations (Vercel AI, OpenAI Agents, LangChain,
 plugins/       host integrations (Claude Code, OpenClaw, Hermes, Codex, Cursor)
 examples/      reserved for phase 2+; only added with owners and CI coverage
 tests/smoke/   public, contributor-safe smoke tests
-docs/          public docs surface and migration provenance
+docs/          public docs surface
 ```
 
 Release orchestration, marketplace operations, sensitive service configuration,

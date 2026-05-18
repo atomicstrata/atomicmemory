@@ -38,8 +38,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Run repo hygiene
         run: node scripts/ci/repo-hygiene.mjs
-      - name: Validate migration inventories
-        run: node scripts/ci/migration-inventories.mjs --check
 
   package-metadata:
     name: package-metadata

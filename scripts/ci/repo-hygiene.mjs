@@ -72,6 +72,10 @@ const PRIVATE_REFERENCE_PATTERNS = [
 ];
 const FORBIDDEN_PUBLIC_FILE_PATTERNS = [
   {
+    id: "migration-provenance-artifact",
+    pattern: /^docs\/migration\//,
+  },
+  {
     id: "tech-debt-or-cleanup-plan-artifact",
     pattern: /(^|\/)[^/]*(tech-debt|cleanup-plan)[^/]*$/i,
   },

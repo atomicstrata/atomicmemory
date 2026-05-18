@@ -84,7 +84,7 @@ the contract:
 - **Install snippets** (`pnpm add @atomicmemory/sdk`, `npm install @atomicmemory/vercel-ai @atomicmemory/sdk`, `npm install -g @atomicmemory/cli`) all reference real published packages.
 - **Common-commands section** matches the actual root scripts (`pnpm install`, `pnpm run build`, `pnpm run typecheck`, `pnpm run test`, the `ci:*` family).
 - **Findings docs** added under `docs/findings/`: `concurrent-ingest-race.md`, `search-ranking-bias.md`, `monorepo-audit.md` (this file).
-- **Migration docs** (`docs/migration/`) — release-history, ci-parity-audit, allowlists/README — unchanged and consistent with current state.
+- **Docs scope** — public docs now contain user-facing material only.
 
 ## Non-blocking follow-ups
 
