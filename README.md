@@ -211,10 +211,11 @@ owns task ordering, caching, and affected-task selection.
 # install (uses the pinned pnpm@9.15.4 from packageManager)
 pnpm install
 
-# build / typecheck / test (cacheable)
+# build / typecheck / test
 pnpm run build
 pnpm run typecheck
-pnpm run test
+pnpm run test       # self-contained packages
+pnpm run test:core  # requires core test services
 pnpm run lint
 
 # release / hygiene gates (not cached; always re-run)
@@ -226,17 +227,18 @@ pnpm run repo-hygiene
 pnpm run security-compliance
 ```
 
-Build, typecheck, test, lint, docs-contract, and package-metadata are cacheable
-because their outputs are deterministic functions of their declared inputs. The
-side-effecting checks (`pack-dry-run`, `public-integration-smoke`,
-`repo-hygiene`, and `security-compliance`) always re-run: the smoke lanes are
-declared `cache: false` in `turbo.json`, and the root node scripts bypass Turbo
-caching entirely.
+Build, test, lint, and docs-contract run through Turborepo's task graph.
+Typecheck declares no cache outputs because package scripts use `tsc --noEmit`.
+The side-effecting checks (`pack-dry-run`, `public-integration-smoke`,
+`repo-hygiene`, `code-health`, and `security-compliance`) always re-run through
+`cache: false` tasks or direct root node scripts. `package-metadata` is a
+direct root check so it always reads the current package manifests.
 
 CI lanes use thin aliases over the same Turbo tasks:
 
 ```bash
 pnpm run ci:affected         # build / typecheck / lint for affected packages; tests for self-contained packages
+pnpm run ci:code-health      # fallow/code-health coverage
 pnpm run ci:pack-dry-run     # pack-dry-run, affected-only
 pnpm run ci:docs-contract    # docs-contract
 pnpm run ci:public-smoke     # public-integration-smoke
@@ -250,9 +252,7 @@ generic affected lane; build, typecheck, lint, metadata, and pack validation
 still cover `@atomicmemory/core` in public CI.
 
 Per-package commands (`pnpm --filter @atomicmemory/sdk run build`, etc.) work
-once a package lands in `packages/`, `adapters/`, or `plugins/`. The skeleton
-intentionally ships no source yet; packages copy in as part of the phased
-migration.
+for packages in `packages/`, `adapters/`, and `plugins/`.
 
 ## Release Notes
 
@@ -278,6 +278,9 @@ and local machine paths are deliberately not part of this repository.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow, branch protection
 rules, and the public CI lanes a pull request runs through.
+
+AI coding agents should also read [`AGENTS.md`](AGENTS.md). `CLAUDE.md` and
+`GEMINI.md` point their respective CLIs at the same public instructions.
 
 ## Security
 

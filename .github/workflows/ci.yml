@@ -81,12 +81,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@${PNPM_VERSION} --activate
       - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then
-            pnpm install --frozen-lockfile
-          else
-            echo "::notice::No root package.json yet; skipped dependency install."
-          fi
+        run: pnpm install --frozen-lockfile
       - name: Run affected build, typecheck, lint, and self-contained tests
         run: node scripts/ci/run-root-script.mjs ci:affected
 
@@ -108,12 +103,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@${PNPM_VERSION} --activate
       - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then
-            pnpm install --frozen-lockfile
-          else
-            echo "::notice::No root package.json yet; skipped dependency install."
-          fi
+        run: pnpm install --frozen-lockfile
       - name: Run code health checks
         run: node scripts/ci/run-root-script.mjs ci:code-health
 
@@ -135,12 +125,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@${PNPM_VERSION} --activate
       - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then
-            pnpm install --frozen-lockfile
-          else
-            echo "::notice::No root package.json yet; skipped dependency install."
-          fi
+        run: pnpm install --frozen-lockfile
       - name: Run package dry-runs through turbo
         run: node scripts/ci/run-root-script.mjs ci:pack-dry-run
       - name: Verify pack output shape
@@ -162,12 +147,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@${PNPM_VERSION} --activate
       - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then
-            pnpm install --frozen-lockfile
-          else
-            echo "::notice::No root package.json yet; skipped dependency install."
-          fi
+        run: pnpm install --frozen-lockfile
       - name: Run docs contract
         run: node scripts/ci/run-root-script.mjs ci:docs-contract
       - name: Validate public smoke contract JSON when present
@@ -197,12 +177,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@${PNPM_VERSION} --activate
       - name: Install dependencies
-        run: |
-          if [ -f package.json ]; then
-            pnpm install --frozen-lockfile
-          else
-            echo "::notice::No root package.json yet; skipped dependency install."
-          fi
+        run: pnpm install --frozen-lockfile
       - name: Run public integration smoke
         run: node scripts/ci/run-root-script.mjs ci:public-smoke
 

@@ -23,7 +23,7 @@
     "Update package.json repository to atomicstrata/atomicmemory with directory plugins/codex.",
     "Update package.json homepage and bugs URLs to the monorepo issue tracker.",
     "Keep the package unpublished until host marketplace manifest format is validated.",
-    "Do not publish to the npm registry until the coming-soon status is removed.",
+    "Keep registry_artifact null until the coming-soon status is removed.",
     "Verify lock-step plugin version still matches sibling plugins after monorepo workspace install."
   ],
   "notes": "Package remains unpublished. Source still ships into the public monorepo because the directory is public-safe and host validators need it for offline marketplace work. marketplace.example.json must not contain real submission identifiers."

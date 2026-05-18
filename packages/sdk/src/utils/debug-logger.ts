@@ -10,7 +10,7 @@
  *   debugLog('CTX-MGR', 'addContext called', { id, contentLength });
  *
  * Usage in extension:
- *   import { setDebugHandler } from '@atomicmemory/atomicmem-webapp-sdk';
+ *   import { setDebugHandler } from '@your-app/atomicmemory-browser-bridge';
  *   setDebugHandler((entry) => chrome.runtime.sendMessage({ type: 'SDK_DEBUG_LOG', entry }));
  */
 

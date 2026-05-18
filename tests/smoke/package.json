@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "docs-contract": "bash scripts/validate-public-smoke-contract.sh",
-    "public-integration-smoke": "pnpm run docs-contract",
+    "public-integration-smoke": "pnpm run docs-contract && node scripts/run-public-package-smoke.mjs",
     "test": "pnpm run docs-contract",
     "validate": "pnpm run docs-contract"
   },
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

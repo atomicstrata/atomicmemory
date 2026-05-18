@@ -20,8 +20,8 @@
  *      present in the override object, for the
  *      `X-Atomicmem-Config-Override-Keys` header.
  *
- * Design reference: atomicmemory-research/docs/core-repo/design/
- * per-request-config-override.md §2.3, §2.5.
+ * Public contract: request overrides are validated before this helper sees
+ * them, so the merge step remains intentionally shallow and deterministic.
  */
 
 import { createHash } from 'node:crypto';

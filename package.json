@@ -20,7 +20,8 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --filter='!@atomicmemory/core'",
+    "test:core": "turbo run test --filter='@atomicmemory/core'",
     "lint": "turbo run lint",
     "code-health": "node scripts/ci/code-health.mjs --verify && turbo run code-health",
     "docs-contract": "turbo run docs-contract",

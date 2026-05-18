@@ -50,7 +50,7 @@ function readFactText(fact: MetaFactCandidate): string {
 
 /**
  * Default regex set targeting the verbatim meta-fact shapes observed in
- * the Filecoin partner demo and in AlignBench v0's distractor pool.
+ * early Filecoin test deployments and in AlignBench v0's distractor pool.
  *
  *   1. "The user asked/requested/said/is asking/is me ..." — meta-facts
  *      about user actions in the conversation, not about the user.

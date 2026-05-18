@@ -15,7 +15,7 @@
  * through the scratch project's own `node_modules`.
  *
  * Run against a packed tarball in a scratch dir to catch exports-map
- * regressions before atomicmemory-docs picks up a broken publish:
+ * regressions before docs generation picks up a broken publish:
  *
  *   npm pack
  *   mkdir -p /tmp/core-export-smoke && cd /tmp/core-export-smoke

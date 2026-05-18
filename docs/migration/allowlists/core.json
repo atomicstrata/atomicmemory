@@ -47,6 +47,7 @@
     "AGENTS.md",
     "GEMINI.md",
     "CLAUDE.md",
+    "src/eval/**",
     "tech-debt.md",
     "dist/**",
     "node_modules/**",

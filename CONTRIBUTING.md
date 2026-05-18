@@ -9,6 +9,8 @@ expectations, and gating checks for changes to this repository.
   matrix. Make sure your change is consistent with the public claims there.
 - Read [`SECURITY.md`](SECURITY.md) before reporting security issues. **Do
   not file a public issue for vulnerabilities.**
+- AI coding agents should read [`AGENTS.md`](AGENTS.md). `CLAUDE.md` and
+  `GEMINI.md` point their respective CLIs at the same public instructions.
 - If your change is non-trivial (new public API, new package, behavior change
   in an adapter or host plugin), open a discussion issue first so we can align
   on the design before code review.
@@ -22,7 +24,8 @@ both are pinned in the root `package.json`.
 pnpm install
 pnpm run build
 pnpm run typecheck
-pnpm run test
+pnpm run test       # self-contained packages
+pnpm run test:core  # requires core test services
 pnpm run lint
 ```
 
@@ -37,13 +40,15 @@ pnpm run repo-hygiene
 pnpm run security-compliance
 ```
 
-These are intentionally `cache: false` in `turbo.json` so a re-run always
-reflects current repository and registry state.
+These checks always read current repository state. Some are explicit
+`cache: false` Turbo tasks; others are direct root scripts that bypass Turbo's
+cache.
 
 CI uses thin `ci:*` aliases that wrap the same Turbo tasks:
 
 ```bash
 pnpm run ci:affected         # build / typecheck / lint for affected packages; tests for self-contained packages
+pnpm run ci:code-health      # fallow/code-health coverage
 pnpm run ci:pack-dry-run     # pack-dry-run, affected-only
 pnpm run ci:docs-contract    # docs-contract
 pnpm run ci:public-smoke     # public-integration-smoke
@@ -86,6 +91,8 @@ Every pull request runs through:
   sensitive services or secrets.
 - `security-compliance` — secret scan, dependency review, license policy,
   GitHub Actions policy, and public-boundary checks.
+- `code-health` — fallow and package-level code-health coverage for packages
+  that carry that gate.
 
 Full release validation runs every required package and smoke row on release
 branches; affected filtering does not narrow that surface.

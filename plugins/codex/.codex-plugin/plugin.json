@@ -7,7 +7,7 @@
     "email": "support@atomicstrata.ai"
   },
   "homepage": "https://atomicmem.ai",
-  "repository": "https://github.com/atomicmemory/atomicmemory-integrations",
+  "repository": "https://github.com/atomicstrata/atomicmemory",
   "license": "Apache-2.0",
   "skills": "./skills/",
   "mcpServers": "./.codex-mcp.json",

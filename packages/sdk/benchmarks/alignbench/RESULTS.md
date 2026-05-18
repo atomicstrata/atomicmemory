@@ -7,7 +7,7 @@
 
 > Every query competes against the **full pool** simultaneously, mimicking how a
 > real SDK store accumulates noise across topics. Distractors are facts of the
-> form actually observed in the partner demo: `The user asked for the user's
+> form observed in field testing: `The user asked for the user's
 > name.`, `The user is me.`, `As of <date>, X is a term mentioned in the
 > conversation.`
 
@@ -209,6 +209,6 @@ Runner: `run.mjs` (single file, no SDK or DB dependencies — just
   comparison and only buys +0.017 r@5 over the SDK default. A larger sweep
   with model-specific prefixes is future work but not a blocker.
 - **Distractor pool curated by hand** based on observed SDK extraction output.
-  A real pool from the partner demo's Postgres would be the gold version.
+  A real pool from a production-like Postgres dataset would be the gold version.
 
 Treat AlignBench v0 as a diagnostic tool, not as a leaderboard number.

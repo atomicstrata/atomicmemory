@@ -11,9 +11,8 @@
  * Best-effort: extraction failures are logged to stderr and produce an
  * empty array. Storage errors are propagated (no silent swallow).
  *
- * Prompts and salvage parser were ported verbatim from the BEAM harness
- * (`atomicmemory-benchmarks/data/exp-stage7-beam-dryrun/lib.ts`) so the
- * core implementation matches the validated extraction behaviour.
+ * Prompts and salvage parser are shared with the BEAM evaluation harness so
+ * the core implementation matches the validated extraction behaviour.
  */
 
 import {

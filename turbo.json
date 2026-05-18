@@ -37,7 +37,7 @@
         "tsconfig*.json",
         "!**/*.md"
       ],
-      "outputs": [".tsbuildinfo", "**/*.tsbuildinfo"]
+      "outputs": []
     },
     "test": {
       "dependsOn": ["^build"],
@@ -47,7 +47,7 @@
         "jest.config.*",
         "playwright.config.*"
       ],
-      "outputs": ["coverage/**", "test-results/**"],
+      "outputs": [],
       "env": ["NODE_ENV", "VITEST", "JEST_WORKER_ID"]
     },
     "lint": {
@@ -76,16 +76,6 @@
         "$TURBO_DEFAULT$",
         "../../docs/**",
         "../../tests/smoke/docs-contract/**"
-      ],
-      "outputs": []
-    },
-    "package-metadata": {
-      "dependsOn": ["^build"],
-      "inputs": [
-        "package.json",
-        "README.md",
-        "LICENSE",
-        "../../package.json"
       ],
       "outputs": []
     },

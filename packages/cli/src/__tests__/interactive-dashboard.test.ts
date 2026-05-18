@@ -247,13 +247,13 @@ test('wrapSessionLine wraps long content instead of truncating with ellipsis', (
 
 test('wrapSessionLine hard-wraps long unbroken continuations after indentation', () => {
   const wrapped = wrapSessionLine(
-    'ok   sdk.resolution  file:/Users/philippemortelette/Documents/AtomicMemory/atomicmemory/atomicmemory-sdk',
+    'ok   sdk.resolution  file:/tmp/atomicmemory-sdk',
     20,
   );
 
   assert.ok(wrapped.length > 2);
   assert.ok(wrapped.every((line) => line.length <= 20));
-  assert.match(wrapped.join(''), /cmemory-sdk$/);
+  assert.match(wrapped.join('').replaceAll(' ', ''), /atomicmemory-sdk$/);
 });
 
 test('wrapSessionLine caps continuation indentation to guarantee progress', () => {
@@ -368,7 +368,7 @@ test('formatDashboardCommandResult summarizes doctor output for interactive mode
           id: 'sdk.resolution',
           category: 'sdk_resolution',
           ok: true,
-          detail: 'file:/Users/philippemortelette/Documents/AtomicMemory/atomicmemory/atomicmemory-sdk (built)',
+          detail: 'file:/tmp/atomicmemory-sdk (built)',
         },
       ],
     },
@@ -380,7 +380,7 @@ test('formatDashboardCommandResult summarizes doctor output for interactive mode
   assert.match(rendered, /passed\n✓\s+env\.node_version\s+node=24\.0\.0/);
   assert.match(rendered, /✓\s+sdk\.resolution\s+local SDK built/);
   assert.doesNotMatch(rendered, /"checks"/);
-  assert.doesNotMatch(rendered, /\/Users\/philippemortelette/);
+  assert.doesNotMatch(rendered, /\/tmp\/atomicmemory-sdk/);
 });
 
 function dashboardRuntimeState(): RuntimeState {

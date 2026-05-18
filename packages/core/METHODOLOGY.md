@@ -58,23 +58,18 @@ The published **0.572** head-to-head was measured against a **frozen evaluation 
 
 ### Smoke test (verify your environment is wired up)
 
-```bash
-git clone https://github.com/atomicstrata/atomicmemory-benchmarks
-cd atomicmemory-benchmarks
-pnpm install
-cp atomicbench/.env.example atomicbench/.env.local
-# Fill in OPENAI_API_KEY and ATOMICMEMORY_API_URL=http://localhost:3050
-
-pnpm --filter atomicbench smoke
-```
-
-Requires a running AtomicMemory server (see [@atomicmemory/core](README.md)).
+The public benchmark harness and canonical smoke command will be linked here
+when the frozen evaluation artifact is published. Until then, use the core
+quickstart and package tests to verify local service wiring.
 
 ### Reproducing the headline numbers
 
 The existing `pnpm --filter atomicbench locomo10` target **will not reproduce the published 0.572 number** out of the box — any drift in defaults (judge, embedding model, slice IDs, seed) produces a different absolute score. The runner is intentionally gated: it requires a populated `configs/canonical-v{N}.json` committed at a `canonical-config-v*` git tag, which pins the exact evaluation configuration.
 
-A dedicated repro target with the frozen config (slice IDs, seed `BEAM-S2-042`, judge model pin, embedding pin) is published alongside this release in [atomicmemory-benchmarks](https://github.com/atomicstrata/atomicmemory-benchmarks). Until that target ships, treat absolute composite numbers from `locomo10` as indicative-not-authoritative — use `smoke` only to verify local wiring.
+A dedicated repro target with the frozen config (slice IDs, seed
+`BEAM-S2-042`, judge model pin, embedding pin) will be published alongside the
+release artifacts. Until that target ships, treat absolute composite numbers
+from `locomo10` as indicative-not-authoritative.
 
 ## Known Open Questions
 

@@ -1,11 +1,9 @@
 /**
- * Run a required root pnpm script once the monorepo root package exists.
+ * Run a required root pnpm script from CI.
  */
-import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { readJson } from "./lib/repo-files.mjs";
 
-const ROOT_PACKAGE = "package.json";
 const TURBO_SCRIPT_PREFIX = "ci:";
 
 function main() {
@@ -14,18 +12,13 @@ function main() {
     throw new Error("Usage: node scripts/ci/run-root-script.mjs <script-name>");
   }
 
-  if (!existsSync(ROOT_PACKAGE)) {
-    console.log(`::notice::No root package.json yet; skipped ${scriptName}.`);
-    return;
-  }
-
   const scriptCommand = readRootScript(scriptName);
   validateTurboScript(scriptName, scriptCommand);
   runPnpmScript(scriptName);
 }
 
 function readRootScript(scriptName) {
-  const manifest = readJson(ROOT_PACKAGE);
+  const manifest = readJson("package.json");
   const scriptCommand = manifest.scripts?.[scriptName];
   if (typeof scriptCommand !== "string" || !scriptCommand.trim()) {
     throw new Error(`Root package.json must define scripts.${scriptName}.`);

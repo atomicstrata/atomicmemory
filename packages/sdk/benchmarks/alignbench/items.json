@@ -132,7 +132,7 @@
       ]
     },
     "distractors": {
-      "description": "Extraction-style meta-facts that pollute real SDK stores. Observed verbatim or near-verbatim in the partner demo (e.g. 'The user asked for the user's name', 'The user is me', 'As of <date>, X is a term mentioned in the conversation'). These should NEVER be a top-1 match for any user-fact query, but in the real failure they outranked the gold.",
+      "description": "Extraction-style meta-facts that pollute real SDK stores. Observed verbatim or near-verbatim in field testing (e.g. 'The user asked for the user's name', 'The user is me', 'As of <date>, X is a term mentioned in the conversation'). These should NEVER be a top-1 match for any user-fact query, but in the real failure they outranked the gold.",
       "facts": [
         "The user asked for the user's name.",
         "The user is me.",

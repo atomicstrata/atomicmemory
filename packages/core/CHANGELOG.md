@@ -68,7 +68,7 @@ vector fields survive the Phase 1 → Phase 2 migration.
 ## [1.0.0] - 2026-04-15
 
 ### Added
-- Initial extraction from atomicmemory-research prototype
+- Initial extraction from the memory-engine prototype
 - Express API server with memory ingest, search, and consolidation endpoints
 - Postgres + pgvector storage backend
 - Pluggable embedding providers: openai, openai-compatible, ollama, transformers (WASM)

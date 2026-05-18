@@ -8,7 +8,7 @@ phrasing**.
 
 Several observed failures share the same signature:
 
-1. SDK partner demo: "what is my name?" returns no recall, but
+1. Field test: "what is my name?" returns no recall, but
    "what is the user's name?" returns the same fact at cosine 0.51.
 2. LongMemEval-S full n=500: 31% of failures are "I don't have info" refusals
    when the answer text is in the haystack.

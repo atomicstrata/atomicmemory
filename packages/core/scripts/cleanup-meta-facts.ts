@@ -6,7 +6,7 @@
  *
  * The extraction-time filter added in this branch stops *new* meta-facts
  * from entering the store. Deployments that ingested data before the
- * filter shipped (e.g. the Filecoin partner demo) still have polluted
+ * filter shipped (for example, early Filecoin test deployments) still have polluted
  * rows that outrank durable user facts on similarity search. This
  * script identifies and soft-deletes those rows using the same pattern
  * set as the runtime filter, so behaviour is consistent post-cleanup.

@@ -27,5 +27,5 @@ The standalone checks in this lane are:
 - `node scripts/ci/pack-dry-run.mjs`
 - `node scripts/security/security-compliance.mjs`
 
-The workflow skips turbo-dependent lanes only while the root `package.json` is
-absent. Once it exists, missing required root scripts fail the lane.
+The workflow expects the root `package.json` to exist. Missing required root
+scripts fail the lane.
