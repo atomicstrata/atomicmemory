@@ -1,8 +1,7 @@
 # Database documentation
 
 In-repo documentation for the PostgreSQL + pgvector layer that ships with
-`@atomicmemory/core`. Public operator and contributor guidance lives here;
-internal planning history stays in the private research workspace.
+`@atomicmemory/core`. Public operator and contributor guidance lives here.
 
 ## Contents
 

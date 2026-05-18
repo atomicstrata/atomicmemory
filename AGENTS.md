@@ -22,8 +22,8 @@ repository. Human-facing project context lives in `README.md`, `CONTRIBUTING.md`
   manager.
 - Check `package.json` scripts before running manual build, test, lint, or
   release-validation commands.
-- Keep private release orchestration, internal runbooks, local machine paths,
-  secrets, and cutover checklists out of this repository.
+- Keep release orchestration, sensitive operational runbooks, local machine
+  paths, and secrets out of this repository.
 - Keep adapters and plugins thin. Core memory behavior belongs in
   `packages/core` and SDK-facing behavior belongs in `packages/sdk`.
 - Do not add examples unless they run from published packages or workspace
@@ -103,9 +103,8 @@ or focused tests before opening the PR.
 - Preserve the no-clone happy path for public users. Do not make cloning this
   repository a requirement unless the section is explicitly about contributing
   or local development.
-- Keep docs public-safe. Do not include private repo names, internal launch
-  process, operator runbooks, local machine paths, secrets, or private cutover
-  checklists.
+- Keep docs public-safe. Do not include non-public repo names, sensitive
+  operational process, local machine paths, or secrets.
 - Do not publish performance, reliability, or compatibility claims without
   reproducible evidence or a clearly marked status.
 - Keep quickstarts short. Put optional lifecycle, troubleshooting, or advanced
@@ -171,5 +170,5 @@ and are intentionally outside the generic affected lane.
 - Keep changes scoped to the relevant package, adapter, plugin, docs, or test
   surface.
 - Update package matrix or smoke-contract rows when support status changes.
-- Do not include private launch sequencing or operator-only instructions in
-  public PR descriptions, docs, or examples.
+- Do not include sensitive release sequencing or operational instructions in PR
+  descriptions, docs, or examples.

@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Report a vulnerability
     url: https://github.com/atomicstrata/atomicmemory/security/advisories/new
-    about: Use private vulnerability reporting instead of public issues.
+    about: Use confidential vulnerability reporting instead of public issues.

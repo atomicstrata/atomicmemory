@@ -2,8 +2,7 @@
 #
 # Branch protection on `main` requires CODEOWNERS review for matched paths.
 # Keep this file as the single source of truth for who owns what in the public
-# monorepo. Private ownership for release/marketplace operations lives in the
-# internal ops repository, not here.
+# monorepo. Release and marketplace operations are not owned from this file.
 #
 # Syntax reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
 

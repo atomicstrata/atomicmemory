@@ -190,7 +190,7 @@ the same `migrate()` call as a fresh install — `migrate()` detects the
 pre-migration install state, stamps the baseline migration as already-applied
 without re-executing it, and runs only the migrations after the baseline.
 See [`docs/db/migrations.md`](docs/db/migrations.md) for the scenario-by-scenario
-guarantees and inspection runbook.
+guarantees and inspection guide.
 
 The provenance SQL files under `docs/db/changelog/` are references only;
 runtime schema execution is owned entirely by the `src/db/migrations/` folder.

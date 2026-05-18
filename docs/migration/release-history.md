@@ -22,7 +22,7 @@ Reasons for clean-history migration:
 - Old public repos had little accumulated star, issue, or external link
   gravity, so re-anchoring contributor activity on the monorepo is cheap now.
 - Importing history would also import stale CI, retired branch names, and
-  accidental internal references; a clean cut avoids that risk.
+  obsolete operational references; a clean source snapshot avoids that risk.
 - Old repos are kept online as archives for historical lookup rather than
   being deleted.
 

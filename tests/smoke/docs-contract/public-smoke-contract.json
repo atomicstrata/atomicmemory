@@ -1,6 +1,6 @@
 {
   "schema_version": "atomicmemory-public-smoke-contract.v1",
-  "description": "Public-safe package, adapter, and plugin smoke matrix for the AtomicMemory monorepo. This file is data-only and excludes private release orchestration.",
+  "description": "Public-safe package, adapter, and plugin smoke matrix for the AtomicMemory monorepo. This file is data-only and excludes release orchestration.",
   "release_readiness": {
     "full_suite_required": true,
     "partial_runs": "diagnostic_only",

@@ -52,5 +52,5 @@ body:
     attributes:
       label: Public-safety check
       options:
-        - label: I have removed tokens, private logs, local absolute paths, and host account details.
+        - label: I have removed tokens, sensitive logs, local absolute paths, and host account details.
           required: true

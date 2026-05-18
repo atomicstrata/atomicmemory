@@ -50,18 +50,18 @@ auditable.
 - Improve install and doctor-style diagnostics for supported hosts.
 - Validate marketplace manifest behavior before publishing or promoting host
   plugins.
-- Keep Codex and Cursor plugin packages private until their host install paths
-  are verified end to end.
+- Keep Codex and Cursor plugin packages unpublished until their host install
+  paths are verified end to end.
 
 ### Docs And Public Contracts
 
 - Keep README, package metadata, docs commands, and smoke contract rows in sync.
 - Make package status labels explicit: published, implemented publish pending,
-  private, planned, or unsupported.
+  coming soon, planned, or unsupported.
 - Document performance claims only with linked benchmark code, environment,
   dataset, and measurement date.
-- Preserve the private docs source for launch while exposing public package
-  docs and contract files from this repository.
+- Keep package docs and contract files aligned with the current public package
+  matrix.
 
 ## Later Work
 
@@ -70,8 +70,8 @@ auditable.
   claims.
 - More runnable examples for common application and agent workflows.
 - Additional adapters and plugins based on user demand and host maturity.
-- Revisit Python SDK placement after the JavaScript/TypeScript monorepo launch
-  is stable.
+- Revisit Python SDK placement after the JavaScript/TypeScript monorepo is
+  stable.
 
 ## Contribution Areas
 
@@ -85,11 +85,11 @@ Good first areas for contributors include:
 
 ## Non-Goals
 
-- The monorepo should not include private release orchestration or operator-only
+- The monorepo should not include release orchestration or sensitive operational
   runbooks.
 - Adapters and plugins should not reimplement Core or SDK memory behavior.
-- Public docs should not expose private infrastructure, customer-specific work,
-  or internal launch checklists.
+- Public docs should not expose sensitive infrastructure, customer-specific
+  work, or release operations.
 - Examples should not land without ownership and validation coverage.
 - The repository should not make benchmark or performance claims without
   reproducible evidence.

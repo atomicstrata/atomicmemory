@@ -65,7 +65,7 @@ Good first areas for contributors include:
 - Core should not depend on a browser extension or a specific application shell.
 - Core should not hide memory mutation behavior behind opaque heuristics.
 - Core should not require a hosted AtomicMemory service for local or self-hosted use.
-- Core should not expose private internal benchmark strategy or unreleased customer-specific plans.
+- Core should not expose unreleased benchmark strategy or customer-specific plans.
 
 ## How We Prioritize
 

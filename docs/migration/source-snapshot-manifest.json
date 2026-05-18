@@ -151,7 +151,7 @@
       "copy_method": "clean source snapshot, no git history",
       "initial_monorepo_commit": "a133b27",
       "status": "copied",
-      "notes": "Lock-step plugin versioning preserved with sibling plugins. Marketplace manifest revalidation required at cutover."
+      "notes": "Lock-step plugin versioning preserved with sibling plugins. Marketplace manifest revalidation required before promoting the new monorepo metadata."
     },
     {
       "id": "plugin-openclaw",

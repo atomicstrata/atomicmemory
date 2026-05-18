@@ -17,8 +17,8 @@
   "post_copy_actions": [
     "Update package.json repository to atomicstrata/atomicmemory with directory plugins/cursor.",
     "Update package.json homepage and bugs URLs to the monorepo issue tracker.",
-    "Keep package.json private: true until host marketplace manifest format is validated.",
-    "Do not publish to the npm registry while private: true is set.",
+    "Keep the package unpublished until host marketplace manifest format is validated.",
+    "Do not publish to the npm registry until the coming-soon status is removed.",
     "Verify lock-step plugin version still matches sibling plugins after monorepo workspace install."
   ],
   "notes": "Cursor plugin is minimal at this commit; only package.json and README.md exist in the source subdirectory. When real source lands, extend included_paths and re-record source_commit."

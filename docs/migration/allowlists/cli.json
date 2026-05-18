@@ -25,8 +25,8 @@
   "post_copy_actions": [
     "Update package.json repository to atomicstrata/atomicmemory with directory packages/cli.",
     "Update package.json homepage and bugs URLs to the monorepo issue tracker.",
-    "Confirm SKILL.md is intended to ship publicly; if it references internal-only flows, replace with a public excerpt before signoff.",
+    "Confirm SKILL.md is intended to ship publicly; if it references sensitive operational flows, replace with a public excerpt before signoff.",
     "Run npm pack --dry-run --json and reconcile the published file list against this allowlist."
   ],
-  "notes": "Source lives inside atomicmemory-integrations under packages/cli. SKILL.md is reviewed explicitly because it can carry internal process language."
+  "notes": "Source lives inside atomicmemory-integrations under packages/cli. SKILL.md is reviewed explicitly because it can carry operational process language."
 }

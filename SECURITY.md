@@ -2,10 +2,10 @@
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities privately. **Do not open a public issue
-for security reports.**
+Please report suspected vulnerabilities confidentially. **Do not open a public
+issue for security reports.**
 
-Preferred channel: GitHub private vulnerability reporting on this repository
+Preferred channel: this repository's GitHub vulnerability reporting flow
 (`Security` tab → `Report a vulnerability`). If that channel is unavailable to
 you, email `security@atomicmemory.dev` with a clear description, reproduction
 steps, and affected package and version.
@@ -29,7 +29,7 @@ Out of scope:
 
 - The hosted AtomicMemory service infrastructure. Hosted-service reports
   should go to `security@atomicmemory.dev` and will be triaged separately.
-- Private repositories and internal operational tooling.
+- Out-of-repository services and operational tooling.
 - Third-party host applications (Claude Code, Cursor, Codex, OpenClaw, Hermes,
   etc.). Please file those with the host vendor and copy us if the issue
   involves an AtomicMemory plugin manifest.

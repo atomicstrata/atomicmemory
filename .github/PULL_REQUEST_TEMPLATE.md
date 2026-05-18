@@ -5,7 +5,7 @@
 ## Scope
 
 - [ ] Public-safe code, docs, or configuration only
-- [ ] No private credentials, local paths, or internal operational details
+- [ ] No credentials, local paths, or sensitive operational details
 - [ ] Package metadata and docs links still point at public surfaces
 
 ## Validation

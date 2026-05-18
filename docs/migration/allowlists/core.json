@@ -60,5 +60,5 @@
     "Replace .env.example references to old repo CI workflows if any exist.",
     "Run npm pack --dry-run --json and reconcile the published file list against this allowlist."
   ],
-  "notes": "Core ships an HTTP service plus migrations; deploy/, Dockerfile, railway.toml, and docker-compose*.yml are part of the public package surface and stay in the allowlist. Reviewer must confirm that openapi.json/openapi.yaml at this commit do not embed private hostnames or credentials before signoff."
+  "notes": "Core ships an HTTP service plus migrations; deploy/, Dockerfile, railway.toml, and docker-compose*.yml are part of the public package surface and stay in the allowlist. Reviewer must confirm that openapi.json/openapi.yaml at this commit do not embed non-public hostnames or credentials before signoff."
 }

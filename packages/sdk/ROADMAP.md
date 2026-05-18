@@ -64,7 +64,7 @@ Good first areas for contributors include:
 
 - The SDK should not contain browser-extension UI logic.
 - The SDK should not require a hosted AtomicMemory service.
-- The SDK should not expose private roadmap, benchmark, or customer-specific planning details.
+- The SDK should not expose unreleased roadmap, benchmark, or customer-specific planning details.
 - The SDK should not hide provider behavior behind uninspectable defaults.
 
 ## How We Prioritize

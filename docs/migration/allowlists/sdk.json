@@ -42,5 +42,5 @@
     "Run npm pack --dry-run --json and reconcile the published file list against this allowlist.",
     "Verify sideEffects entries and exports still resolve relative to packages/sdk after the move."
   ],
-  "notes": "SDK is a pure publishable library; benchmarks/ is kept because the public benchmarks justify performance claims in the root README per the docs contract. Reviewer should sanity-check that no fixtures embed prompts or transcripts that should remain private."
+  "notes": "SDK is a pure publishable library; benchmarks/ is kept because the public benchmarks justify performance claims in the root README per the docs contract. Reviewer should sanity-check that no fixtures embed sensitive prompts or transcripts."
 }

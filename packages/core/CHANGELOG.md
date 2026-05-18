@@ -63,7 +63,7 @@ snapshot is identical modulo the framework-bookkeeping tables. The Phase 1
 data-preservation suite is carried forward unchanged and continues to
 seed legacy rows, snapshot them, run `migrate()`, and assert the rows,
 primary keys, foreign keys, JSON metadata, timestamps, and representative
-vector fields survive the Phase 1 → Phase 2 cutover.
+vector fields survive the Phase 1 → Phase 2 migration.
 
 ## [1.0.0] - 2026-04-15
 

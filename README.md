@@ -78,9 +78,9 @@ append-only recall.
 ## What This Is Not
 
 - Not the hosted AtomicMemory service infrastructure.
-- Not the private release orchestration or marketplace cutover runbook.
-- Not the Python SDK for launch; the Python package remains in its own
-  repository and PyPI metadata for now.
+- Not the release orchestration or marketplace operations system.
+- Not the Python SDK; the Python package remains in its own repository and PyPI
+  metadata for now.
 - Not the benchmark research repo. Reproducible benchmark suites and raw eval
   harnesses live outside this public monorepo until they are ready to publish as
   public artifacts.
@@ -199,7 +199,7 @@ coming soon until each host marketplace manifest format is validated end to end.
 
 | Surface | Location | Status |
 | --- | --- | --- |
-| Python SDK (`atomicmemory` on PyPI) | separate repository | published; not part of this monorepo for launch |
+| Python SDK (`atomicmemory` on PyPI) | separate repository | published; not part of this monorepo |
 
 ## Local development
 
@@ -268,11 +268,11 @@ adapters/      framework integrations (Vercel AI, OpenAI Agents, LangChain,
 plugins/       host integrations (Claude Code, OpenClaw, Hermes, Codex, Cursor)
 examples/      reserved for phase 2+; only added with owners and CI coverage
 tests/smoke/   public, contributor-safe smoke tests
-docs/          public docs surface (separate from the private docs source)
+docs/          public docs surface and migration provenance
 ```
 
-Internal release orchestration, operator runbooks, private launch checklists,
-and developer-machine paths are deliberately not part of this repository.
+Release orchestration, marketplace operations, sensitive service configuration,
+and local machine paths are deliberately not part of this repository.
 
 ## Contributing
 
@@ -281,9 +281,9 @@ rules, and the public CI lanes a pull request runs through.
 
 ## Security
 
-Security policy, supported versions, and the private vulnerability reporting
-channel are documented in [`SECURITY.md`](SECURITY.md). Please report
-suspected vulnerabilities privately rather than opening a public issue.
+Security policy, supported versions, and the confidential reporting channel are
+documented in [`SECURITY.md`](SECURITY.md). Please report suspected
+vulnerabilities confidentially rather than opening a public issue.
 
 ## License
 

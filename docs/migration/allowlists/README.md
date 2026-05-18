@@ -46,9 +46,9 @@ repeated in each allowlist unless a specific exception is requested:
 - `**/.npmrc`, `**/.npmrc.local`
 - `**/.mcp.json`
 - `**/.traces/**`, `**/.agents/**`
-- `**/AGENTS.md`, `**/GEMINI.md`, `**/CLAUDE.md` (internal AI assistant
+- `**/AGENTS.md`, `**/GEMINI.md`, `**/CLAUDE.md` (source-repo AI assistant
   guidance; replaced at the monorepo root by public CONTRIBUTING.md)
-- `**/tech-debt.md` (internal-only)
+- `**/tech-debt.md` (source-repo maintenance notes)
 - `**/pnpm-lock.yaml`, `**/package-lock.json` (lockfiles are re-generated
   at the monorepo workspace root)
 
@@ -59,7 +59,7 @@ the exact path in `included_paths` and adding a `notes` justification.
 
 1. Open the allowlist, fill in `owner` and `reviewer`, and review every
    include/exclude against the current source tree at `source_commit`.
-2. Run the copy command (see the migration runbook) using the allowlist as
+2. Run the copy command using the allowlist as
    the file selector.
 3. Emit a file inventory next to the snapshot manifest using the
    `docs/migration/file-inventory-template.json` shape. Hashes must be

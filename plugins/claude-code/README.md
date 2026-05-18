@@ -123,7 +123,7 @@ claude plugin update claude-code@atomicmemory
 claude plugin install claude-code@atomicmemory
 ```
 
-The plugin spawns `@atomicmemory/mcp-server` from the npm registry via `npx`, so no local build is needed. If you're developing the MCP server itself and want Claude Code to load a local checkout instead, override the manifest's `mcpServers.atomicmemory.command`/`args` in a private settings file rather than editing the published manifest.
+The plugin spawns `@atomicmemory/mcp-server` from the npm registry via `npx`, so no local build is needed. If you're developing the MCP server itself and want Claude Code to load a local checkout instead, override the manifest's `mcpServers.atomicmemory.command`/`args` in a local settings file rather than editing the published manifest.
 
 If `claude plugin marketplace list` shows `atomicmemory` pointing at an old checkout, replace the marketplace entry from this repo first:
 

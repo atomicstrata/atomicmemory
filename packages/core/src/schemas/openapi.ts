@@ -624,7 +624,7 @@ function registerMemoryConfigRoutes(registry: OpenAPIRegistry): void {
 }
 
 // ---------------------------------------------------------------------------
-// /v1/admin — operator-only maintenance routes
+// /v1/admin — maintenance routes
 // ---------------------------------------------------------------------------
 
 function registerAdminRoutes(registry: OpenAPIRegistry): void {

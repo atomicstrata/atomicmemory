@@ -3,7 +3,7 @@
 This workspace package owns the public-safe smoke contract for the
 AtomicMemory monorepo. It is intentionally data-first: the contract describes
 which packages, framework adapters, and host plugins are covered by public
-smoke checks without importing private release orchestration.
+smoke checks without importing release orchestration.
 
 ## Contract
 
@@ -35,8 +35,8 @@ pnpm run docs-contract
 
 The validator uses `jq` only and checks the contract shape, required flags,
 publish-status invariants, and coverage-label policy. It does not include
-operator-only release checks, private sync tooling, container orchestration, or
-host-auth checks.
+release-operations checks, sync tooling, container orchestration, or host-auth
+checks.
 
 ## Partial Runs
 

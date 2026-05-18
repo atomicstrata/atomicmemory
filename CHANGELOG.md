@@ -11,8 +11,8 @@ monorepo. Package-specific API and release notes live with each package:
   notes
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and package versions follow semver unless a package is intentionally private or
-publish pending.
+and package versions follow semver unless a package is intentionally unpublished
+or publish pending.
 
 ## Unreleased
 
@@ -30,6 +30,5 @@ publish pending.
 
 ### Notes
 
-- The repository remains private until the public cutover gate.
-- Package publishes, old-repo redirects, marketplace resubmissions, and public
-  visibility flip are intentionally separate cutover steps.
+- Package publishes, old-repo redirects, and marketplace resubmissions are
+  tracked as separate release operations.

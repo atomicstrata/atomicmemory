@@ -57,5 +57,5 @@ body:
     attributes:
       label: Public-safety check
       options:
-        - label: I have not included credentials, private logs, or sensitive deployment details.
+        - label: I have not included credentials, sensitive logs, or deployment details.
           required: true

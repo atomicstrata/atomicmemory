@@ -1,7 +1,7 @@
 # AlignBench v0 — Results
 
 **Date:** 2026-05-14
-**SDK branch:** `worktree-alignbench-2026-05-14` (off `internal/main` at `bf4ab91`)
+**SDK branch:** `worktree-alignbench-2026-05-14` at `bf4ab91`
 **Items:** 60 scored queries (pronoun 20, temporal 14, specificity 14, negation 12) + 10 controls
 **Fact pool:** 55 facts (45 user-facts across 4 axes + 10 extraction-style meta-fact distractors)
 

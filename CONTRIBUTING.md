@@ -73,8 +73,8 @@ lands in `packages/`, `adapters/`, or `plugins/`. Each package owns its own
 
 Every pull request runs through:
 
-- `repo-hygiene` — no private references, no `file:` / `link:` deps in
-  publishable packages, no leaked internal hostnames.
+- `repo-hygiene` — no sensitive references, no `file:` / `link:` deps in
+  publishable packages, no leaked non-public hostnames.
 - `package-metadata` — `repository`, `homepage`, `bugs`, `license`, `exports`,
   `bin`, and `files` are valid for every publishable package.
 - `affected-build-test` — build, typecheck, and lint for packages affected by
@@ -83,7 +83,7 @@ Every pull request runs through:
   packages.
 - `docs-contract` — docs commands match harness and package commands.
 - `public-integration-smoke` — package-protocol smoke checks that run without
-  private services or secrets.
+  sensitive services or secrets.
 - `security-compliance` — secret scan, dependency review, license policy,
   GitHub Actions policy, and public-boundary checks.
 
@@ -101,13 +101,12 @@ must be green before merge.
 | `adapters/` | Framework integrations. Directory names match the unscoped npm package name. |
 | `plugins/` | Host integrations. Directory uses the bare host name; package uses the `-plugin` suffix. |
 | `examples/` | Reserved for phase 2+. Only land examples with owners and CI coverage. |
-| `tests/smoke/` | Public, contributor-safe smoke tests. Private release orchestration stays in the private ops repo. |
+| `tests/smoke/` | Public, contributor-safe smoke tests and docs contracts. |
 | `docs/` | Public docs surface that ships from this repository. |
 
-Internal sync scripts, private release orchestration, operator runbooks,
-launch checklists, and any path under `/Users/...` are out of scope for this
-repository. If a change feels operational, it probably belongs in the private
-ops repo, not here.
+Release orchestration, marketplace operations, sensitive service configuration,
+and any path under `/Users/...` are out of scope for this repository. If a
+change requires credentials or production access, it belongs outside this repo.
 
 ## Reporting bugs
 

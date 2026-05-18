@@ -98,7 +98,7 @@ unchanged), so concurrent replica boots remain safe.
 
 1. `migrate()` acquires the advisory lock.
 2. `pgmigrations` does not exist, or it exists but has no applied rows because
-   a prior cutover attempt died before stamping anything.
+   a prior migration attempt stopped before stamping anything.
 3. **Pre-framework check**: data tables exist (for example, `memories`,
    `memory_claims`, `episodes`) but `pgmigrations` does not. This is a
    pre-Phase-2 install.
@@ -145,7 +145,7 @@ Two test suites make the guarantee machine-checkable:
   Seeds representative legacy rows across the core-owned tables,
   snapshots them, runs `migrate()`, and asserts every row, primary key,
   foreign-key relationship, JSON metadata field, timestamp, and
-  representative vector survives the cutover.
+  representative vector survives the migration.
 
 ## migrate() / migrationStatus() compatibility
 
@@ -226,5 +226,5 @@ relationship between filenames there and rows in `pgmigrations`.
 
 ## Design Notes
 
-Detailed prior-art comparisons and internal planning history live in the
-private research workspace. Public operator guidance belongs in this file.
+Public operator guidance belongs in this file. Prior-art comparisons and
+research notes should be published only when they are ready to stand alone.

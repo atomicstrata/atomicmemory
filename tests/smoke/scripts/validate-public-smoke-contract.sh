@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Validate the public AtomicMemory smoke contract without invoking private
-# release orchestration. This script checks the data shape and release-facing
+# Validate the public AtomicMemory smoke contract without invoking release
+# orchestration. This script checks the data shape and release-facing
 # invariants that public CI and docs checks can safely enforce.
 set -euo pipefail
 
