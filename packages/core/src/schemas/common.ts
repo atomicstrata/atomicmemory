@@ -74,8 +74,12 @@ export type MemoryVisibility = z.infer<typeof MemoryVisibilitySchema>;
 // runtime semantics are identical (non-string / empty → undefined).
 const VALID_VISIBILITIES: MemoryVisibility[] = ['agent_only', 'restricted', 'workspace'];
 
+// zod v4 stopped making `z.unknown()` implicitly accept missing keys inside
+// object schemas; each silently-coercing field below adds `.optional()` so
+// callers can still omit the key entirely.
 export const WorkspaceIdField = z
   .unknown()
+  .optional()
   .transform(v => (typeof v === 'string' && v.length > 0 ? v : undefined))
   .openapi({
     type: 'string',
@@ -84,6 +88,7 @@ export const WorkspaceIdField = z
 
 export const AgentIdField = z
   .unknown()
+  .optional()
   .transform(v => (typeof v === 'string' && v.length > 0 ? v : undefined))
   .openapi({
     type: 'string',
@@ -92,6 +97,7 @@ export const AgentIdField = z
 
 export const VisibilityField = z
   .unknown()
+  .optional()
   .transform(v =>
     typeof v === 'string' && (VALID_VISIBILITIES as string[]).includes(v)
       ? (v as MemoryVisibility)
@@ -141,6 +147,7 @@ export type WorkspaceContext = z.infer<typeof WorkspaceContextOutputSchema>;
  */
 export const AgentScopeSchema = z
   .unknown()
+  .optional()
   .transform(v => {
     if (typeof v === 'string') return v;
     if (Array.isArray(v) && v.every((x: unknown) => typeof x === 'string')) {
@@ -192,6 +199,7 @@ export const NonEmptyString = z.string().min(1, 'must be a non-empty string');
  */
 export const OptionalBodyString = z
   .unknown()
+  .optional()
   .transform(v => (typeof v === 'string' ? v : undefined))
   .openapi({ type: 'string' });
 
@@ -229,6 +237,7 @@ export function requiredStringBody(label: string) {
  */
 export const IsoTimestamp = z
   .unknown()
+  .optional()
   .superRefine((v, ctx) => {
     if (v === undefined || v === null || v === '') return;
     if (typeof v !== 'string' || Number.isNaN(Date.parse(v))) {

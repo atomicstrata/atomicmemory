@@ -29,7 +29,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
     devDependencies:
       '@langchain/core':
         specifier: ^0.3.0
@@ -51,7 +51,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
       '@langchain/langgraph':
         specifier: ^0.4.0
         version: 0.4.9(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.38.0(ws@8.20.1)(zod@4.4.3)))(react@19.2.6)(zod-to-json-schema@3.25.2(zod@4.4.3))
@@ -70,7 +70,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
     devDependencies:
       '@mastra/core':
         specifier: ^1.35.0
@@ -92,7 +92,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
       '@openai/agents':
         specifier: ^0.8.5
         version: 0.8.5(@cfworker/json-schema@4.1.1)(ws@8.20.1)(zod@4.4.3)
@@ -114,7 +114,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../../packages/sdk
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -130,7 +130,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../sdk
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -265,7 +265,7 @@ importers:
     dependencies:
       '@atomicmemory/sdk':
         specifier: ^1.0.1
-        version: 1.0.1
+        version: link:../sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
@@ -338,7 +338,7 @@ importers:
     dependencies:
       '@atomicmemory/mcp-server':
         specifier: ^0.1.0
-        version: 0.1.1(@cfworker/json-schema@4.1.1)
+        version: link:../../packages/mcp-server
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -497,15 +497,6 @@ packages:
     resolution: {integrity: sha512-SABbKiObg5dLRiTFnqiW1WWwGcg1BJfmHtT2asIBnBHg6Smy/Ms2KHc650+JI4Hw7lSkdiNebEGXpwoxfben8Q==}
     peerDependencies:
       zod: ^4.0.0
-
-  '@atomicmemory/mcp-server@0.1.1':
-    resolution: {integrity: sha512-gOFj9Iazm7KhfJCSrcbxE8wzSBFqXsmzVDOUnC4fnKWAhXo1sO6STC6m81lkNXOUhH93eT5g7EJXrZMxMdJJFQ==}
-    engines: {node: '>=20'}
-    hasBin: true
-
-  '@atomicmemory/sdk@1.0.1':
-    resolution: {integrity: sha512-IfttcyV+XoS9+2gj8eNg6jOA0c+vaXTOjdiMa75uBYcPr9oZMnob902Ytab+bhQgFmm4rKkkQOXgzUZChNhetg==}
-    engines: {node: '>=22'}
 
   '@aws-crypto/crc32@5.2.0':
     resolution: {integrity: sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg==}
@@ -6518,19 +6509,6 @@ snapshots:
     dependencies:
       openapi3-ts: 4.5.0
       zod: 4.4.3
-
-  '@atomicmemory/mcp-server@0.1.1(@cfworker/json-schema@4.1.1)':
-    dependencies:
-      '@atomicmemory/sdk': 1.0.1
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - supports-color
-
-  '@atomicmemory/sdk@1.0.1':
-    dependencies:
-      '@huggingface/transformers': 3.8.1
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:

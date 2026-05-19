@@ -39,6 +39,5 @@
 /adapters/                              @atomicstrata/atomicmemory-integrations
 /plugins/                               @atomicstrata/atomicmemory-integrations
 
-# Public smoke and docs surface.
+# Public smoke surface.
 /tests/                                 @atomicstrata/atomicmemory-maintainers
-/docs/                                  @atomicstrata/atomicmemory-maintainers

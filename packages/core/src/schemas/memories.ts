@@ -74,11 +74,13 @@ const CONTROL_CHAR_REGEX = /[\u0000-\u001f\u007f]/;
 const OptionalBooleanField = (description?: string) =>
   z
     .unknown()
+    .optional()
     .transform(v => (typeof v === 'boolean' ? v : undefined))
     .openapi({ type: 'boolean', ...(description ? { description } : {}) });
 
 const SessionIdField = z
   .unknown()
+  .optional()
   .superRefine((value, ctx) => {
     if (value === undefined || value === null) return;
     if (typeof value !== 'string') {
@@ -494,6 +496,7 @@ export const LessonReportBodySchema = z
     pattern: requiredStringBody('pattern'),
     source_memory_ids: z
       .unknown()
+      .optional()
       .transform(v =>
         Array.isArray(v) && v.every((x: unknown) => typeof x === 'string')
           ? (v as string[])
@@ -708,9 +711,13 @@ function parseIntegerLimit(raw: string | undefined, defaultVal: number): number 
   return parseInt(String(raw ?? String(defaultVal)), 10);
 }
 
+// zod v4 no longer makes `z.unknown()` keys implicitly optional in object
+// schemas; an explicit `.optional()` is required so missing query params do
+// not fail with `expected: nonoptional`.
 function OptionalQueryField() {
   return z
     .unknown()
+    .optional()
     .transform(v => (typeof v === 'string' && v.length > 0 ? v : undefined))
     .openapi({ type: 'string' });
 }
@@ -718,6 +725,7 @@ function OptionalQueryField() {
 function OptionalUuidQueryField(label: string) {
   return z
     .unknown()
+    .optional()
     .transform(v => (typeof v === 'string' && v.length > 0 ? v : undefined))
     .refine(s => s === undefined || UUID_REGEX.test(s), {
       message: `${label} must be a valid UUID`,

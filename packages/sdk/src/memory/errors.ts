@@ -42,6 +42,45 @@ export class InvalidScopeError extends MemoryProviderError {
   }
 }
 
+/**
+ * Transport-layer failure reaching the provider — connection refused,
+ * timeout, DNS failure, abort, etc. Named `MemoryTransportError` to avoid
+ * colliding with the generic `NetworkError` exported from
+ * `src/core/error-handling/errors.ts` (different inheritance tree).
+ */
+export class MemoryTransportError extends MemoryProviderError {
+  readonly url: string;
+  readonly code: string | null;
+
+  constructor(provider: string, operation: string, url: string, cause: Error) {
+    const code = extractTransportErrorCode(cause);
+    const reason = code ? `${code}` : cause.message || 'network error';
+    super(
+      `cannot reach ${provider} at ${url} (${reason}); is the service running?`,
+      provider,
+      operation,
+      cause,
+    );
+    this.name = 'MemoryTransportError';
+    this.url = url;
+    this.code = code;
+  }
+}
+
+/** Internal: walk an Error chain and pull out a node-style errno code. */
+function extractTransportErrorCode(err: Error): string | null {
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    const code = (current as Error & { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0) return code;
+    if (current.name === 'AbortError' || current.name === 'TimeoutError') {
+      return current.name;
+    }
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return null;
+}
+
 /** Provider-side rate limit or quota exceeded. */
 export class RateLimitError extends MemoryProviderError {
   readonly retryAfterMs?: number;

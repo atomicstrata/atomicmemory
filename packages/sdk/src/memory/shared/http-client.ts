@@ -8,7 +8,7 @@
  * errors are automatically tagged with the correct provider name.
  */
 
-import { MemoryProviderError, RateLimitError } from '../errors';
+import { MemoryProviderError, MemoryTransportError, RateLimitError } from '../errors';
 
 export interface HttpOptions {
   apiUrl: string;
@@ -60,19 +60,28 @@ function buildHeaders(
 
 /**
  * Perform a raw fetch with the provider's auth/timeout plumbing.
+ * Transport-level failures (connection refused, DNS, timeout, abort) are
+ * re-thrown as `MemoryTransportError` so callers see an actionable
+ * "cannot reach <provider> at <url>" message instead of bare "fetch failed".
  */
 async function performFetch(
   options: HttpOptions,
+  providerName: string,
   path: string,
   init: RequestInit
 ): Promise<Response> {
   const url = `${options.apiUrl}${path}`;
   const headers = buildHeaders(options, init);
-  return fetch(url, {
-    ...init,
-    headers,
-    signal: AbortSignal.timeout(options.timeout),
-  });
+  try {
+    return await fetch(url, {
+      ...init,
+      headers,
+      signal: AbortSignal.timeout(options.timeout),
+    });
+  } catch (err) {
+    const cause = err instanceof Error ? err : new Error(String(err));
+    throw new MemoryTransportError(providerName, path, url, cause);
+  }
 }
 
 /**
@@ -110,7 +119,7 @@ async function executeRequest(
   path: string,
   init: RequestInit = {}
 ): Promise<Response> {
-  const response = await performFetch(options, path, init);
+  const response = await performFetch(options, providerName, path, init);
   await throwForStatus(response, providerName, path);
   return response;
 }
@@ -144,7 +153,7 @@ export function createHttpClient(providerName: string): HttpClient {
       path: string,
       init: RequestInit = {}
     ): Promise<T | null> {
-      const response = await performFetch(options, path, init);
+      const response = await performFetch(options, providerName, path, init);
       if (response.status === 404) return null;
       await throwForStatus(response, providerName, path);
       return (await response.json()) as T;

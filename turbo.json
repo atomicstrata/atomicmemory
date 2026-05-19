@@ -51,6 +51,7 @@
       "env": ["NODE_ENV", "VITEST", "JEST_WORKER_ID"]
     },
     "lint": {
+      "dependsOn": ["^build"],
       "inputs": [
         "$TURBO_DEFAULT$",
         ".eslintrc*",

@@ -17,6 +17,8 @@ __pycache__/
 
 # Turborepo
 .turbo/
+# `turbo prune --docker` scratch output (also produced inside Dockerfile stages)
+out/
 
 # Logs
 *.log
@@ -25,10 +27,13 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Env files (never commit secrets)
+# Env files (never commit secrets). Sanitized example templates are allowed.
 .env
 .env.*
 !.env.example
+!.env*.example
+# Smoke-test scratch env created by packages/core/scripts/docker-smoke-test.sh.
+.env.docker-smoke-test
 
 # OS / editor
 .DS_Store
@@ -42,3 +47,6 @@ Thumbs.db
 .tmp/
 tmp/
 *.local
+
+# Local raw-storage filesystem data (RAW_STORAGE_LOCAL_FS_ROOT defaults).
+data/raw-storage/

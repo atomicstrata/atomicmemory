@@ -45,6 +45,7 @@ const OptionalNullableBodyString = z.string().nullable().optional();
 
 const OptionalPositiveBigInt = z
   .unknown()
+  .optional()
   .superRefine((v, ctx) => {
     if (v === undefined || v === null) return;
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || !Number.isInteger(v)) {
@@ -56,6 +57,7 @@ const OptionalPositiveBigInt = z
 
 const OptionalIsoTimestamp = z
   .unknown()
+  .optional()
   .superRefine((v, ctx) => {
     if (v === undefined || v === null || v === '') return;
     if (typeof v !== 'string') {
@@ -72,6 +74,7 @@ const OptionalIsoTimestamp = z
 /** storage_mode: only `pointer_only` is accepted on registration. */
 const PointerOnlyStorageMode = z
   .unknown()
+  .optional()
   .superRefine((v, ctx) => {
     if (v === undefined || v === null || v === 'pointer_only') return;
     if (v === 'managed_blob' || v === 'inline_small_text') {

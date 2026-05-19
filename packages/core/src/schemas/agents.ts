@@ -94,6 +94,7 @@ export const SetTrustBodySchema = z
     trust_level: TrustLevelSchema,
     display_name: z
       .unknown()
+      .optional()
       .transform(v => (typeof v === 'string' ? v : undefined))
       .openapi({ type: 'string' }),
   })
