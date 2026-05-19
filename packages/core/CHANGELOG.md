@@ -72,7 +72,7 @@ vector fields survive the Phase 1 → Phase 2 migration.
 - Express API server with memory ingest, search, and consolidation endpoints
 - Postgres + pgvector storage backend
 - Pluggable embedding providers: openai, openai-compatible, ollama, transformers (WASM)
-- AUDN-SCS mutation engine (Add, Update, Delete, No-op + Supersede, Clarify) with fail-closed semantics; pre-AUDN rejections are reported with a separate `SKIP` ingest trace sentinel
+- AUDN-SC mutation engine (Add, Update, Delete, No-op + Supersede, Clarify) with fail-closed semantics; pre-AUDN rejections are reported with a separate `SKIP` ingest trace sentinel
 - Contradiction-safe claim versioning
 - Hybrid retrieval (vector + BM25/FTS)
 - Tiered context packaging

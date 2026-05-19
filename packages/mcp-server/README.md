@@ -3,7 +3,7 @@
 MCP server that exposes [AtomicMemory core](../../packages/core) as four tools to any MCP-compatible agent:
 
 - `memory_search` — semantic retrieval
-- `memory_ingest` — AUDN-SCS-mutating ingest (`text` / `messages`) or deterministic one-record ingest (`verbatim`, provider permitting)
+- `memory_ingest` — AUDN-SC-mutating ingest (`text` / `messages`) or deterministic one-record ingest (`verbatim`, provider permitting)
 - `memory_package` — token-budgeted context package
 - `memory_list` — list recent scoped memories
 
