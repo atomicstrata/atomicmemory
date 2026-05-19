@@ -30,7 +30,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@atomicmemory/mcp-server": "^0.1.0"
+    "@atomicmemory/mcp-server": "^0.1.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

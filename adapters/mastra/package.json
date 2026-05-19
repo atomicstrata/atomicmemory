@@ -33,7 +33,7 @@
     "prepublishOnly": "node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')||v.startsWith('workspace:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
   },
   "dependencies": {
-    "@atomicmemory/sdk": "^1.0.1"
+    "@atomicmemory/sdk": "^1.0.2"
   },
   "peerDependencies": {
     "@mastra/core": "^1.0.0",

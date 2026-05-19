@@ -41,7 +41,7 @@ export function commandTree(options: { includeHidden?: boolean } = {}): CliComma
   return filterHidden(CLI_SPEC.commands, options.includeHidden === true);
 }
 
-export function renderHelp(command?: string, version = '0.1.0'): string {
+export function renderHelp(command?: string, version = CLI_SPEC.package_version): string {
   if (command) {
     const spec = findCommand(command, true);
     if (!spec) return `Unknown command: ${command}`;

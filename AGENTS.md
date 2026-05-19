@@ -13,7 +13,6 @@ repository. Human-facing project context lives in `README.md`, `CONTRIBUTING.md`
 - `plugins/` contains host integrations.
 - `tests/smoke/` contains public smoke contracts and contributor-safe release
   checks.
-- `docs/` contains public docs only.
 - `examples/` is reserved for future examples that have owners and CI coverage.
 
 ## Working Rules
