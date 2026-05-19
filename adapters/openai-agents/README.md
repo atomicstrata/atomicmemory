@@ -126,7 +126,7 @@ export ATOMICMEMORY_SCOPE_NAMESPACE="openai-agents-sdk-smoke"
 pnpm --filter @atomicmemory/openai-agents smoke:backend
 ```
 
-The smoke test writes a unique marker, verifies `augmentInputWithMemory()` retrieves it, then runs `runWithMemory()` with a fake runner and reports the post-run ingest AUDN outcome.
+The smoke test writes a unique marker, verifies `augmentInputWithMemory()` retrieves it, then runs `runWithMemory()` with a fake runner and reports the post-run ingest AUDN-SCS outcome.
 
 Set `OPENAI_API_KEY` only when you want to test the real `Agent + run()` path from the install example.
 

@@ -8,7 +8,7 @@
 
 Open-source memory engine for AI applications and agents.
 
-Docker-deployable memory backend with durable context, semantic retrieval, and memory mutation (AUDN: Add, Update, Delete, No-op).
+Docker-deployable memory backend with durable context, semantic retrieval, and memory mutation (AUDN-SCS: Add, Update, Delete, No-op + Supersede, Clarify, Skip).
 
 **Docs:** [docs.atomicstrata.ai](https://docs.atomicstrata.ai)
 
@@ -16,7 +16,7 @@ Docker-deployable memory backend with durable context, semantic retrieval, and m
 
 - **Semantic ingest** — extract structured facts from conversations with contradiction detection
 - **Hybrid retrieval** — vector similarity + BM25/FTS with RRF fusion
-- **AUDN mutation** — Add, Update, Delete, No-op decisions with fail-closed integrity
+- **AUDN-SCS mutation** — Add, Update, Delete, No-op, Supersede, Clarify, Skip decisions with fail-closed integrity
 - **Claim versioning** — temporal lineage tracking with supersession and invalidation
 - **Tiered context packaging** — L0/L1/L2 compression for token-efficient retrieval
 - **Entity graph** — spreading activation over extracted entities
@@ -219,7 +219,7 @@ when you want the database bundled with Core.
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
-| `POST` | `/v1/memories/ingest` | Full ingest with extraction and AUDN |
+| `POST` | `/v1/memories/ingest` | Full ingest with extraction and AUDN-SCS |
 | `POST` | `/v1/memories/ingest/quick` | Fast ingest (embedding dedup only) |
 | `POST` | `/v1/memories/search` | Semantic search with hybrid retrieval |
 | `POST` | `/v1/memories/search/fast` | Fast vector-only search |
@@ -355,7 +355,7 @@ src/
   server.ts     # Express app bootstrap
 ```
 
-Storage: Postgres + pgvector. Retrieval: hybrid (vector + BM25/FTS). Mutation: contradiction-safe AUDN with claim versioning.
+Storage: Postgres + pgvector. Retrieval: hybrid (vector + BM25/FTS). Mutation: contradiction-safe AUDN-SCS with claim versioning.
 
 ## Development
 
