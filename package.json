@@ -32,7 +32,7 @@
     "pack-dry-run": "node scripts/ci/pack-dry-run.mjs",
     "ci:affected": "turbo run build typecheck lint --affected && turbo run test --affected --filter='!@atomicmemory/core'",
     "ci:code-health": "node scripts/ci/code-health.mjs --verify && (turbo run code-health --affected || turbo run code-health)",
-    "ci:pack-dry-run": "turbo run pack-dry-run --affected && node scripts/ci/pack-dry-run.mjs",
+    "ci:pack-dry-run": "turbo run build && node scripts/ci/pack-dry-run.mjs",
     "ci:docs-contract": "turbo run docs-contract",
     "ci:public-smoke": "turbo run public-integration-smoke"
   },

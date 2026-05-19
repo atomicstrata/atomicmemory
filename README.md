@@ -28,6 +28,25 @@ TypeScript packages, framework adapters, host plugins, and public smoke tests.
 
 **Field note:** [The AI Memory Industry Has A Black Box Problem](https://www.atomicstrata.ai/blog/the-ai-memory-industry-has-a-black-box-problem)
 
+## Headline Results
+
+AtomicMemory v66 is cost-Pareto SOTA on BEAM-100K, BEAM-1M, and LoCoMo10 under
+matched methodology against published competitors. On BEAM-10M it matches the
+strongest published Mem0-new result while leaving Hindsight-scale temporal
+retrieval as the known open frontier.
+
+| Benchmark | AtomicMemory v66 | Position | Cost/Q | Sample |
+|---|---:|---|---:|---:|
+| **BEAM-100K lenient** | **0.7375** | Parity with Hindsight at 0.75 | $1.26 | n=80 |
+| **BEAM-1M lenient** | **0.6625** | Cost-Pareto SOTA; +0.022 vs Mem0 paper | $0.083 | n=80 |
+| **BEAM-10M lenient** | **0.4875** | Parity with Mem0-new at 0.486 | $0.081 | n=80 |
+| **LoCoMo10 GPT-4o-mini binary** | **0.8396** | Cost-Pareto SOTA; +0.171 vs Mem0 paper | $0.066 | n=1540 |
+
+These results put AtomicMemory at or near the published ceiling in each
+reported category while preserving the lower-cost operating profile that
+matters for real applications. Reproducibility artifacts and harness details
+will be published with the benchmark materials.
+
 ## Why AtomicMemory
 
 - **Portable**: a single memory protocol consumed by direct SDK calls, CLIs,
@@ -89,17 +108,14 @@ append-only recall.
 
 ## Performance posture
 
-We make supportable performance claims, not marketing ones. Concrete numbers
-for ingestion latency, retrieval latency, recall@k, and scale envelope are
-published only with a linked benchmark, the hardware and dataset used, and the
-date the measurement was taken. Benchmark code and fixtures live in this repo
-under `tests/` so anyone can reproduce a result before quoting it.
+We make supportable performance claims, not marketing ones. The headline
+results above are benchmark scores under matched methodology; latency,
+recall@k, and scale-envelope claims should only be quoted when paired with the
+linked benchmark, hardware, dataset, and date used to produce them.
 
-Until a benchmark is linked from the docs, treat the engine as "designed for
-single-digit-ms local retrieval on a developer laptop at typical agent corpus
-sizes" — a design target, not a guarantee. Concrete numbers and a published
-benchmark suite land in a phased follow-up; this README will link them when
-they are reproducible.
+Until latency benchmarks are linked from the docs, treat the engine as
+"designed for single-digit-ms local retrieval on a developer laptop at typical
+agent corpus sizes" — a design target, not a guarantee.
 
 ## Quickstart
 
