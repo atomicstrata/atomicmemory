@@ -8,7 +8,7 @@
 
 Open-source memory engine for AI applications and agents.
 
-Docker-deployable memory backend with durable context, semantic retrieval, and memory mutation (AUDN-SCS: Add, Update, Delete, No-op + Supersede, Clarify, Skip).
+Docker-deployable memory backend with durable context, semantic retrieval, and memory mutation (AUDN-SCS: Add, Update, Delete, No-op + Supersede, Clarify). Pre-AUDN rejections use a separate `SKIP` ingest trace sentinel.
 
 **Docs:** [docs.atomicstrata.ai](https://docs.atomicstrata.ai)
 
@@ -16,7 +16,7 @@ Docker-deployable memory backend with durable context, semantic retrieval, and m
 
 - **Semantic ingest** — extract structured facts from conversations with contradiction detection
 - **Hybrid retrieval** — vector similarity + BM25/FTS with RRF fusion
-- **AUDN-SCS mutation** — Add, Update, Delete, No-op, Supersede, Clarify, Skip decisions with fail-closed integrity
+- **AUDN-SCS mutation** — Add, Update, Delete, No-op, Supersede, and Clarify decisions with fail-closed integrity
 - **Claim versioning** — temporal lineage tracking with supersession and invalidation
 - **Tiered context packaging** — L0/L1/L2 compression for token-efficient retrieval
 - **Entity graph** — spreading activation over extracted entities
