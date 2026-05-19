@@ -14,17 +14,17 @@
     "properties": {
       "apiUrl": {
         "type": "string",
-        "description": "Optional provider base URL. Defaults to the local AtomicMemory core for provider=atomicmemory. Required for provider=mem0."
+        "description": "Optional provider base URL. Defaults to the local AtomicMemory core. The shipped skill permissions allow http://127.0.0.1:3050 and http://localhost:3050."
       },
       "apiKey": {
         "type": "string",
-        "description": "Optional bearer credential forwarded to AtomicMemory core as Authorization: Bearer <apiKey>."
+        "description": "Optional bearer credential forwarded to an allowed local AtomicMemory core as Authorization: Bearer <apiKey>."
       },
       "provider": {
         "type": "string",
         "enum": ["atomicmemory", "mem0"],
         "default": "atomicmemory",
-        "description": "Provider name dispatched through the SDK's MemoryProvider model. Defaults to AtomicMemory local core."
+        "description": "Provider name dispatched through the SDK's MemoryProvider model. Defaults to AtomicMemory local core; remote providers require a separately permissioned plugin manifest."
       },
       "scope": {
         "type": "object",

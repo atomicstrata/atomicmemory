@@ -21,8 +21,8 @@ OpenClaw passes config from `openclaw.plugin.json` into the plugin entrypoint:
 
 ```json
 {
-  "apiUrl": "https://memory.yourco.com",
-  "apiKey": "am_live_...",
+  "apiUrl": "http://127.0.0.1:3050",
+  "apiKey": "local-dev-key",
   "provider": "atomicmemory",
   "scope": {
     "user": "pip",
@@ -31,6 +31,10 @@ OpenClaw passes config from `openclaw.plugin.json` into the plugin entrypoint:
   }
 }
 ```
+
+The shipped skill permissions allow only local AtomicMemory core origins:
+`http://127.0.0.1:3050` and `http://localhost:3050`. Remote providers require
+a separately permissioned plugin manifest and host validation.
 
 `scope.user` is required and should be the stable channel-agnostic user identity. Optional `agent`, `namespace`, and `thread` narrow memory when needed. The plugin normalizes the API URL, strips whitespace from the API key, and drops empty optional scope fields before spawning the MCP server.
 
