@@ -10,7 +10,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: AtomicMemory
-  version: "0.1.15"
+  version: "0.1.16"
   category: ai-memory
   tags: "memory, semantic-search, codex, pluggable"
 ---

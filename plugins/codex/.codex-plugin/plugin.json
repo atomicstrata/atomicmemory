@@ -1,6 +1,6 @@
 {
   "name": "atomicmemory",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "AtomicMemory memory layer for Codex. Pluggable semantic memory — swap backends through the SDK's MemoryProvider model by config, not code change.",
   "author": {
     "name": "AtomicMemory",

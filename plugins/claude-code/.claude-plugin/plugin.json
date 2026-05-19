@@ -1,6 +1,6 @@
 {
   "name": "atomicmemory",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Persistent semantic memory for Claude Code — user preferences, project context, prior decisions, and codebase facts that survive across sessions.",
   "author": {
     "name": "AtomicMemory",

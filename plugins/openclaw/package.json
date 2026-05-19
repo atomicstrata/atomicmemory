@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/openclaw-plugin",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "AtomicMemory plugin for OpenClaw — persistent semantic memory and deterministic session snapshots across channels.",
   "type": "module",
   "main": "dist/index.js",

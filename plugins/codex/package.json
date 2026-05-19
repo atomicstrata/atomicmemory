@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/codex-plugin",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "AtomicMemory plugin for OpenAI Codex — plugin manifest, MCP server config, and memory protocol skill.",
   "private": true,
   "license": "Apache-2.0",

@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/claude-code-plugin",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "AtomicMemory plugin for Claude Code — persistent semantic memory across sessions.",
   "private": false,
   "license": "Apache-2.0",

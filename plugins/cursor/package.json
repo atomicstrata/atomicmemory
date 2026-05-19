@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/cursor-plugin",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "AtomicMemory integration for Cursor - MCP configuration and project rules for persistent semantic memory.",
   "private": true,
   "license": "Apache-2.0",

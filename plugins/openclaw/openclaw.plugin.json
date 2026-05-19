@@ -1,7 +1,7 @@
 {
   "id": "atomicmemory",
   "name": "AtomicMemory",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Persistent semantic memory for OpenClaw agents — cross-channel user memory and deterministic session snapshots via the AtomicMemory SDK's pluggable MemoryProvider model.",
   "kind": "memory",
   "skills": ["./skills/atomicmemory"],
