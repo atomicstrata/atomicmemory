@@ -28,7 +28,7 @@ importers:
   adapters/langchain:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../../packages/sdk
     devDependencies:
       '@langchain/core':
@@ -50,7 +50,7 @@ importers:
   adapters/langgraph:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../../packages/sdk
       '@langchain/langgraph':
         specifier: ^0.4.0
@@ -69,7 +69,7 @@ importers:
   adapters/mastra:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../../packages/sdk
     devDependencies:
       '@mastra/core':
@@ -91,7 +91,7 @@ importers:
   adapters/openai-agents:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../../packages/sdk
       '@openai/agents':
         specifier: ^0.8.5
@@ -113,7 +113,7 @@ importers:
   adapters/vercel-ai:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../../packages/sdk
     devDependencies:
       '@types/node':
@@ -129,7 +129,7 @@ importers:
   packages/cli:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../sdk
       commander:
         specifier: ^12.1.0
@@ -264,7 +264,7 @@ importers:
   packages/mcp-server:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.1
+        specifier: ^1.0.2
         version: link:../sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
@@ -337,7 +337,7 @@ importers:
   plugins/openclaw:
     dependencies:
       '@atomicmemory/mcp-server':
-        specifier: ^0.1.0
+        specifier: ^0.1.2
         version: link:../../packages/mcp-server
     devDependencies:
       '@types/node':
