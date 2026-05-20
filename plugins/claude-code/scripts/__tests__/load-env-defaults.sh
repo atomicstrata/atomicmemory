@@ -8,6 +8,7 @@
 #   - ATOMICMEMORY_CAPTURE_LEVEL defaults to "balanced"
 #   - ATOMICMEMORY_PROVIDER defaults to "atomicmemory"
 #   - ATOMICMEMORY_API_URL defaults to "http://127.0.0.1:3050"
+#   - ATOMICMEMORY_API_KEY defaults to "local-dev-key" only for the local URL
 #   - ATOMICMEMORY_SCOPE_USER is auto-derived from the OS user
 # A fresh install with no ATOMICMEMORY_* host env vars set MUST succeed
 # so PostCompact (and the rest of the lifecycle hooks) do not exit 1.
@@ -65,8 +66,8 @@ assert "AM_PROVIDER defaults to atomicmemory" "$cond"
 assert "AM_CAPTURE_LEVEL defaults to balanced (matches docs)" "$cond"
 [ "$AM_API_URL" = "http://127.0.0.1:3050" ] && cond=true || cond=false
 assert "AM_API_URL defaults to local core URL" "$cond"
-[ -z "$AM_API_KEY" ] && cond=true || cond=false
-assert "AM_API_KEY empty when unset (local mode)" "$cond"
+[ "$AM_API_KEY" = "local-dev-key" ] && cond=true || cond=false
+assert "AM_API_KEY defaults to local quickstart key" "$cond"
 [ -n "$AM_SCOPE_USER" ] && cond=true || cond=false
 assert "AM_SCOPE_USER auto-derives a non-empty value" "$cond"
 
@@ -85,6 +86,18 @@ assert "AM_API_URL honors ATOMICMEMORY_API_URL override" "$cond"
 assert "AM_API_KEY exposed from ATOMICMEMORY_API_KEY" "$cond"
 unset ATOMICMEMORY_API_URL
 unset ATOMICMEMORY_API_KEY
+
+printf '\nCase: remote URL does not receive local default API key\n'
+export ATOMICMEMORY_API_URL="https://memory.example.com"
+set +e
+am_load_env
+exit_code=$?
+set -e
+[ "$exit_code" -eq 0 ] && cond=true || cond=false
+assert "exit 0 with remote URL and no API key" "$cond"
+[ -z "$AM_API_KEY" ] && cond=true || cond=false
+assert "AM_API_KEY remains empty for remote URL" "$cond"
+unset ATOMICMEMORY_API_URL
 
 printf '\nCase: ATOMICMEMORY_API_URL trailing slash is stripped\n'
 export ATOMICMEMORY_API_URL="https://memory.example.com/"

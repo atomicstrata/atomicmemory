@@ -12,6 +12,7 @@ test('loadConfigFromEnv defaults URL, provider, and user scope', () => {
   } as NodeJS.ProcessEnv);
 
   assert.equal(config.apiUrl, 'http://127.0.0.1:3050');
+  assert.equal(config.apiKey, 'local-dev-key');
   assert.equal(config.provider, 'atomicmemory');
   assert.deepEqual(config.scope, { user: 'machine-user' });
 });
@@ -41,8 +42,18 @@ test('validateConfig accepts plugin config without URL, key, or scope', () => {
   const config = validateConfig({});
 
   assert.equal(config.apiUrl, 'http://127.0.0.1:3050');
+  assert.equal(config.apiKey, 'local-dev-key');
   assert.equal(config.provider, 'atomicmemory');
   assert.ok(config.scope?.user);
+});
+
+test('validateConfig does not default API key for remote AtomicMemory URL', () => {
+  const config = validateConfig({
+    apiUrl: 'https://memory.example.com',
+  });
+
+  assert.equal(config.apiUrl, 'https://memory.example.com');
+  assert.equal(config.apiKey, undefined);
 });
 
 test('validateConfig accepts explicit plugin api key', () => {

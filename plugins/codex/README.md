@@ -52,11 +52,24 @@ Same JSON but at `~/.agents/plugins/marketplace.json`, with `source.path` pointi
 
 If you don't want plugin-system installation, register the MCP server directly in your Codex MCP config using the contents of [`.codex-mcp.json`](./.codex-mcp.json). Skips the skill; you'll need to decide when to call memory tools yourself.
 
-The MCP config forwards the required environment variables with `env_vars`, so values come from the shell or Codex environment rather than being copied into the plugin file.
+The MCP config forwards optional environment variables with `env_vars`, so
+hosted overrides can come from the shell or Codex environment rather than being
+copied into the plugin file. With no overrides, the MCP server uses the local
+AtomicMemory core URL and local quickstart key.
 
 ## Configure
 
-Export scope and credentials in your shell:
+For local core, no provider connection variables are required. The MCP server
+defaults to:
+
+| Var | Local-mode default |
+|---|---|
+| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:3050` |
+| `ATOMICMEMORY_API_KEY` | `local-dev-key` |
+| `ATOMICMEMORY_PROVIDER` | `atomicmemory` |
+| `ATOMICMEMORY_SCOPE_USER` | derived from the host OS user |
+
+For hosted or team services, export scope and credentials in your shell:
 
 ```bash
 export ATOMICMEMORY_API_URL="https://memory.yourco.com"
@@ -69,7 +82,11 @@ export ATOMICMEMORY_SCOPE_USER="pip"
 # export ATOMICMEMORY_SCOPE_THREAD="<session-id>"
 ```
 
-At least one `ATOMICMEMORY_SCOPE_*` must be set — the server rejects scopeless requests. The MCP server itself is fetched from npm on first use via `npx -y --package=@atomicmemory/mcp-server@^0.1.2 atomicmemory-mcp`, so no local clone or build is required.
+Set `ATOMICMEMORY_SCOPE_USER` explicitly when multiple operators share a machine
+or when you need a stable cross-machine identity. The MCP server itself is
+fetched from npm on first use via
+`npx -y --package=@atomicmemory/mcp-server@^0.1.2 atomicmemory-mcp`, so no local
+clone or build is required.
 
 ### Default extraction mode: Codex login
 

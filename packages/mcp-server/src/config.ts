@@ -10,6 +10,7 @@ import { hostname, userInfo } from 'node:os';
 import { z } from 'zod';
 
 const DEFAULT_API_URL = 'http://127.0.0.1:3050';
+const DEFAULT_LOCAL_API_KEY = 'local-dev-key';
 const DEFAULT_PROVIDER = 'atomicmemory';
 
 const ScopeSchema = z
@@ -67,9 +68,11 @@ function parseScope(env: NodeJS.ProcessEnv): Scope | undefined {
 
 function normalizeConfig(input: unknown, env: NodeJS.ProcessEnv): ServerConfig {
   const parsed = ConfigSchema.parse(input);
+  const apiUrl = resolveApiUrl(parsed.apiUrl, parsed.provider);
   return {
     ...parsed,
-    apiUrl: resolveApiUrl(parsed.apiUrl, parsed.provider),
+    apiUrl,
+    apiKey: resolveApiKey(parsed.apiKey, apiUrl, parsed.provider),
     scope: normalizeScope(parsed.scope, env),
   };
 }
@@ -107,6 +110,21 @@ function resolveApiUrl(
   if (normalized) return normalized.replace(/\/+$/, '');
   if (provider === 'atomicmemory') return DEFAULT_API_URL;
   throw new Error('provider=mem0 requires an explicit apiUrl');
+}
+
+function resolveApiKey(
+  apiKey: string | undefined,
+  apiUrl: string,
+  provider: ServerConfig['provider'],
+): string | undefined {
+  const normalized = cleanOptional(apiKey);
+  if (normalized) return normalized;
+  if (provider === 'atomicmemory' && isDefaultLocalUrl(apiUrl)) return DEFAULT_LOCAL_API_KEY;
+  return undefined;
+}
+
+function isDefaultLocalUrl(apiUrl: string): boolean {
+  return apiUrl === DEFAULT_API_URL;
 }
 
 function readOsUsername(): string | undefined {

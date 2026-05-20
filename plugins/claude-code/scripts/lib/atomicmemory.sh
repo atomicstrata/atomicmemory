@@ -51,6 +51,10 @@ am_load_env() {
 
   AM_API_URL="${AM_API_URL%/}"
 
+  if [ -z "$AM_API_KEY" ] && [ "$AM_PROVIDER" = "atomicmemory" ] && [ "$AM_API_URL" = "http://127.0.0.1:3050" ]; then
+    AM_API_KEY="local-dev-key"
+  fi
+
   if [ -z "$AM_API_URL" ] || [ -z "$AM_SCOPE_USER" ] || [ -z "$AM_PROVIDER" ] || [ -z "$AM_CAPTURE_LEVEL" ]; then
     am_debug "missing local scope user, ATOMICMEMORY_PROVIDER, or ATOMICMEMORY_CAPTURE_LEVEL"
     return 1
