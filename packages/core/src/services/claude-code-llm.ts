@@ -17,6 +17,14 @@ import {
   type WriteCostEventConfig,
 } from './cost-telemetry.js';
 
+const CLAUDE_CODE_SETUP_GUIDANCE = [
+  'Claude Code LLM failed to run.',
+  'Install Claude Code, then authenticate with your Claude account.',
+  'Run `claude auth login` or start `claude` and complete the login flow.',
+  'Verify the login with `claude auth status --json`, `claude doctor`, or `claude --version`.',
+  'For hosted or team deployments, use `LLM_PROVIDER=anthropic` with `ANTHROPIC_API_KEY` instead.',
+].join(' ');
+
 export interface ClaudeCodeLLMConfig extends WriteCostEventConfig {
   llmProvider: 'claude-code';
   llmModel: string;
@@ -33,7 +41,7 @@ export class ClaudeCodeLLM implements LLMProvider {
     );
 
     if (result.subtype !== 'success') {
-      throw new Error(`Claude Code LLM failed: ${result.errors.join('; ')}`);
+      throw new Error(`${CLAUDE_CODE_SETUP_GUIDANCE} SDK errors: ${result.errors.join('; ')}`);
     }
 
     recordClaudeCodeCost(this.config, result, started);
@@ -86,10 +94,7 @@ async function runClaudeCodeQuery(prompt: string, options: Options): Promise<SDK
       if (message.type === 'result') result = message;
     }
   } catch (error) {
-    throw new Error(
-      'Claude Code LLM failed to run. Confirm `claude` is installed and authenticated: ' +
-      errorMessage(error),
-    );
+    throw new Error(`${CLAUDE_CODE_SETUP_GUIDANCE} Cause: ${errorMessage(error)}`);
   }
   if (!result) throw new Error('Claude Code LLM ended without a result message');
   return result;

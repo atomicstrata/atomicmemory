@@ -90,6 +90,17 @@ describe('ClaudeCodeLLM', () => {
     });
 
     await expect(provider().chat([{ role: 'user', content: 'hello' }]))
-      .rejects.toThrow('Confirm `claude` is installed and authenticated');
+      .rejects.toThrow('Run `claude auth login`');
+  });
+
+  it('surfaces non-success result messages with setup guidance', async () => {
+    mocks.query.mockReturnValueOnce(messages([{
+      type: 'result',
+      subtype: 'error',
+      errors: ['auth required'],
+    }]));
+
+    await expect(provider().chat([{ role: 'user', content: 'hello' }]))
+      .rejects.toThrow('LLM_PROVIDER=anthropic');
   });
 });
