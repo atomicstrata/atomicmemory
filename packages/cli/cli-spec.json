@@ -71,7 +71,7 @@
         "--trust-surface local|self-hosted|authenticated-wrapper"
       ],
       "examples": [
-        "atomicmemory init --profile local --api-url http://127.0.0.1:3050 --user $USER",
+        "atomicmemory init --profile local --api-url http://127.0.0.1:17350 --user $USER",
         "echo \"$ATOMICMEMORY_API_KEY\" | atomicmemory init --api-key-stdin --save-api-key --profile cloud"
       ]
     },

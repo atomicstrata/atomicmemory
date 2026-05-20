@@ -70,7 +70,7 @@ import {
 import { verifyAnswer } from '../services/answer-verifier.js';
 
 const ALLOWED_ORIGINS = new Set(
-  (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3050,http://localhost:3081')
+  (process.env.ALLOWED_ORIGINS ?? 'http://localhost:17350,http://localhost:3081')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),

@@ -67,7 +67,7 @@ export interface ProviderStatus {
  * @example
  * ```ts
  * const memory = new MemoryClient({
- *   providers: { atomicmemory: { apiUrl: 'http://localhost:3050' } },
+ *   providers: { atomicmemory: { apiUrl: 'http://localhost:17350' } },
  * });
  * await memory.initialize();
  * await memory.ingest({ mode: 'text', content: 'hi', scope: { user: 'u1' } });

@@ -38,7 +38,7 @@ const FIXTURES_DIR = resolve(
   'src/memory/atomicmemory-provider/__tests__/fixtures',
 );
 
-const DEFAULT_CORE_URL = 'http://localhost:3050';
+const DEFAULT_CORE_URL = 'http://localhost:17350';
 const HEALTH_TIMEOUT_MS = 30_000;
 const HEALTH_POLL_INTERVAL_MS = 500;
 

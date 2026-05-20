@@ -47,7 +47,7 @@ test('persisted profile keeps its saved trust surface', () => {
       profiles: {
         default: {
           provider: 'atomicmemory',
-          apiUrl: 'http://127.0.0.1:3050',
+          apiUrl: 'http://127.0.0.1:17350',
           trustSurface: 'local',
         },
       },

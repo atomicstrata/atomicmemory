@@ -7,7 +7,7 @@
 # https://docs.atomicstrata.ai/integrations/coding-agents/claude-code/local:
 #   - ATOMICMEMORY_CAPTURE_LEVEL defaults to "balanced"
 #   - ATOMICMEMORY_PROVIDER defaults to "atomicmemory"
-#   - ATOMICMEMORY_API_URL defaults to "http://127.0.0.1:3050"
+#   - ATOMICMEMORY_API_URL defaults to "http://127.0.0.1:17350"
 #   - ATOMICMEMORY_API_KEY defaults to "local-dev-key" only for the local URL
 #   - ATOMICMEMORY_SCOPE_USER is auto-derived from the OS user
 # A fresh install with no ATOMICMEMORY_* host env vars set MUST succeed
@@ -64,7 +64,7 @@ assert "exit 0 on fresh-install env" "$cond"
 assert "AM_PROVIDER defaults to atomicmemory" "$cond"
 [ "$AM_CAPTURE_LEVEL" = "balanced" ] && cond=true || cond=false
 assert "AM_CAPTURE_LEVEL defaults to balanced (matches docs)" "$cond"
-[ "$AM_API_URL" = "http://127.0.0.1:3050" ] && cond=true || cond=false
+[ "$AM_API_URL" = "http://127.0.0.1:17350" ] && cond=true || cond=false
 assert "AM_API_URL defaults to local core URL" "$cond"
 [ "$AM_API_KEY" = "local-dev-key" ] && cond=true || cond=false
 assert "AM_API_KEY defaults to local quickstart key" "$cond"

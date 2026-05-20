@@ -1132,7 +1132,7 @@ export const config: RuntimeConfig = {
   coreAdminApiKey: optionalEnv('CORE_ADMIN_API_KEY'),
   coreTestScopeAllowPattern: parseRegexEnv('CORE_TEST_SCOPE_ALLOW_PATTERN'),
   storageKeyHmacSecret: parseStorageKeyHmacSecret(requireEnv('STORAGE_KEY_HMAC_SECRET')),
-  port: parseInt(process.env.PORT ?? '3050', 10),
+  port: parseInt(process.env.PORT ?? '17350', 10),
   retrievalProfile,
   retrievalProfileSettings,
   maxSearchResults: retrievalProfileSettings.maxSearchResults,

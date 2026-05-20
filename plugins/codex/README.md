@@ -64,7 +64,7 @@ defaults to:
 
 | Var | Local-mode default |
 |---|---|
-| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:3050` |
+| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:17350` |
 | `ATOMICMEMORY_API_KEY` | `local-dev-key` |
 | `ATOMICMEMORY_PROVIDER` | `atomicmemory` |
 | `ATOMICMEMORY_SCOPE_USER` | derived from the host OS user |

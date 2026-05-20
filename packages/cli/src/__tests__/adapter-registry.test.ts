@@ -19,7 +19,7 @@ import type { MemoryClient } from '@atomicmemory/sdk';
 
 const baseProfile: CliProfileShape = {
   provider: 'atomicmemory',
-  apiUrl: 'http://localhost:3050',
+  apiUrl: 'http://localhost:17350',
   trustSurface: 'local',
 };
 

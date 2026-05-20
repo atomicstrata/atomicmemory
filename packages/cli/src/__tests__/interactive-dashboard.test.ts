@@ -98,7 +98,7 @@ test('bare dashboard hydrates saved profile and scope for cached commands', () =
   const scope = resolveRuntimeScope(invocation, profile, {});
 
   assert.equal(profile?.provider, 'atomicmemory');
-  assert.equal(profile?.apiUrl, 'http://localhost:3050');
+  assert.equal(profile?.apiUrl, 'http://localhost:17350');
   assert.deepEqual(scope, { user: 'user-from-profile' });
 });
 
@@ -116,7 +116,7 @@ test('mergeInteractiveFlags inherits only profile, provider, scope, and config f
   const merged = mergeInteractiveFlags(
     {
       agent: true,
-      'api-url': 'http://localhost:3050',
+      'api-url': 'http://localhost:17350',
       json: true,
       namespace: 'testing',
       output: 'quiet',
@@ -128,7 +128,7 @@ test('mergeInteractiveFlags inherits only profile, provider, scope, and config f
   );
 
   assert.deepEqual(merged, {
-    'api-url': 'http://localhost:3050',
+    'api-url': 'http://localhost:17350',
     interactive: false,
     limit: 5,
     namespace: 'testing',
@@ -320,7 +320,7 @@ test('formatDashboardCommandResult styles config profiles without leaking api ke
         },
         local: {
           provider: 'atomicmemory',
-          apiUrl: 'http://localhost:3050',
+          apiUrl: 'http://localhost:17350',
           trustSurface: 'local',
           scope: {
             user: 'user-1',
@@ -335,7 +335,7 @@ test('formatDashboardCommandResult styles config profiles without leaking api ke
   assert.match(rendered, /profile local \(active\)/);
   assert.match(rendered, /provider\s+atomicmemory/);
   assert.match(rendered, /trust surface\s+local/);
-  assert.match(rendered, /api url\s+http:\/\/localhost:3050/);
+  assert.match(rendered, /api url\s+http:\/\/localhost:17350/);
   assert.match(rendered, /scope\s+user=user-1 namespace=testing/);
   assert.match(rendered, /api key\s+configured \(redacted\)/);
   assert.match(rendered, /profile cloud/);
@@ -418,7 +418,7 @@ function sessionConfig(user: string): RuntimeState['config'] {
     profiles: {
       default: {
         provider: 'atomicmemory',
-        apiUrl: 'http://localhost:3050',
+        apiUrl: 'http://localhost:17350',
         trustSurface: 'local',
         scope: { user },
       },

@@ -2,7 +2,7 @@ import { MemoryClient } from '@atomicmemory/sdk';
 import { augmentInputWithMemory, runWithMemory } from '../dist/index.js';
 import { userInfo } from 'node:os';
 
-const apiUrl = 'http://127.0.0.1:3050';
+const apiUrl = 'http://127.0.0.1:17350';
 const provider = process.env.ATOMICMEMORY_PROVIDER || 'atomicmemory';
 
 if (provider !== 'atomicmemory' && provider !== 'mem0') {

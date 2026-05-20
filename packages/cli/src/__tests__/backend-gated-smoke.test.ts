@@ -5,7 +5,7 @@
  * network access; opt in with:
  *
  *   ATOMICMEMORY_TEST_BACKEND=1 \
- *     ATOMICMEMORY_TEST_API_URL=http://127.0.0.1:3050 \
+ *     ATOMICMEMORY_TEST_API_URL=http://127.0.0.1:17350 \
  *     pnpm test:backend
  *
  * These tests verify semantic outcomes, not just exit codes: persisted
@@ -27,7 +27,7 @@ const binPath = resolve(cliRoot, 'dist', 'bin.js');
 
 const skipIfDisabled =
   process.env.ATOMICMEMORY_TEST_BACKEND !== '1' || !existsSync(binPath);
-const apiUrl = process.env.ATOMICMEMORY_TEST_API_URL ?? 'http://127.0.0.1:3050';
+const apiUrl = process.env.ATOMICMEMORY_TEST_API_URL ?? 'http://127.0.0.1:17350';
 
 interface RunResult {
   stdout: string;

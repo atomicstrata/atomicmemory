@@ -20,10 +20,10 @@ services:
     image: ghcr.io/atomicstrata/atomicmemory-core:latest
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-3050}:3050"
+      - "${APP_PORT:-17350}:17350"
     environment:
       DATABASE_URL: postgresql://atomicmemory:atomicmemory@postgres:5432/atomicmemory
-      PORT: "3050"
+      PORT: "17350"
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     env_file:
       - ${ENV_FILE:-.env}
@@ -33,7 +33,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3050/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:17350/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 3

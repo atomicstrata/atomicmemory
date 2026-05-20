@@ -45,8 +45,8 @@ function extractComposeEnvVar(composeContent: string, varName: string): string |
 /**
  * Build a regex that matches a docker-compose `ports:` list entry binding
  * an external host port to the given internal container port. Accepts both
- * a literal external port (`"3050:3050"`) and a shell-variable substitution
- * (`"${APP_PORT:-3050}:3050"`). The substitution form is the side-by-side-CI
+ * a literal external port (`"17350:17350"`) and a shell-variable substitution
+ * (`"${APP_PORT:-17350}:17350"`). The substitution form is the side-by-side-CI
  * shape introduced in PR #6.
  */
 function composePortBindingRegex(internalPort: number): RegExp {
@@ -115,7 +115,7 @@ describe('deployment configuration', () => {
 
     it('app port is exposed', () => {
       const compose = readComposeRaw();
-      expect(compose).toMatch(composePortBindingRegex(3050));
+      expect(compose).toMatch(composePortBindingRegex(17350));
     });
   });
 

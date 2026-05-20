@@ -144,7 +144,7 @@ import { MemoryClient } from '@atomicmemory/sdk';
 
 const memory = new MemoryClient({
   providers: {
-    atomicmemory: { apiUrl: 'http://localhost:3050' },
+    atomicmemory: { apiUrl: 'http://localhost:17350' },
   },
 });
 

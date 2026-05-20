@@ -14,7 +14,7 @@
     "properties": {
       "apiUrl": {
         "type": "string",
-        "description": "Optional provider base URL. Defaults to the local AtomicMemory core. The shipped skill permissions allow http://127.0.0.1:3050 and http://localhost:3050."
+        "description": "Optional provider base URL. Defaults to the local AtomicMemory core. The shipped skill permissions allow http://127.0.0.1:17350 and http://localhost:17350."
       },
       "apiKey": {
         "type": "string",

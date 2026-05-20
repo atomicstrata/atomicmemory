@@ -22,7 +22,7 @@ The MCP server and the lifecycle hook scripts read their config from the shell e
 
 | Var | Local-mode default |
 |---|---|
-| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:3050` |
+| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:17350` |
 | `ATOMICMEMORY_API_KEY` | `local-dev-key` for the local URL |
 | `ATOMICMEMORY_PROVIDER` | `atomicmemory` |
 | `ATOMICMEMORY_SCOPE_USER` | derived from the host OS user |

@@ -45,7 +45,7 @@ describe('StorageClient — transport-level fetch rejections wrap to network_err
   });
 
   it('preserves the typed error class so callers can branch on `StorageClientError`', async () => {
-    const client = makeRejectingClient(new Error('ECONNREFUSED 127.0.0.1:3050'));
+    const client = makeRejectingClient(new Error('ECONNREFUSED 127.0.0.1:17350'));
     try {
       await client.head({ artifactId: 'a-1' });
       throw new Error('expected throw');

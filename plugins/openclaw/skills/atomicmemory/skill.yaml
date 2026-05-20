@@ -12,8 +12,8 @@ description: |
 
 permissions:
   network:
-    - http://127.0.0.1:3050
-    - http://localhost:3050
+    - http://127.0.0.1:17350
+    - http://localhost:17350
   credentials: []
   filesystem: []
   shell: []

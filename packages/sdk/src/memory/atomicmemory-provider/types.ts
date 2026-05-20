@@ -5,7 +5,7 @@
 import type { MetaFactFilterConfig } from '../meta-fact-filter';
 
 export interface AtomicMemoryProviderConfig {
-  /** Base URL of the atomicmemory-core instance, e.g. `http://localhost:3050`. */
+  /** Base URL of the atomicmemory-core instance, e.g. `http://localhost:17350`. */
   apiUrl: string;
   /** Optional bearer token forwarded as `Authorization: Bearer <apiKey>`. */
   apiKey?: string;

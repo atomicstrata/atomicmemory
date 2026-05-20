@@ -173,7 +173,7 @@ function listDockerPublishedPorts() {
 function bringUp(appPort, pgPort) {
   log(`docker compose up${SKIP_BUILD ? '' : ' --build'} (this may take a few minutes on first run)…`);
   // Layer order matters: core base → core smoke (transformers
-  // embedding, dummy OpenAI key, port 3050) → CLI overlay (routes
+  // embedding, dummy OpenAI key, port 17350) → CLI overlay (routes
   // LLM at the mock-openai-extraction service so /v1/memories/ingest
   // actually returns 200 instead of 401).
   const args = [

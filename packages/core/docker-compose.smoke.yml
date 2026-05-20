@@ -10,4 +10,4 @@ services:
       - EMBEDDING_DIMENSIONS=384
       - LLM_PROVIDER=openai
       - OPENAI_API_KEY=sk-smoke-test-dummy
-      - PORT=3050
+      - PORT=17350

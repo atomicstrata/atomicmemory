@@ -26,7 +26,7 @@ provider config at capture time. Not asserted by tests.
 
 1. In `packages/core`, ensure `.env` has a
    real `OPENAI_API_KEY` (or `LLM_PROVIDER=ollama` with a reachable
-   ollama server). Bring core up on the standard port 3050:
+   ollama server). Bring core up on the standard port 17350:
 
        docker compose up -d --build
 

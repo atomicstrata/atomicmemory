@@ -56,7 +56,7 @@ Postgres/pgvector database and persists it to the mounted host directory:
 export OPENAI_API_KEY=sk-...
 
 docker run --rm -it --pull always \
-  -p 127.0.0.1:3050:3050 \
+  -p 127.0.0.1:17350:17350 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -v $HOME/.atomicstrata/atomicmemory-docker:/var/lib/atomicmemory/postgres \
   ghcr.io/atomicstrata/atomicmemory-core:latest
@@ -78,7 +78,7 @@ export CORE_API_KEY=$(openssl rand -hex 32)
 export STORAGE_KEY_HMAC_SECRET=$(openssl rand -hex 32)
 
 docker run --rm -it --pull always \
-  -p 3050:3050 \
+  -p 17350:17350 \
   -e DATABASE_URL=postgresql://user:pass@postgres.example.com:5432/atomicmemory \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -e CORE_API_KEY=$CORE_API_KEY \
@@ -123,7 +123,7 @@ npm run migrate
 npm run dev
 ```
 
-Health check: `curl http://localhost:3050/v1/memories/health`
+Health check: `curl http://localhost:17350/v1/memories/health`
 
 ### Migrations
 
@@ -237,7 +237,7 @@ overlays the startup `RuntimeConfig` for that single request. Useful for
 A/B tests, experiments, or dial-turning without restarting the server.
 
 ```bash
-curl -X POST http://localhost:3050/v1/memories/search \
+curl -X POST http://localhost:17350/v1/memories/search \
   -H 'Content-Type: application/json' \
   -d '{
     "user_id": "alice",
@@ -268,7 +268,7 @@ release.
 |----------|-------------|
 | `DATABASE_URL` | Postgres connection string (must have pgvector extension) |
 | `OPENAI_API_KEY` | OpenAI API key (when using `openai` embedding/LLM provider) |
-| `PORT` | Server port (default: 3050) |
+| `PORT` | Server port (default: 17350) |
 
 ### Embedding Provider
 

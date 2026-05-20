@@ -19,7 +19,7 @@
 #
 # Required env (script exits cleanly if not set):
 #   ATOMICMEMORY_CORE_URL  — base URL of a running core, e.g.
-#                            http://localhost:3050
+#                            http://localhost:17350
 
 set -euo pipefail
 

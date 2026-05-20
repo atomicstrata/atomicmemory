@@ -82,7 +82,7 @@ function printNextSteps(target) {
   console.log(`Installed AtomicMemory Hermes provider to ${target}`);
   console.log('');
   console.log('Next:');
-  console.log('  export ATOMICMEMORY_API_URL="http://127.0.0.1:3050"');
+  console.log('  export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"');
   console.log('  export ATOMICMEMORY_API_KEY="local-dev-key"');
   console.log('  hermes memory setup');
   console.log('  hermes memory status');

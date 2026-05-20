@@ -117,7 +117,7 @@ pnpm --filter @atomicmemory/openai-agents build
 Run the backend smoke test without making an OpenAI API call:
 
 ```bash
-export ATOMICMEMORY_API_URL="http://localhost:3050"
+export ATOMICMEMORY_API_URL="http://localhost:17350"
 export ATOMICMEMORY_API_KEY="..."
 export ATOMICMEMORY_PROVIDER="atomicmemory"
 export ATOMICMEMORY_SCOPE_USER="$USER"

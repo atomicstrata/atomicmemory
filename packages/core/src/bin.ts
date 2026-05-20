@@ -15,7 +15,7 @@ const LOCAL_PROFILE_DEFAULTS = {
   EMBEDDING_MODEL: 'Xenova/all-MiniLM-L6-v2',
   EMBEDDING_PROVIDER: 'transformers',
   LLM_PROVIDER: 'claude-code',
-  PORT: '3050',
+  PORT: '17350',
   RAW_STORAGE_DEPLOYMENT_ENV: 'local',
   RAW_STORAGE_MODE: 'pointer_only',
   STORAGE_KEY_HMAC_SECRET:

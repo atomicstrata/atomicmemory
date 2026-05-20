@@ -78,7 +78,7 @@ function registerWithConfig(testPlugin: typeof plugin) {
   const tools: Array<Parameters<Parameters<typeof testPlugin.register>[0]['registerTool']>[0]> = [];
   testPlugin.register({
     pluginConfig: {
-      apiUrl: 'http://127.0.0.1:3050///',
+      apiUrl: 'http://127.0.0.1:17350///',
       apiKey: ' local-dev-key ',
       provider: 'atomicmemory',
       scope: { user: 'pip', namespace: 'repo' },
@@ -92,7 +92,7 @@ function registerWithConfig(testPlugin: typeof plugin) {
 
 function normalizedConfig() {
   return {
-    apiUrl: 'http://127.0.0.1:3050',
+    apiUrl: 'http://127.0.0.1:17350',
     apiKey: 'local-dev-key',
     provider: 'atomicmemory',
     scope: { user: 'pip', namespace: 'repo' },

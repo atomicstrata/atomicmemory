@@ -59,7 +59,7 @@ the rest of the integrations repo.
 
 ```bash
 atomicmemory
-atomicmemory init --api-url http://127.0.0.1:3050 --user "$USER"
+atomicmemory init --api-url http://127.0.0.1:17350 --user "$USER"
 atomicmemory doctor
 atomicmemory status
 atomicmemory add "The project uses pnpm workspaces."
@@ -78,7 +78,7 @@ Every command accepts the same provider and scope overrides:
 ```bash
 atomicmemory search "release policy" \
   --provider atomicmemory \
-  --api-url http://127.0.0.1:3050 \
+  --api-url http://127.0.0.1:17350 \
   --user "$USER" \
   --namespace atomicmemory
 ```

@@ -10,7 +10,7 @@ describe('MemoryClient', () => {
 
   it('rejects operations before initialize()', async () => {
     const client = new MemoryClient({
-      providers: { atomicmemory: { apiUrl: 'http://localhost:3050' } },
+      providers: { atomicmemory: { apiUrl: 'http://localhost:17350' } },
     });
     await expect(
       client.ingest({ mode: 'text', content: 'x', scope: { user: 'u' } })
@@ -19,14 +19,14 @@ describe('MemoryClient', () => {
 
   it('capabilities() throws before initialize()', () => {
     const client = new MemoryClient({
-      providers: { atomicmemory: { apiUrl: 'http://localhost:3050' } },
+      providers: { atomicmemory: { apiUrl: 'http://localhost:17350' } },
     });
     expect(() => client.capabilities()).toThrow(/not initialized/i);
   });
 
   it('getExtension() throws before initialize()', () => {
     const client = new MemoryClient({
-      providers: { atomicmemory: { apiUrl: 'http://localhost:3050' } },
+      providers: { atomicmemory: { apiUrl: 'http://localhost:17350' } },
     });
     expect(() => client.getExtension('any.extension')).toThrow(
       /not initialized/i
@@ -36,7 +36,7 @@ describe('MemoryClient', () => {
   it('getProviderStatus reports configured but uninitialized providers', () => {
     const client = new MemoryClient({
       providers: {
-        atomicmemory: { apiUrl: 'http://localhost:3050' },
+        atomicmemory: { apiUrl: 'http://localhost:17350' },
         mem0: { apiUrl: 'http://localhost:8888' },
       },
     });
@@ -49,7 +49,7 @@ describe('MemoryClient', () => {
 
   it('atomicmemory getter returns undefined before initialize()', () => {
     const client = new MemoryClient({
-      providers: { atomicmemory: { apiUrl: 'http://localhost:3050' } },
+      providers: { atomicmemory: { apiUrl: 'http://localhost:17350' } },
     });
     expect(client.atomicmemory).toBeUndefined();
   });

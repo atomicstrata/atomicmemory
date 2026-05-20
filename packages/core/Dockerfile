@@ -73,7 +73,7 @@ RUN useradd --create-home appuser \
 
 ENV PATH="/usr/lib/postgresql/17/bin:${PATH}"
 ENV NODE_ENV=production
-ENV PORT=3050
+ENV PORT=17350
 ENV DATABASE_URL=embedded
 ENV EMBEDDING_DIMENSIONS=1536
 ENV RAW_STORAGE_DEPLOYMENT_ENV=local
@@ -83,7 +83,7 @@ ENV EMBEDDED_POSTGRES_PORT=5432
 ENV EMBEDDED_POSTGRES_USER=atomicmemory
 ENV EMBEDDED_POSTGRES_DB=atomicmemory
 
-EXPOSE 3050
+EXPOSE 17350
 
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["./node_modules/.bin/tsx", "src/server.ts"]

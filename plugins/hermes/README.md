@@ -36,7 +36,7 @@ clone is required.
 
 ```bash
 npx -y @atomicmemory/hermes-plugin install
-export ATOMICMEMORY_API_URL="http://127.0.0.1:3050"
+export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"
 export ATOMICMEMORY_API_KEY="local-dev-key"
 ```
 

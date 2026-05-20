@@ -250,7 +250,7 @@ function defaultScopeUser(): string {
 function resolveApiUrl(apiUrl: string | undefined, provider: 'atomicmemory' | 'mem0'): string {
   const normalized = cleanOptional(apiUrl);
   if (normalized) return normalized.replace(/\/+$/, '');
-  if (provider === 'atomicmemory') return 'http://127.0.0.1:3050';
+  if (provider === 'atomicmemory') return 'http://127.0.0.1:17350';
   throw new Error('AtomicMemory OpenClaw plugin requires config.apiUrl when provider=mem0');
 }
 

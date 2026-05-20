@@ -36,7 +36,7 @@ The binary loads config from environment variables:
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ATOMICMEMORY_API_URL` | no** | Provider base URL. Defaults to the local AtomicMemory core (`http://127.0.0.1:3050`) when `ATOMICMEMORY_PROVIDER=atomicmemory`; required for `mem0`. |
+| `ATOMICMEMORY_API_URL` | no** | Provider base URL. Defaults to the local AtomicMemory core (`http://127.0.0.1:17350`) when `ATOMICMEMORY_PROVIDER=atomicmemory`; required for `mem0`. |
 | `ATOMICMEMORY_API_KEY` | no | Bearer credential forwarded to providers that require HTTP authorization. Defaults to `local-dev-key` only for the local AtomicMemory core URL. |
 | `ATOMICMEMORY_PROVIDER` | no | Provider name — one of `atomicmemory` or `mem0`. Defaults to `atomicmemory`. |
 | `ATOMICMEMORY_SCOPE_USER` | no | Default `user` scope. Defaults to the local machine user when omitted. |

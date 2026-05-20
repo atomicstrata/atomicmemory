@@ -41,7 +41,7 @@ am_load_env() {
   }
 
   AM_PROVIDER="${ATOMICMEMORY_PROVIDER:-atomicmemory}"
-  AM_API_URL="${ATOMICMEMORY_API_URL:-http://127.0.0.1:3050}"
+  AM_API_URL="${ATOMICMEMORY_API_URL:-http://127.0.0.1:17350}"
   AM_API_KEY="${ATOMICMEMORY_API_KEY:-}"
   AM_SCOPE_USER="${ATOMICMEMORY_SCOPE_USER:-$(am_default_scope_user)}"
   AM_SCOPE_AGENT="${ATOMICMEMORY_SCOPE_AGENT:-}"
@@ -51,7 +51,7 @@ am_load_env() {
 
   AM_API_URL="${AM_API_URL%/}"
 
-  if [ -z "$AM_API_KEY" ] && [ "$AM_PROVIDER" = "atomicmemory" ] && [ "$AM_API_URL" = "http://127.0.0.1:3050" ]; then
+  if [ -z "$AM_API_KEY" ] && [ "$AM_PROVIDER" = "atomicmemory" ] && [ "$AM_API_URL" = "http://127.0.0.1:17350" ]; then
     AM_API_KEY="local-dev-key"
   fi
 

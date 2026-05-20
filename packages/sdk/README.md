@@ -47,12 +47,12 @@ Prerequisite: start `atomicmemory-core` first. The full SDK walkthrough is in th
 import { AtomicMemoryClient } from '@atomicmemory/sdk';
 
 const client = new AtomicMemoryClient({
-  apiUrl: 'http://localhost:3050',
+  apiUrl: 'http://localhost:17350',
   apiKey: process.env.ATOMICMEMORY_API_KEY!,
   userId: 'demo-user',
   memory: {
     providers: {
-      atomicmemory: { apiUrl: 'http://localhost:3050' },
+      atomicmemory: { apiUrl: 'http://localhost:17350' },
     },
   },
 });
@@ -90,7 +90,7 @@ namespaced `AtomicMemoryClient.memory` surface.
 const memory = new MemoryClient({
   providers: {
     atomicmemory: {
-      apiUrl: 'http://localhost:3050',
+      apiUrl: 'http://localhost:17350',
       apiKey: process.env.ATOMICMEMORY_API_KEY,
       timeout: 30_000,
     },

@@ -9,7 +9,7 @@
 import { hostname, userInfo } from 'node:os';
 import { z } from 'zod';
 
-const DEFAULT_API_URL = 'http://127.0.0.1:3050';
+const DEFAULT_API_URL = 'http://127.0.0.1:17350';
 const DEFAULT_LOCAL_API_KEY = 'local-dev-key';
 const DEFAULT_PROVIDER = 'atomicmemory';
 

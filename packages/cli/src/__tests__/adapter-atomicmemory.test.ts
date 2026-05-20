@@ -35,7 +35,7 @@ import { CliError } from '../types.js';
 
 const profile: CliProfileShape = {
   provider: 'atomicmemory',
-  apiUrl: 'http://localhost:3050',
+  apiUrl: 'http://localhost:17350',
   trustSurface: 'local',
   apiKey: 'sk-test',
 };

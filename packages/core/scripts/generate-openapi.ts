@@ -50,7 +50,7 @@ function generate(): void {
       license: { name: 'Apache-2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' },
     },
     servers: [
-      { url: 'http://localhost:3050', description: 'Local development server' },
+      { url: 'http://localhost:17350', description: 'Local development server' },
     ],
     // Document-level default: every `/v1/*` route requires the
     // `bearerAuth` scheme registered in `openapi.ts`. Individual
