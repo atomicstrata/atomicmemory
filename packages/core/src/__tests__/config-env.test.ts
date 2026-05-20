@@ -89,6 +89,19 @@ describe('config env loading', () => {
     expect(config.llmModel).toBe('sonnet');
   });
 
+  it('accepts codex LLM provider without an OpenAI API key', async () => {
+    process.env.LLM_PROVIDER = 'codex';
+    process.env.EMBEDDING_PROVIDER = 'transformers';
+    delete process.env.LLM_MODEL;
+    delete process.env.OPENAI_API_KEY;
+    vi.resetModules();
+
+    const { config } = await import('../config.js');
+
+    expect(config.llmProvider).toBe('codex');
+    expect(config.llmModel).toBe('');
+  });
+
   it('loads optional admin cleanup endpoint config', async () => {
     process.env.CORE_ADMIN_API_KEY = 'test-admin-key';
     process.env.CORE_TEST_SCOPE_ALLOW_PATTERN = '^(smoke-|docker-).+';

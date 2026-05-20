@@ -71,6 +71,24 @@ export ATOMICMEMORY_SCOPE_USER="pip"
 
 At least one `ATOMICMEMORY_SCOPE_*` must be set — the server rejects scopeless requests. The MCP server itself is fetched from npm on first use via `npx -y --package=@atomicmemory/mcp-server@^0.1.2 atomicmemory-mcp`, so no local clone or build is required.
 
+### Optional local core extraction through Codex
+
+If you run AtomicMemory core on the same machine and want extraction to use the
+same logged-in Codex account instead of a separate OpenAI API key, configure the
+core process with:
+
+```bash
+codex login
+export LLM_PROVIDER=codex
+export EMBEDDING_PROVIDER=transformers
+```
+
+This configures AtomicMemory core, not the MCP plugin. The plugin still uses
+`ATOMICMEMORY_API_URL`, `ATOMICMEMORY_API_KEY`, and scope variables to connect
+to core. `LLM_PROVIDER=codex` is intended for personal local development; it
+consumes the logged-in Codex account's limits and is not recommended for hosted
+or team deployments.
+
 ## Memory behavior
 
 By default, capture is tool-driven by the installed skill:

@@ -70,6 +70,13 @@ describe('createLLMProvider', () => {
     expect(typeof provider.chat).toBe('function');
   });
 
+  it('creates Codex CLI provider', () => {
+    initLlm({ ...baseConfig, llmProvider: 'codex', llmModel: '' });
+    const provider = createLLMProvider();
+    expect(provider).toBeDefined();
+    expect(typeof provider.chat).toBe('function');
+  });
+
   it('throws for unknown provider', () => {
     initLlm({ ...baseConfig, llmProvider: 'unknown-provider' as never });
     expect(() => createLLMProvider()).toThrow('Unknown LLM provider');

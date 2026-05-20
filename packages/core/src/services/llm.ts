@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { Agent as UndiciAgent } from 'undici';
 import { retryOnRateLimit } from './api-retry.js';
+import { CodexCliLLM } from './codex-cli-llm.js';
 import {
   estimateCostUsd,
   getCostStage,
@@ -389,6 +390,14 @@ export function createLLMProvider(): LLMProvider {
       );
     case 'claude-code':
       return new ClaudeCodeLLM({
+        llmProvider: config.llmProvider,
+        llmModel: config.llmModel,
+        costLoggingEnabled: config.costLoggingEnabled,
+        costRunId: config.costRunId,
+        costLogDir: config.costLogDir,
+      });
+    case 'codex':
+      return new CodexCliLLM({
         llmProvider: config.llmProvider,
         llmModel: config.llmModel,
         costLoggingEnabled: config.costLoggingEnabled,

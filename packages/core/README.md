@@ -297,13 +297,14 @@ Set `LLM_PROVIDER` to choose the extraction backend:
 | `anthropic` | Anthropic Messages API |
 | `google-genai` | Google Gemini OpenAI-compatible endpoint |
 | `claude-code` | Local Claude Code Agent SDK session for personal development |
+| `codex` | Local Codex CLI account session for personal development |
 
-For personal local use, `LLM_PROVIDER=claude-code` uses the logged-in
-`claude` CLI session instead of requiring `ANTHROPIC_API_KEY`. It still consumes
-the user's Claude Code / Claude subscription limits and is not intended for
-hosted or team deployments. Pair it with a non-OpenAI embedding provider, such
-as `EMBEDDING_PROVIDER=transformers`, if you want to run without an OpenAI API
-key as well.
+For personal local use, `LLM_PROVIDER=claude-code` and `LLM_PROVIDER=codex`
+use the logged-in `claude` or `codex` CLI session instead of requiring a
+separate LLM API key. They still consume the user's account limits and are not
+intended for hosted or team deployments. Pair either one with a non-OpenAI
+embedding provider, such as `EMBEDDING_PROVIDER=transformers`, if you want to
+run without an OpenAI API key as well.
 
 In-process benchmark harnesses can avoid editing env files by passing a
 composition-time config to the runtime:

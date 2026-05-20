@@ -18,7 +18,7 @@ import {
 } from './storage/providers/filecoin/config.js';
 
 export type EmbeddingProviderName = 'openai' | 'ollama' | 'openai-compatible' | 'transformers' | 'voyage';
-export type LLMProviderName = EmbeddingProviderName | 'groq' | 'anthropic' | 'google-genai' | 'claude-code';
+export type LLMProviderName = EmbeddingProviderName | 'groq' | 'anthropic' | 'google-genai' | 'claude-code' | 'codex';
 export type VectorBackendName = 'pgvector' | 'ruvector-mock' | 'zvec-mock';
 export type CrossEncoderDtype = 'auto' | 'fp32' | 'fp16' | 'q8' | 'int8' | 'uint8' | 'q4' | 'bnb4' | 'q4f16';
 
@@ -687,6 +687,7 @@ function parseLlmProvider(value: string | undefined, fallback: LLMProviderName):
     'anthropic',
     'google-genai',
     'claude-code',
+    'codex',
   ];
   if (!valid.includes(value as LLMProviderName)) {
     throw new Error(`Invalid provider "${value}". Must be one of: ${valid.join(', ')}`);
@@ -695,7 +696,7 @@ function parseLlmProvider(value: string | undefined, fallback: LLMProviderName):
 }
 
 function defaultLlmModel(provider: LLMProviderName): string {
-  if (provider === 'claude-code') return '';
+  if (provider === 'claude-code' || provider === 'codex') return '';
   return 'gpt-4o-mini';
 }
 

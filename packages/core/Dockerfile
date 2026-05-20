@@ -45,12 +45,23 @@ RUN pnpm deploy --filter @atomicmemory/core --prod /deploy
 # ---------------------------------------------------------------------------
 FROM pgvector/pgvector:pg17
 
+ARG CODEX_CLI_VERSION=0.131.0
+
 WORKDIR /app
 
 COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
   && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates bubblewrap \
+  && rm -rf /var/lib/apt/lists/*
+
+# Optional local-account LLM provider support. `LLM_PROVIDER=codex` delegates
+# extraction turns to this CLI when a Codex auth home is mounted at runtime.
+RUN npm install -g --no-audit --no-fund "@openai/codex@${CODEX_CLI_VERSION}" \
+  && codex --version | grep -q "${CODEX_CLI_VERSION}"
 
 # Production node_modules + package.json from pnpm deploy.
 COPY --from=builder /deploy/node_modules ./node_modules
