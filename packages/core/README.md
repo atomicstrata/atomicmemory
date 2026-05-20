@@ -308,6 +308,10 @@ intended for hosted or team deployments. Pair either one with a non-OpenAI
 embedding provider, such as `EMBEDDING_PROVIDER=transformers`, if you want to
 run without an OpenAI API key as well.
 
+For AtomicMemory for Codex local setup, prefer `codex login` with
+`LLM_PROVIDER=codex`. Use `LLM_PROVIDER=openai` plus `OPENAI_API_KEY` for
+hosted or team deployments.
+
 In-process benchmark harnesses can avoid editing env files by passing a
 composition-time config to the runtime:
 
