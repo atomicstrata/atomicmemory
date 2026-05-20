@@ -297,11 +297,13 @@ Set `LLM_PROVIDER` to choose the extraction backend:
 | `anthropic` | Anthropic Messages API |
 | `google-genai` | Google Gemini OpenAI-compatible endpoint |
 | `claude-code` | Local Claude Code Agent SDK session for personal development |
-| `codex` | Local Codex CLI account session for personal development |
+| `codex` | Local Codex account session for personal development |
 
 For personal local use, `LLM_PROVIDER=claude-code` and `LLM_PROVIDER=codex`
-use the logged-in `claude` or `codex` CLI session instead of requiring a
-separate LLM API key. They still consume the user's account limits and are not
+use the logged-in `claude` or `codex` account session instead of requiring a
+separate LLM API key. `claude-code` routes through the Claude Agent SDK;
+`codex` reads the auth file produced by `codex login` and calls the Codex
+backend directly. They still consume the user's account limits and are not
 intended for hosted or team deployments. Pair either one with a non-OpenAI
 embedding provider, such as `EMBEDDING_PROVIDER=transformers`, if you want to
 run without an OpenAI API key as well.

@@ -8,7 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { Agent as UndiciAgent } from 'undici';
 import { retryOnRateLimit } from './api-retry.js';
-import { CodexCliLLM } from './codex-cli-llm.js';
+import { CodexLLM } from './codex-llm.js';
 import {
   estimateCostUsd,
   getCostStage,
@@ -31,6 +31,7 @@ export interface LLMConfig extends WriteCostEventConfig {
   llmModel: string;
   llmApiUrl?: string;
   llmApiKey?: string;
+  codexAuthPath: string;
   openaiApiKey: string;
   groqApiKey?: string;
   anthropicApiKey?: string;
@@ -397,9 +398,11 @@ export function createLLMProvider(): LLMProvider {
         costLogDir: config.costLogDir,
       });
     case 'codex':
-      return new CodexCliLLM({
+      return new CodexLLM({
         llmProvider: config.llmProvider,
         llmModel: config.llmModel,
+        llmApiUrl: config.llmApiUrl,
+        codexAuthPath: config.codexAuthPath,
         costLoggingEnabled: config.costLoggingEnabled,
         costRunId: config.costRunId,
         costLogDir: config.costLogDir,

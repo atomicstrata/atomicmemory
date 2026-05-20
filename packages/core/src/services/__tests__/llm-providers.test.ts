@@ -17,6 +17,7 @@ const baseConfig: LLMConfig = {
   groqApiKey: 'test-groq-key',
   llmApiUrl: undefined,
   llmApiKey: undefined,
+  codexAuthPath: '/tmp/codex-auth.json',
   ollamaBaseUrl: 'http://localhost:11434',
   llmSeed: undefined,
   costLoggingEnabled: false,
@@ -70,7 +71,7 @@ describe('createLLMProvider', () => {
     expect(typeof provider.chat).toBe('function');
   });
 
-  it('creates Codex CLI provider', () => {
+  it('creates Codex OAuth provider', () => {
     initLlm({ ...baseConfig, llmProvider: 'codex', llmModel: '' });
     const provider = createLLMProvider();
     expect(provider).toBeDefined();

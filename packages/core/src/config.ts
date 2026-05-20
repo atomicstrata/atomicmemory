@@ -10,6 +10,8 @@ import {
   type RetrievalProfile,
   type RetrievalProfileName,
 } from './services/retrieval-profiles.js';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { parsePointerUriSchemes } from './storage/pointer-uri-allowlist.js';
 import {
   collectFilecoinProviderEnvKeys,
@@ -123,6 +125,7 @@ export interface RuntimeConfig {
   llmModel: string;
   llmApiUrl?: string;
   llmApiKey?: string;
+  codexAuthPath: string;
   groqApiKey?: string;
   ollamaBaseUrl: string;
   vectorBackend: VectorBackendName;
@@ -696,8 +699,17 @@ function parseLlmProvider(value: string | undefined, fallback: LLMProviderName):
 }
 
 function defaultLlmModel(provider: LLMProviderName): string {
-  if (provider === 'claude-code' || provider === 'codex') return '';
+  if (provider === 'claude-code') return '';
+  if (provider === 'codex') return 'gpt-5.4-mini';
   return 'gpt-4o-mini';
+}
+
+function defaultCodexAuthPath(): string {
+  const explicitPath = optionalEnv('CODEX_AUTH_PATH');
+  if (explicitPath) return explicitPath;
+  const codexHome = optionalEnv('CODEX_HOME');
+  if (codexHome) return join(codexHome, 'auth.json');
+  return join(homedir(), '.codex', 'auth.json');
 }
 
 
@@ -1164,6 +1176,7 @@ export const config: RuntimeConfig = {
   llmModel: optionalEnv('LLM_MODEL') ?? defaultLlmModel(llmProvider),
   llmApiUrl: optionalEnv('LLM_API_URL'),
   llmApiKey: optionalEnv('LLM_API_KEY'),
+  codexAuthPath: defaultCodexAuthPath(),
 
   // Groq
   groqApiKey: groqApiKey ?? undefined,

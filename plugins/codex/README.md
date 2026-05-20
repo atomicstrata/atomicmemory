@@ -85,9 +85,11 @@ export EMBEDDING_PROVIDER=transformers
 
 This configures AtomicMemory core, not the MCP plugin. The plugin still uses
 `ATOMICMEMORY_API_URL`, `ATOMICMEMORY_API_KEY`, and scope variables to connect
-to core. `LLM_PROVIDER=codex` is intended for personal local development; it
-consumes the logged-in Codex account's limits and is not recommended for hosted
-or team deployments.
+to core. `LLM_PROVIDER=codex` reads the auth file created by `codex login`
+(`CODEX_AUTH_PATH`, `CODEX_HOME/auth.json`, or `~/.codex/auth.json`) and calls
+the Codex backend directly. It is intended for personal local development,
+consumes the logged-in Codex account's limits, and is not recommended for
+hosted or team deployments.
 
 ## Memory behavior
 

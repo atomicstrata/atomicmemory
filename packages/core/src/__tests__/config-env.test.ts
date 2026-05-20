@@ -18,6 +18,8 @@ const trackedEnvNames = [
   'RAW_STORAGE_DEPLOYMENT_ENV',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
+  'CODEX_AUTH_PATH',
+  'CODEX_HOME',
 ] as const;
 const originalEnv = Object.fromEntries(
   trackedEnvNames.map((name) => [name, process.env[name]]),
@@ -99,7 +101,8 @@ describe('config env loading', () => {
     const { config } = await import('../config.js');
 
     expect(config.llmProvider).toBe('codex');
-    expect(config.llmModel).toBe('');
+    expect(config.llmModel).toBe('gpt-5.4-mini');
+    expect(config.codexAuthPath).toContain('.codex/auth.json');
   });
 
   it('loads optional admin cleanup endpoint config', async () => {
