@@ -6,7 +6,7 @@
  * quickstart while avoiding a per-call shell-out to the Codex agent CLI.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { ChatMessage, ChatOptions, LLMProvider } from './llm.js';
 import {
@@ -91,8 +91,14 @@ function buildCodexPayload(model: string, messages: ChatMessage[], options: Chat
     store: false,
     stream: true,
     include: ['reasoning.encrypted_content'],
-    prompt_cache_key: randomUUID(),
+    prompt_cache_key: codexPromptCacheKey(model, instructions),
+    ...(options.maxTokens ? { max_output_tokens: options.maxTokens } : {}),
   };
+}
+
+function codexPromptCacheKey(model: string, instructions: string): string {
+  const hash = createHash('sha256').update(model).update('\0').update(instructions).digest('hex').slice(0, 32);
+  return `atomicmemory:${hash}`;
 }
 
 function splitCodexMessages(

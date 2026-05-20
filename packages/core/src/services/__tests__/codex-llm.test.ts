@@ -80,7 +80,30 @@ describe('CodexLLM', () => {
     ]);
     expect(requestBody.store).toBe(false);
     expect(requestBody.stream).toBe(true);
-    expect(requestBody.max_output_tokens).toBeUndefined();
+    expect(requestBody.max_output_tokens).toBe(256);
+    expect(requestBody.prompt_cache_key).toMatch(/^atomicmemory:[a-f0-9]{32}$/);
+  });
+
+  it('uses a stable cache key for repeated extraction prompts', async () => {
+    mockAuth();
+    mockSseResponse(sse('ok'));
+
+    const messages = [
+      { role: 'system' as const, content: 'Extract memory JSON.' },
+      { role: 'user' as const, content: 'First user content.' },
+    ];
+
+    await provider().chat(messages, { jsonMode: true });
+    await provider().chat([
+      messages[0],
+      { role: 'user', content: 'Different user content.' },
+    ], { jsonMode: true });
+
+    const cacheKeys = fetchMock.mock.calls.map((call) => {
+      const body = JSON.parse(String(call[1]?.body)) as Record<string, unknown>;
+      return body.prompt_cache_key;
+    });
+    expect(cacheKeys[0]).toBe(cacheKeys[1]);
   });
 
   it('rejects missing Codex auth with setup guidance', async () => {
