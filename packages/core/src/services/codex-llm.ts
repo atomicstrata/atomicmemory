@@ -16,6 +16,7 @@ import {
   writeCostEvent,
   type WriteCostEventConfig,
 } from './cost-telemetry.js';
+import { DEFAULT_CODEX_LLM_MODEL } from './llm-defaults.js';
 
 const CODEX_DEFAULT_BASE_URL = 'https://chatgpt.com/backend-api';
 const CODEX_REQUEST_TIMEOUT_MS = 120_000;
@@ -47,7 +48,7 @@ export class CodexLLM implements LLMProvider {
   private readonly baseUrl: string;
 
   constructor(private readonly config: CodexLLMConfig) {
-    this.model = config.llmModel || 'gpt-5.4-mini';
+    this.model = config.llmModel || DEFAULT_CODEX_LLM_MODEL;
     this.baseUrl = config.llmApiUrl || CODEX_DEFAULT_BASE_URL;
   }
 

@@ -10,6 +10,10 @@ import {
   type RetrievalProfile,
   type RetrievalProfileName,
 } from './services/retrieval-profiles.js';
+import {
+  DEFAULT_CODEX_LLM_MODEL,
+  DEFAULT_OPENAI_COMPATIBLE_LLM_MODEL,
+} from './services/llm-defaults.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parsePointerUriSchemes } from './storage/pointer-uri-allowlist.js';
@@ -700,8 +704,8 @@ function parseLlmProvider(value: string | undefined, fallback: LLMProviderName):
 
 function defaultLlmModel(provider: LLMProviderName): string {
   if (provider === 'claude-code') return '';
-  if (provider === 'codex') return 'gpt-5.4-mini';
-  return 'gpt-4o-mini';
+  if (provider === 'codex') return DEFAULT_CODEX_LLM_MODEL;
+  return DEFAULT_OPENAI_COMPATIBLE_LLM_MODEL;
 }
 
 function defaultCodexAuthPath(): string {

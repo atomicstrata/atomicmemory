@@ -4,6 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_CODEX_LLM_MODEL } from '../llm-defaults.js';
 
 vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
@@ -21,7 +22,7 @@ afterEach(() => {
 function provider(): InstanceType<typeof CodexLLM> {
   return new CodexLLM({
     llmProvider: 'codex',
-    llmModel: 'gpt-5.4-mini',
+    llmModel: DEFAULT_CODEX_LLM_MODEL,
     llmApiUrl: undefined,
     codexAuthPath: '/tmp/codex-auth.json',
     costLoggingEnabled: false,
@@ -72,7 +73,7 @@ describe('CodexLLM', () => {
       'OpenAI-Account-ID': 'acct-123',
       Origin: 'https://chatgpt.com',
     });
-    expect(requestBody.model).toBe('gpt-5.4-mini');
+    expect(requestBody.model).toBe(DEFAULT_CODEX_LLM_MODEL);
     expect(requestBody.instructions).toContain('Return only valid JSON');
     expect(requestBody.input).toEqual([
       { type: 'message', role: 'user', content: 'User prefers concise answers.' },
