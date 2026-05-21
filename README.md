@@ -243,6 +243,19 @@ pnpm run repo-hygiene
 pnpm run security-compliance
 ```
 
+Package versions are intentionally scoped by release family instead of one
+global monorepo version. `@atomicmemory/core` and `@atomicmemory/sdk` move
+independently. Host plugins move together, framework adapters move together,
+and the CLI/MCP-server tool pair moves together:
+
+```bash
+pnpm check:version-families        # CI guard for drift
+```
+
+Release bumping, public sync, and registry publish preparation are owned by the
+ops repo. Keep this source repo focused on package metadata and version-family
+consistency checks.
+
 Build, test, lint, and docs-contract run through Turborepo's task graph.
 Typecheck declares no cache outputs because package scripts use `tsc --noEmit`.
 The side-effecting checks (`pack-dry-run`, `public-integration-smoke`,

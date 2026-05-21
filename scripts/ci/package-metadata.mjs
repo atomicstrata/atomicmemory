@@ -1,12 +1,14 @@
 /**
  * Validate public npm package metadata for monorepo package manifests.
  */
+import { spawnSync } from "node:child_process";
 import { packageJsonFiles, readJson } from "./lib/repo-files.mjs";
 
 const MONOREPO_URL = "git+https://github.com/atomicstrata/atomicmemory.git";
 const BUGS_URL = "https://github.com/atomicstrata/atomicmemory/issues";
 const HOMEPAGE_ROOT = "https://github.com/atomicstrata/atomicmemory/tree/main";
 const PUBLISHABLE_ROOTS = ["packages/", "adapters/", "plugins/"];
+const VERSION_FAMILIES = ["plugin", "adapter", "tool"];
 const HOST_PLUGIN_ARTIFACTS = [
   ".claude-plugin",
   "openclaw.plugin.json",
@@ -102,8 +104,25 @@ function validateFiles(filePath, files) {
   return [`${filePath}: publishable packages must declare a non-empty files array`];
 }
 
+function validateVersionFamilies() {
+  return VERSION_FAMILIES.flatMap((family) => {
+    const result = spawnSync(process.execPath, ["scripts/version-families.mjs", family, "--check"], {
+      encoding: "utf8",
+    });
+    if (result.status === 0) {
+      return [];
+    }
+
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    return [`version family '${family}' failed:\n${output || `exit ${result.status}`}`];
+  });
+}
+
 function main() {
-  const failures = packageJsonFiles().flatMap(validateManifest);
+  const failures = [
+    ...packageJsonFiles().flatMap(validateManifest),
+    ...validateVersionFamilies(),
+  ];
 
   if (failures.length > 0) {
     console.error("Package metadata failed:");
