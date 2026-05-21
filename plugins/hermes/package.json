@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/hermes-plugin",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "AtomicMemory native Hermes memory provider — Python SDK-backed, cross-tool memory by default.",
   "publishConfig": {
     "access": "public",

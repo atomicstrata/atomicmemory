@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/openai-agents",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AtomicMemory adapter for the OpenAI Agents SDK — pre-run memory retrieval, post-run ingest, and function tools.",
   "type": "module",
   "main": "dist/index.js",

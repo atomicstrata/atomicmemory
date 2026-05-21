@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/vercel-ai",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AtomicMemory adapter for the Vercel AI SDK — pre-call memory retrieval + post-call ingest, framework-version-agnostic.",
   "type": "module",
   "main": "dist/index.js",

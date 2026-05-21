@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/langchain",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AtomicMemory adapter for LangChain JS - memory tools and framework-agnostic retrieve/ingest helpers around an injected MemoryClient.",
   "type": "module",
   "main": "dist/index.js",
