@@ -107,12 +107,20 @@ function assertLocalProfileReady(): void {
   );
 }
 
-async function runCommand(command: CommandName): Promise<void> {
+export async function runCommand(command: CommandName): Promise<void> {
   if (command === 'start') {
     await import('./server.js');
     return;
   }
-  await import('./db/migrate.js');
+  const { migrate } = await import('./db/migration-api.js');
+  const result = await migrate();
+  console.log(
+    `[migrate] Migration complete ` +
+      `(ranSchemaSql=${result.ranSchemaSql}, ` +
+      `version=${result.schemaVersion.sdkVersion}, ` +
+      `sha=${result.schemaVersion.schemaSha256.slice(0, 12)}..., ` +
+      `reconciledEmbeddingDimension=${result.reconciledEmbeddingDimension}).`,
+  );
 }
 
 async function main(argv: string[]): Promise<void> {

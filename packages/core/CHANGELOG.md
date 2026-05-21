@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `newer_db` / `unstamped` / `no_schema`) is unchanged.
 
 ### Changed
+- The published `atomicmemory-core migrate` command now calls the
+  programmatic migration API directly, so npm installs can run the documented
+  migration command without the command word being reparsed as a migration
+  option.
 - **BREAKING**: All API endpoints are now mounted under `/v1/` (e.g. `POST /v1/memories/ingest`, `PUT /v1/agents/trust`). Update clients to prefix requests with `/v1`. The unversioned `/health` liveness probe is unchanged.
 - Phase 2 removes `src/db/schema.sql`; the migrations folder is now the
   single source of truth. The build-time `dist/db/schema-sha256.json`
