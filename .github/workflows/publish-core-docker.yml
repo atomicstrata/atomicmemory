@@ -317,3 +317,55 @@ jobs:
           docker buildx imagetools create \
             --tag "${IMAGE_NAME}:latest" \
             "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
+
+      - name: Dispatch full image-lane integration smoke
+        # Fires only after a fresh GHCR push so the smoke validates a new
+        # artifact, not a retag of an already-validated digest.
+        #
+        # Required configuration (provisioned in repo Settings → Secrets
+        # and variables → Actions):
+        #   secret  IMAGE_SMOKE_DISPATCH_TOKEN  fine-grained PAT scoped to
+        #                                       the smoke repo with
+        #                                       `actions: write`.
+        #   var     IMAGE_SMOKE_REPO            owner/name of the
+        #                                       repo that listens for the
+        #                                       `core-image-published`
+        #                                       repository_dispatch event.
+        #
+        # Fails closed if either is unset so a missing dispatch is loud,
+        # not a silent gap that lets a regression ship.
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        env:
+          IMAGE_SMOKE_DISPATCH_TOKEN: ${{ secrets.IMAGE_SMOKE_DISPATCH_TOKEN }}
+          IMAGE_SMOKE_REPO: ${{ vars.IMAGE_SMOKE_REPO }}
+          CORE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${IMAGE_SMOKE_DISPATCH_TOKEN:-}" ]; then
+            echo "::error::IMAGE_SMOKE_DISPATCH_TOKEN secret is not configured; cannot dispatch the full image-lane smoke."
+            exit 1
+          fi
+          if [ -z "${IMAGE_SMOKE_REPO:-}" ]; then
+            echo "::error::IMAGE_SMOKE_REPO variable is not configured; cannot determine the dispatch target."
+            exit 1
+          fi
+          image_digest="$(docker manifest inspect "${IMAGE_NAME}:${CORE_VERSION}" --verbose | jq -r '
+            if type == "array" then .[0].Descriptor.digest else .Descriptor.digest // empty end
+          ')"
+          if [ -z "${image_digest}" ] || [ "${image_digest}" = "null" ]; then
+            echo "::error::Failed to read manifest digest for ${IMAGE_NAME}:${CORE_VERSION} after push."
+            exit 1
+          fi
+          payload="$(jq -n \
+            --arg core_version "${CORE_VERSION}" \
+            --arg image_ref "${IMAGE_NAME}:${CORE_VERSION}" \
+            --arg image_digest "${image_digest}" \
+            '{event_type:"core-image-published", client_payload:{core_version:$core_version, image_ref:$image_ref, image_digest:$image_digest}}')"
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer ${IMAGE_SMOKE_DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "${payload}" \
+            "https://api.github.com/repos/${IMAGE_SMOKE_REPO}/dispatches"
+          echo "Dispatched core-image-published for ${IMAGE_NAME}:${CORE_VERSION} (${image_digest})."
