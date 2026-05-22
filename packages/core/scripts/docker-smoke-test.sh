@@ -14,8 +14,10 @@
 # inside a container, missing env vars, broken DB connection).
 #
 # Usage:
-#   ./scripts/docker-smoke-test.sh          # full build + test
-#   SKIP_BUILD=1 ./scripts/docker-smoke-test.sh  # reuse existing image
+#   ./scripts/docker-smoke-test.sh          # full source build + test
+#   SKIP_BUILD=1 ./scripts/docker-smoke-test.sh  # reuse existing compose image
+#   COMPOSE_BASE_FILE=docker-compose.image.yml CORE_IMAGE=... SKIP_BUILD=1 ./scripts/docker-smoke-test.sh
+#       # test a prebuilt release image
 #
 # Requirements: docker, docker compose, curl, jq
 
@@ -24,6 +26,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-}"
+COMPOSE_BASE_FILE="${COMPOSE_BASE_FILE:-docker-compose.yml}"
 APP_PORT="${APP_PORT:-}"
 POSTGRES_PORT="${POSTGRES_PORT:-}"
 SMOKE_ENV_FILE="$PROJECT_DIR/.env.docker-smoke-test"
@@ -137,11 +140,11 @@ export APP_PORT POSTGRES_PORT
 
 if [[ "${SKIP_BUILD:-}" == "1" ]]; then
   docker compose -p "$COMPOSE_PROJECT" \
-    -f docker-compose.yml -f docker-compose.smoke.yml \
+    -f "$COMPOSE_BASE_FILE" -f docker-compose.smoke.yml \
     up -d
 else
   docker compose -p "$COMPOSE_PROJECT" \
-    -f docker-compose.yml -f docker-compose.smoke.yml \
+    -f "$COMPOSE_BASE_FILE" -f docker-compose.smoke.yml \
     up -d --build
 fi
 

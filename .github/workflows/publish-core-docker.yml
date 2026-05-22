@@ -1,0 +1,319 @@
+name: Publish Core Docker Image
+
+on:
+  repository_dispatch:
+    types:
+      - core-npm-published
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-core-docker-${{ github.event.client_payload.core_version }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE_NAME: ghcr.io/atomicstrata/atomicmemory-core
+
+jobs:
+  publish:
+    name: publish @atomicmemory/core Docker image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Login to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Resolve published package source
+        id: package
+        env:
+          CORE_VERSION_INPUT: ${{ github.event.client_payload.core_version }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CORE_VERSION_INPUT}" ]]; then
+            echo "::error::core_version is required for repository_dispatch or workflow_dispatch."
+            exit 1
+          fi
+
+          if ! metadata="$(npm view "@atomicmemory/core@${CORE_VERSION_INPUT}" version gitHead dist.tarball --json 2>/tmp/core-npm-view.err)"; then
+            cat /tmp/core-npm-view.err >&2
+            exit 1
+          fi
+
+          version="$(jq -r '.version' <<<"${metadata}")"
+          git_head="$(jq -r '.gitHead' <<<"${metadata}")"
+          tarball="$(jq -r '.dist.tarball' <<<"${metadata}")"
+          latest_version="$(npm view @atomicmemory/core@latest version)"
+
+          if [[ -z "${version}" || "${version}" == "null" ]]; then
+            echo "::error::Could not resolve @atomicmemory/core@${CORE_VERSION_INPUT}"
+            exit 1
+          fi
+
+          if [[ -z "${git_head}" || "${git_head}" == "null" ]]; then
+            echo "::error::@atomicmemory/core@${version} does not include npm gitHead metadata"
+            exit 1
+          fi
+
+          manifest_digest() {
+            docker manifest inspect "$1" --verbose 2>/dev/null | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest // empty end'
+          }
+
+          version_digest="$(manifest_digest "${IMAGE_NAME}:${version}" || true)"
+          latest_digest="$(manifest_digest "${IMAGE_NAME}:latest" || true)"
+          is_latest="$([[ "${version}" == "${latest_version}" ]] && echo true || echo false)"
+
+          if [[ -n "${version_digest}" && "${is_latest}" == "true" && "${version_digest}" != "${latest_digest}" ]]; then
+            {
+              echo "should_publish=true"
+              echo "retag_latest_only=true"
+              echo "version=${version}"
+              echo "git_head=${git_head}"
+              echo "short_sha=${git_head:0:7}"
+              echo "tarball=${tarball}"
+              echo "is_latest=true"
+            } >>"${GITHUB_OUTPUT}"
+            echo "${IMAGE_NAME}:${version} already exists; moving latest to the same digest."
+            exit 0
+          fi
+
+          if [[ -n "${version_digest}" ]]; then
+            echo "should_publish=false" >>"${GITHUB_OUTPUT}"
+            echo "skip_reason=${IMAGE_NAME}:${version} already exists and latest is current." >>"${GITHUB_OUTPUT}"
+            echo "${IMAGE_NAME}:${version} already exists and latest is current; no Docker publish required."
+            exit 0
+          fi
+
+          {
+            echo "should_publish=true"
+            echo "retag_latest_only=false"
+            echo "version=${version}"
+            echo "git_head=${git_head}"
+            echo "short_sha=${git_head:0:7}"
+            echo "tarball=${tarball}"
+            echo "is_latest=${is_latest}"
+          } >>"${GITHUB_OUTPUT}"
+
+          echo "Resolved @atomicmemory/core@${version}"
+          echo "gitHead=${git_head}"
+          echo "tarball=${tarball}"
+
+      - name: Report skipped publish
+        if: steps.package.outputs.should_publish != 'true'
+        run: echo "${{ steps.package.outputs.skip_reason }}"
+
+      - name: Checkout package gitHead
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.package.outputs.git_head }}
+          path: release-source
+
+      - name: Verify checked-out package version
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        working-directory: release-source
+        run: |
+          set -euo pipefail
+          checked_out_version="$(node -p "require('./packages/core/package.json').version")"
+          if [[ "${checked_out_version}" != "${{ steps.package.outputs.version }}" ]]; then
+            echo "::error::packages/core/package.json is ${checked_out_version}, expected ${{ steps.package.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Build local release image
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        run: |
+          set -euo pipefail
+
+          docker build \
+            --file release-source/packages/core/Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${{ steps.package.outputs.git_head }}" \
+            --label "org.opencontainers.image.version=${{ steps.package.outputs.version }}" \
+            --label "org.opencontainers.image.title=@atomicmemory/core" \
+            --tag "${IMAGE_NAME}:${{ steps.package.outputs.version }}" \
+            --tag "${IMAGE_NAME}:${{ steps.package.outputs.short_sha }}" \
+            --tag "${IMAGE_NAME}:sha-${{ steps.package.outputs.short_sha }}" \
+            release-source
+
+          if [[ "${{ steps.package.outputs.is_latest }}" == "true" ]]; then
+            docker tag "${IMAGE_NAME}:${{ steps.package.outputs.version }}" "${IMAGE_NAME}:latest"
+          fi
+
+      - name: Verify image package version
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        run: |
+          set -euo pipefail
+          image_version="$(docker run --rm --entrypoint node "${IMAGE_NAME}:${{ steps.package.outputs.version }}" -p "require('./package.json').version")"
+          if [[ "${image_version}" != "${{ steps.package.outputs.version }}" ]]; then
+            echo "::error::Built image package version is ${image_version}, expected ${{ steps.package.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Smoke test local release image
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        env:
+          CORE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          smoke_dir="${RUNNER_TEMP}/core-docker-smoke"
+          compose_project="atomicmemory-core-release-${{ steps.package.outputs.short_sha }}"
+          app_port="3060"
+          postgres_port="5444"
+          core_api_key="test-core-api-key-do-not-leak"
+          storage_secret="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+
+          rm -rf "${smoke_dir}"
+          mkdir -p "${smoke_dir}"
+          cd "${smoke_dir}"
+
+          cat > .env <<EOF
+          CORE_API_KEY=${core_api_key}
+          STORAGE_KEY_HMAC_SECRET=${storage_secret}
+          RAW_STORAGE_DEPLOYMENT_ENV=local
+          EOF
+
+          cat > docker-compose.yml <<EOF
+          services:
+            postgres:
+              image: pgvector/pgvector:pg17
+              environment:
+                POSTGRES_USER: atomicmemory
+                POSTGRES_PASSWORD: atomicmemory
+                POSTGRES_DB: atomicmemory
+              ports:
+                - "${postgres_port}:5432"
+              healthcheck:
+                test: ["CMD", "pg_isready", "-q", "-d", "atomicmemory", "-U", "atomicmemory"]
+                interval: 5s
+                timeout: 5s
+                retries: 5
+
+            app:
+              image: ${CORE_IMAGE}
+              ports:
+                - "${app_port}:17350"
+              environment:
+                DATABASE_URL: postgresql://atomicmemory:atomicmemory@postgres:5432/atomicmemory
+                PORT: "17350"
+                EMBEDDING_PROVIDER: transformers
+                EMBEDDING_MODEL: Xenova/all-MiniLM-L6-v2
+                EMBEDDING_DIMENSIONS: "384"
+                LLM_PROVIDER: openai
+                OPENAI_API_KEY: sk-smoke-test-dummy
+              env_file:
+                - .env
+              depends_on:
+                postgres:
+                  condition: service_healthy
+              healthcheck:
+                test: ["CMD", "node", "-e", "fetch('http://localhost:17350/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+                interval: 15s
+                timeout: 5s
+                retries: 3
+                start_period: 30s
+          EOF
+
+          cleanup() {
+            docker compose -p "${compose_project}" down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose -p "${compose_project}" up -d
+
+          for attempt in {1..45}; do
+            if curl -fsS "http://localhost:${app_port}/health" >/dev/null; then
+              break
+            fi
+            if [[ "${attempt}" == "45" ]]; then
+              docker compose -p "${compose_project}" logs app
+              exit 1
+            fi
+            sleep 2
+          done
+
+          auth_header="Authorization: Bearer ${core_api_key}"
+          health_body="$(curl -fsS "http://localhost:${app_port}/health")"
+          test "$(jq -r .status <<<"${health_body}")" = "ok"
+
+          memories_health="$(curl -fsS -H "${auth_header}" "http://localhost:${app_port}/v1/memories/health")"
+          test "$(jq -r .status <<<"${memories_health}")" = "ok"
+
+          stats_status="$(curl -fsS -o /dev/null -w '%{http_code}' \
+            -H "${auth_header}" \
+            -G "http://localhost:${app_port}/v1/memories/stats" \
+            --data-urlencode "user_id=smoke-test-user")"
+          test "${stats_status}" = "200"
+
+          ingest_response="$(curl -fsS -w '\n%{http_code}' \
+            -X POST "http://localhost:${app_port}/v1/memories/ingest/quick" \
+            -H "${auth_header}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "user_id": "smoke-test-user",
+              "conversation": "User: I am testing the Docker deployment. The project uses PostgreSQL and Next.js.",
+              "source_site": "docker-smoke-test"
+            }')"
+          ingest_status="$(tail -n 1 <<<"${ingest_response}")"
+          ingest_body="$(sed '$d' <<<"${ingest_response}")"
+          test "${ingest_status}" = "200"
+          test "$(jq -r '.memories_stored // .memoriesStored // 0' <<<"${ingest_body}")" -ge 1
+
+          search_response="$(curl -fsS -w '\n%{http_code}' \
+            -X POST "http://localhost:${app_port}/v1/memories/search" \
+            -H "${auth_header}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "user_id": "smoke-test-user",
+              "query": "What database is the project using?",
+              "source_site": "docker-smoke-test"
+            }')"
+          search_status="$(tail -n 1 <<<"${search_response}")"
+          search_body="$(sed '$d' <<<"${search_response}")"
+          test "${search_status}" = "200"
+          test "$(jq -r .count <<<"${search_body}")" -ge 1
+
+          bad_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST "http://localhost:${app_port}/v1/memories/ingest" \
+            -H "${auth_header}" \
+            -H "Content-Type: application/json" \
+            -d '{"user_id":"x"}')"
+          test "${bad_status}" = "400"
+
+      - name: Push release tags
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        run: |
+          set -euo pipefail
+
+          docker push "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
+          docker push "${IMAGE_NAME}:${{ steps.package.outputs.short_sha }}"
+          docker push "${IMAGE_NAME}:sha-${{ steps.package.outputs.short_sha }}"
+
+          if [[ "${{ steps.package.outputs.is_latest }}" == "true" ]]; then
+            docker push "${IMAGE_NAME}:latest"
+          else
+            echo "Not moving latest: ${{ steps.package.outputs.version }} is not npm latest."
+          fi
+
+      - name: Move latest to existing version image
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only == 'true'
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:latest" \
+            "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
