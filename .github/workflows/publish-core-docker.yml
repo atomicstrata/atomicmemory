@@ -36,6 +36,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
       - name: Resolve published package source
         id: package
         env:
@@ -56,6 +64,7 @@ jobs:
 
           version="$(jq -r '.version' <<<"${metadata}")"
           git_head="$(jq -r '.gitHead' <<<"${metadata}")"
+          short_sha="${git_head:0:7}"
           tarball="$(jq -r '.dist.tarball' <<<"${metadata}")"
           latest_version="$(npm view @atomicmemory/core@latest version)"
 
@@ -69,32 +78,64 @@ jobs:
             exit 1
           fi
 
-          manifest_digest() {
-            docker manifest inspect "$1" --verbose 2>/dev/null | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest // empty end'
+          tag_exists() {
+            docker manifest inspect "$1" >/dev/null 2>&1
           }
 
-          version_digest="$(manifest_digest "${IMAGE_NAME}:${version}" || true)"
-          latest_digest="$(manifest_digest "${IMAGE_NAME}:latest" || true)"
-          is_latest="$([[ "${version}" == "${latest_version}" ]] && echo true || echo false)"
+          tag_has_platform() {
+            local image_ref="$1"
+            local os="$2"
+            local arch="$3"
+            docker manifest inspect "${image_ref}" --verbose 2>/dev/null | jq -e --arg os "${os}" --arg arch "${arch}" '
+              if type == "array" then
+                any(.[]; .Descriptor.platform.os == $os and .Descriptor.platform.architecture == $arch)
+              else
+                .Descriptor.platform.os == $os and .Descriptor.platform.architecture == $arch
+              end
+            ' >/dev/null
+          }
 
-          if [[ -n "${version_digest}" && "${is_latest}" == "true" && "${version_digest}" != "${latest_digest}" ]]; then
+          tag_has_required_platforms() {
+            tag_has_platform "$1" linux amd64 && tag_has_platform "$1" linux arm64
+          }
+
+          is_latest="$([[ "${version}" == "${latest_version}" ]] && echo true || echo false)"
+          release_refs=(
+            "${IMAGE_NAME}:${version}"
+            "${IMAGE_NAME}:${short_sha}"
+            "${IMAGE_NAME}:sha-${short_sha}"
+          )
+          missing_platform_refs=()
+
+          for image_ref in "${release_refs[@]}"; do
+            if ! tag_exists "${image_ref}" || ! tag_has_required_platforms "${image_ref}"; then
+              missing_platform_refs+=("${image_ref}")
+            fi
+          done
+
+          release_tags_have_required_platforms=false
+          if [[ "${#missing_platform_refs[@]}" == "0" ]]; then
+            release_tags_have_required_platforms=true
+          fi
+
+          if [[ "${release_tags_have_required_platforms}" == "true" && "${is_latest}" == "true" ]]; then
             {
               echo "should_publish=true"
               echo "retag_latest_only=true"
               echo "version=${version}"
               echo "git_head=${git_head}"
-              echo "short_sha=${git_head:0:7}"
+              echo "short_sha=${short_sha}"
               echo "tarball=${tarball}"
               echo "is_latest=true"
             } >>"${GITHUB_OUTPUT}"
-            echo "${IMAGE_NAME}:${version} already exists; moving latest to the same digest."
+            echo "Release tags already include linux/amd64 and linux/arm64; ensuring latest points to ${IMAGE_NAME}:${version}."
             exit 0
           fi
 
-          if [[ -n "${version_digest}" ]]; then
+          if [[ "${release_tags_have_required_platforms}" == "true" ]]; then
             echo "should_publish=false" >>"${GITHUB_OUTPUT}"
-            echo "skip_reason=${IMAGE_NAME}:${version} already exists and latest is current." >>"${GITHUB_OUTPUT}"
-            echo "${IMAGE_NAME}:${version} already exists and latest is current; no Docker publish required."
+            echo "skip_reason=Release tags already include linux/amd64 and linux/arm64." >>"${GITHUB_OUTPUT}"
+            echo "Release tags already include linux/amd64 and linux/arm64; no Docker publish required."
             exit 0
           fi
 
@@ -103,7 +144,7 @@ jobs:
             echo "retag_latest_only=false"
             echo "version=${version}"
             echo "git_head=${git_head}"
-            echo "short_sha=${git_head:0:7}"
+            echo "short_sha=${short_sha}"
             echo "tarball=${tarball}"
             echo "is_latest=${is_latest}"
           } >>"${GITHUB_OUTPUT}"
@@ -111,6 +152,8 @@ jobs:
           echo "Resolved @atomicmemory/core@${version}"
           echo "gitHead=${git_head}"
           echo "tarball=${tarball}"
+          printf 'Rebuilding release tags without complete linux/amd64 and linux/arm64 coverage:\n'
+          printf '  - %s\n' "${missing_platform_refs[@]}"
 
       - name: Report skipped publish
         if: steps.package.outputs.should_publish != 'true'
@@ -140,6 +183,7 @@ jobs:
           set -euo pipefail
 
           docker build \
+            --platform linux/amd64 \
             --file release-source/packages/core/Dockerfile \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${{ steps.package.outputs.git_head }}" \
@@ -295,20 +339,33 @@ jobs:
             -d '{"user_id":"x"}')"
           test "${bad_status}" = "400"
 
-      - name: Push release tags
+      - name: Build and push multi-platform release tags
         if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
         run: |
           set -euo pipefail
 
-          docker push "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
-          docker push "${IMAGE_NAME}:${{ steps.package.outputs.short_sha }}"
-          docker push "${IMAGE_NAME}:sha-${{ steps.package.outputs.short_sha }}"
+          tag_args=(
+            --tag "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
+            --tag "${IMAGE_NAME}:${{ steps.package.outputs.short_sha }}"
+            --tag "${IMAGE_NAME}:sha-${{ steps.package.outputs.short_sha }}"
+          )
 
           if [[ "${{ steps.package.outputs.is_latest }}" == "true" ]]; then
-            docker push "${IMAGE_NAME}:latest"
+            tag_args+=(--tag "${IMAGE_NAME}:latest")
           else
             echo "Not moving latest: ${{ steps.package.outputs.version }} is not npm latest."
           fi
+
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --file release-source/packages/core/Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${{ steps.package.outputs.git_head }}" \
+            --label "org.opencontainers.image.version=${{ steps.package.outputs.version }}" \
+            --label "org.opencontainers.image.title=@atomicmemory/core" \
+            "${tag_args[@]}" \
+            --push \
+            release-source
 
       - name: Move latest to existing version image
         if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only == 'true'
@@ -317,3 +374,43 @@ jobs:
           docker buildx imagetools create \
             --tag "${IMAGE_NAME}:latest" \
             "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
+
+      - name: Verify release platforms
+        if: steps.package.outputs.should_publish == 'true'
+        run: |
+          set -euo pipefail
+
+          assert_platform() {
+            local image_ref="$1"
+            local os="$2"
+            local arch="$3"
+            docker manifest inspect "${image_ref}" --verbose | jq -e --arg os "${os}" --arg arch "${arch}" '
+              if type == "array" then
+                any(.[]; .Descriptor.platform.os == $os and .Descriptor.platform.architecture == $arch)
+              else
+                .Descriptor.platform.os == $os and .Descriptor.platform.architecture == $arch
+              end
+            ' >/dev/null
+          }
+
+          verify_tag() {
+            local image_ref="$1"
+            for attempt in {1..12}; do
+              if assert_platform "${image_ref}" linux amd64 && assert_platform "${image_ref}" linux arm64; then
+                echo "${image_ref} includes linux/amd64 and linux/arm64."
+                return 0
+              fi
+              sleep 5
+            done
+
+            echo "::error::${image_ref} does not include both linux/amd64 and linux/arm64."
+            exit 1
+          }
+
+          verify_tag "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
+          verify_tag "${IMAGE_NAME}:${{ steps.package.outputs.short_sha }}"
+          verify_tag "${IMAGE_NAME}:sha-${{ steps.package.outputs.short_sha }}"
+
+          if [[ "${{ steps.package.outputs.is_latest }}" == "true" ]]; then
+            verify_tag "${IMAGE_NAME}:latest"
+          fi

@@ -63,14 +63,16 @@ docker run --rm -it --pull always \
 ```
 
 The image is published as `ghcr.io/atomicstrata/atomicmemory-core` with
-`latest`, semver, and commit-SHA tags.
+`latest`, semver, and commit-SHA tags. Release images are published for
+`linux/amd64` and `linux/arm64`, so the same tag works on common Linux
+servers and Apple Silicon Macs.
 
 The public monorepo's `Publish Core Docker Image` workflow runs after
 `@atomicmemory/core` is published to npm and verified by the ops publishing
 helper. It resolves the npm package version, skips if that version is already
-present in GHCR, checks out the package `gitHead`, builds
-`packages/core/Dockerfile`, smoke-tests the local image, and then pushes the
-matching GHCR tags.
+present in GHCR with both required platforms, checks out the package `gitHead`,
+builds `packages/core/Dockerfile`, smoke-tests the local `linux/amd64` image,
+and then pushes the matching multi-platform GHCR tags.
 
 Local Docker defaults use `Authorization: Bearer local-dev-key`, OpenAI
 embeddings at 1536 dimensions, and `RAW_STORAGE_DEPLOYMENT_ENV=local`. The
