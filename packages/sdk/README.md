@@ -9,7 +9,7 @@ Backend-agnostic memory-layer SDK — pluggable providers, local embeddings, sto
 
 **Docs:** [docs.atomicstrata.ai/sdk](https://docs.atomicstrata.ai/sdk)
 
-AtomicMemory Core currently reaches cost-Pareto SOTA on BEAM-100K, BEAM-1M, and LoCoMo10, with BEAM-10M parity against the strongest published Mem0-new result. The SDK is the typed application surface for building on that memory layer.
+AtomicMemory Core currently reaches leading performance/cost on BEAM-100K, BEAM-1M, and LoCoMo10, with BEAM-10M parity against the strongest published Mem0-new result. The SDK is the typed application surface for building on that memory layer.
 
 ## What this package provides
 

@@ -30,7 +30,7 @@ TypeScript packages, framework adapters, host plugins, and public smoke tests.
 
 ## Headline Results
 
-AtomicMemory v66 is cost-Pareto SOTA on BEAM-100K, BEAM-1M, and LoCoMo10 under
+AtomicMemory v66 is leading performance/cost on BEAM-100K, BEAM-1M, and LoCoMo10 under
 matched methodology against published competitors. On BEAM-10M it matches the
 strongest published Mem0-new result while leaving Hindsight-scale temporal
 retrieval as the known open frontier.
@@ -38,9 +38,9 @@ retrieval as the known open frontier.
 | Benchmark | AtomicMemory v66 | Position | Cost/Q | Sample |
 |---|---:|---|---:|---:|
 | **BEAM-100K lenient** | **0.7375** | Parity with Hindsight at 0.75 | $1.26 | n=80 |
-| **BEAM-1M lenient** | **0.6625** | Cost-Pareto SOTA; +0.022 vs Mem0 paper | $0.083 | n=80 |
+| **BEAM-1M lenient** | **0.6625** | Leading Performance/Cost; +0.022 vs Mem0 paper | $0.083 | n=80 |
 | **BEAM-10M lenient** | **0.4875** | Parity with Mem0-new at 0.486 | $0.081 | n=80 |
-| **LoCoMo10 GPT-4o-mini binary** | **0.8396** | Cost-Pareto SOTA; +0.171 vs Mem0 paper | $0.066 | n=1540 |
+| **LoCoMo10 GPT-4o-mini binary** | **0.8396** | Leading Performance/Cost; +0.171 vs Mem0 paper | $0.066 | n=1540 |
 
 These results put AtomicMemory at or near the published ceiling in each
 reported category while preserving the lower-cost operating profile that
