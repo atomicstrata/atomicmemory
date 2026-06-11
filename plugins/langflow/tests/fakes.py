@@ -93,8 +93,10 @@ class FakeBridge:
         self.calls.append(("package", {"scope": scope, "query": query, "limit": limit}))
         return SimpleNamespace(text=self._package_text, results=[], tokens=1, budget_constrained=False)
 
-    def ingest_messages(self, *, scope, messages, metadata=None):
-        self.calls.append(("ingest_messages", {"scope": scope, "messages": messages, "metadata": metadata}))
+    def ingest_messages(self, *, scope, messages, metadata=None, content_class="summary"):
+        self.calls.append(
+            ("ingest_messages", {"scope": scope, "messages": messages, "metadata": metadata, "content_class": content_class})
+        )
         return self._ingest_result
 
     def delete_scope(self, *, scope):
