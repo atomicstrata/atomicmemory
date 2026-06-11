@@ -33,6 +33,7 @@ import {
   ConsensusResponseSchema,
   LessonCheckSchema,
   ObservabilityResponseSchema,
+  RetrievalReceiptResponseSchema,
   SearchMemoryItemSchema,
   TierAssignmentSchema,
 } from './search-response-parts.js';
@@ -200,6 +201,19 @@ export const SearchResponseSchema = z.object({
   count: z.number(),
   retrieval_mode: z.enum(['flat', 'tiered', 'abstract-aware']),
   scope: ScopeResponseSchema,
+  retrieval: RetrievalReceiptResponseSchema,
+  /**
+   * True only on the LLM-free `/search/fast` path: given a pinned
+   * embedding model (advertised by the `retrieval` receipt), that path makes
+   * no LLM call and is bit-for-bit replayable. `/search` sets this to false
+   * because it may run the LLM repair/rerank loop.
+   */
+  deterministic: z.boolean().optional().openapi({
+    description:
+      'True only on the LLM-free /search/fast path: no LLM call is made, ' +
+      'so the result is replayable given the pinned embedding model in the retrieval receipt. ' +
+      '/search reports false because it may run the LLM repair/rerank loop.',
+  }),
   memories: z.array(SearchMemoryItemSchema),
   injection_text: z.string().optional(),
   citations: z.array(z.string()).optional(),
@@ -248,6 +262,24 @@ export const HealthResponseSchema = z.object({
   status: z.literal('ok'),
   config: HealthConfigResponseSchema,
 }).openapi({ description: 'Health + runtime config snapshot.' });
+
+export const CapabilitiesResponseSchema = z.object({
+  version: z.number().int(),
+  ingest_modes: z.array(z.enum(['text', 'messages', 'verbatim'])),
+  search: z.boolean(),
+  retrieval: z.literal('semantic'),
+  deterministic_fast_path: z.boolean(),
+  extensions: z.object({
+    health: z.boolean(),
+    versioning: z.boolean(),
+    temporal: z.boolean(),
+  }),
+}).openapi({
+  description:
+    'Wire capabilities descriptor. What the running core ' +
+    'advertises to a protocol-level caller that negotiates at startup ' +
+    'without the JS SDK.',
+});
 
 export const ConfigUpdateResponseSchema = z.object({
   applied: z.array(z.string()),
@@ -371,6 +403,13 @@ const AuditTrailEntryResponseSchema = z.object({
   version_id: z.string(),
   claim_id: z.string(),
   content: z.string(),
+  content_hash: z.string().openapi({
+    description:
+      'Stable, content-addressable SHA-256 (hex) of this version\'s content ' +
+      'computed as sha256("radar-claim-version-content:v1\\n" + content). ' +
+      'Deterministic — identical content yields the same hash — so a downstream caller ' +
+      'audit chain can anchor to a specific claim version. Not a chain hash.',
+  }),
   mutation_type: z.enum(['add', 'update', 'supersede', 'delete', 'clarify']).nullable(),
   mutation_reason: z.string().nullable(),
   actor_model: z.string().nullable(),

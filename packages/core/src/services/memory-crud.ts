@@ -39,6 +39,10 @@ export async function getMemory(deps: MemoryServiceDeps, id: string, userId: str
   return deps.stores.memory.getMemory(id, userId);
 }
 
+export async function getMemoryByExternalId(deps: MemoryServiceDeps, userId: string, externalId: string) {
+  return deps.stores.memory.getMemoryByExternalId(userId, externalId);
+}
+
 export async function getMemoryInWorkspace(deps: MemoryServiceDeps, id: string, workspaceId: string, callerAgentId: string) {
   return deps.stores.memory.getMemoryInWorkspace(id, workspaceId, callerAgentId);
 }

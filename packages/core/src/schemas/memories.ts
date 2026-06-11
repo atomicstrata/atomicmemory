@@ -268,6 +268,53 @@ export const ConfigOverrideSchema = z
  */
 export type ConfigOverride = z.infer<typeof ConfigOverrideSchema>;
 
+/**
+ * Sensitivity class for the supplied `conversation`/content.
+ * Describes what the caller is sending, NOT what core should redact:
+ *   - `summary`  — distilled/abstracted content, safe for a hosted store.
+ *   - `redacted` — raw text with sensitive spans removed by the caller.
+ *   - `raw`      — verbatim prompt/response/diff/source (sensitive).
+ * Absence is intentionally NOT coerced to a default here. Under the
+ * strict `reject` policy the ingest handler treats an absent class as
+ * unknown/raw: a verbatim write is refused (422 raw_content_rejected),
+ * while an extraction path proceeds but withholds the raw transcript
+ * from the durable audit episode. Wrong type / wrong enum value throws
+ * a 400.
+ */
+const CONTENT_CLASS_VALUES = ['summary', 'redacted', 'raw'] as const;
+
+const ContentClassField = z
+  .preprocess(
+    v => (v === undefined || v === null ? undefined : v),
+    z.unknown().optional(),
+  )
+  .superRefine((v, ctx) => {
+    if (v === undefined) return;
+    if (typeof v !== 'string' || !CONTENT_CLASS_VALUES.includes(v as ContentClass)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `content_class must be one of: ${CONTENT_CLASS_VALUES.join(', ')}`,
+      });
+    }
+  })
+  .transform(v => (v === undefined ? undefined : (v as ContentClass)))
+  .openapi({
+    type: 'string',
+    enum: [...CONTENT_CLASS_VALUES],
+    description:
+      'Optional sensitivity class of the supplied content: ' +
+      "'summary' (distilled, hosted-safe), 'redacted' (sensitive spans " +
+      "removed by the caller), or 'raw' (verbatim prompt/response/diff/" +
+      'source). When the deployment runs RAW_CONTENT_POLICY=reject, a ' +
+      "verbatim write of 'raw' content — or content with no content_class " +
+      'at all (treated as unknown/raw) — is rejected with 422 ' +
+      'raw_content_rejected; on extraction paths the raw transcript is ' +
+      'instead withheld from the stored audit episode.',
+  });
+
+/** Sensitivity class of ingested content. */
+export type ContentClass = (typeof CONTENT_CLASS_VALUES)[number];
+
 // ---------------------------------------------------------------------------
 // Ingest
 // ---------------------------------------------------------------------------
@@ -287,6 +334,13 @@ export const IngestBodySchema = z
     visibility: VisibilityField,
     /** Only POST /ingest/quick reads this — safely ignored elsewhere. */
     skip_extraction: OptionalBooleanField(),
+    /**
+     * Sensitivity class of the supplied content. Optional on the wire;
+     * under RAW_CONTENT_POLICY=reject the ingest handler treats absence
+     * as unknown/raw — refused on a verbatim write, withheld from the
+     * audit episode on extraction paths. See ContentClassField.
+     */
+    content_class: ContentClassField,
     config_override: ConfigOverrideSchema.optional(),
     /**
      * Caller-supplied metadata, persisted alongside the memory. Only
@@ -339,6 +393,7 @@ export const IngestBodySchema = z
     sessionId: b.session_id,
     workspace: buildWorkspaceContext(b.workspace_id, b.agent_id, b.visibility),
     skipExtraction: b.skip_extraction === true,
+    contentClass: b.content_class,
     configOverride: b.config_override,
     metadata: b.metadata,
   }))
@@ -675,6 +730,28 @@ export const FreeIdParamSchema = z
   .transform(p => ({ id: p.id }));
 
 export type FreeIdParam = z.infer<typeof FreeIdParamSchema>;
+
+/**
+ * Upper bound on the `:externalId` path param for
+ * `GET /v1/memories/by-external-id/:externalId`. `externalId` is an
+ * opaque caller-owned id (the caller's own id) stamped into
+ * `metadata.externalId` on quick-ingest. Bound it so an untrusted caller
+ * cannot drive an unbounded `metadata->>'externalId'` comparison.
+ */
+const MAX_EXTERNAL_ID_LENGTH = 256;
+
+/**
+ * Path param for `GET /v1/memories/by-external-id/:externalId`. Express
+ * URL-decodes path segments before they reach the validator, so the
+ * length bound applies to the decoded value. Empty is rejected.
+ */
+export const ExternalIdParamSchema = z
+  .object({
+    externalId: z.string().min(1).max(MAX_EXTERNAL_ID_LENGTH),
+  })
+  .transform(p => ({ externalId: p.externalId }));
+
+export type ExternalIdParam = z.infer<typeof ExternalIdParamSchema>;
 
 // ---------------------------------------------------------------------------
 // Config (PUT /config) — special case

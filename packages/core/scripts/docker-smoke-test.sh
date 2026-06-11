@@ -16,6 +16,7 @@
 # Usage:
 #   ./scripts/docker-smoke-test.sh          # full source build + test
 #   SKIP_BUILD=1 ./scripts/docker-smoke-test.sh  # reuse existing compose image
+#   SMOKE_BOOT_ONLY=1 ./scripts/docker-smoke-test.sh  # build+boot+keyless only (no model)
 #   COMPOSE_BASE_FILE=docker-compose.image.yml CORE_IMAGE=... SKIP_BUILD=1 ./scripts/docker-smoke-test.sh
 #       # test a prebuilt release image
 #
@@ -228,6 +229,13 @@ stats_status=$(curl -sf -o /dev/null -w '%{http_code}' \
 assert_ok "GET /v1/memories/stats returns 200 (DB connected)" \
   '[ "$stats_status" = "200" ]'
 
+# Ingest/search exercise the runtime embedding model (transformers, fetched on
+# first use). That fetch is networked and can flake, so it is skipped when
+# SMOKE_BOOT_ONLY=1 — the CI gate then runs build+boot + the keyless endpoint
+# checks (health, capabilities, /openapi.json) that deterministically catch the
+# image-won't-boot class (e.g. PR #31). Run the full smoke for manual/publish.
+if [[ "${SMOKE_BOOT_ONLY:-}" != "1" ]]; then
+
 # --- Test 5: Quick ingest endpoint (no LLM required — embedding-only dedup) ---
 log "Test: quick ingest endpoint"
 ingest_response=$(curl -sf -w '\n%{http_code}' \
@@ -237,7 +245,8 @@ ingest_response=$(curl -sf -w '\n%{http_code}' \
   -d '{
     "user_id": "smoke-test-user",
     "conversation": "User: I am testing the Docker deployment. The project uses PostgreSQL and Next.js.",
-    "source_site": "docker-smoke-test"
+    "source_site": "docker-smoke-test",
+    "content_class": "summary"
   }')
 ingest_status=$(echo "$ingest_response" | tail -1)
 ingest_body=$(echo "$ingest_response" | sed '$d')
@@ -263,6 +272,62 @@ assert_ok "POST /v1/memories/search returns 200" \
   '[ "$search_status" = "200" ]'
 assert_ok "Search returns at least 1 result" \
   '[ "$(echo "$search_body" | jq -r .count)" -ge 1 ]'
+
+fi  # end ingest/search block (skipped when SMOKE_BOOT_ONLY=1)
+
+# --- Test 6b: Capability descriptor (PR #18, unauthenticated) ---
+log "Test: GET /v1/capabilities"
+caps_response=$(curl -sf -w '\n%{http_code}' "$BASE/v1/capabilities")
+caps_status=$(echo "$caps_response" | tail -1)
+caps_body=$(echo "$caps_response" | sed '$d')
+assert_ok "GET /v1/capabilities returns 200 (no auth required)" \
+  '[ "$caps_status" = "200" ]'
+assert_ok "/v1/capabilities advertises ingest_modes + extensions" \
+  '[ "$(echo "$caps_body" | jq -r ".ingest_modes | length")" -ge 1 ] && [ "$(echo "$caps_body" | jq -r ".extensions")" != "null" ]'
+
+# --- Test 6b2: OpenAPI spec served (PR #18 C6) — guards the openapi.json COPY ---
+# Boot already crashes if openapi.json is missing (it loads eagerly); this also
+# pins the served route, the exact regression that shipped a non-booting image.
+log "Test: GET /openapi.json"
+openapi_status=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/openapi.json")
+assert_ok "GET /openapi.json returns 200 (spec shipped in the image)" \
+  '[ "$openapi_status" = "200" ]'
+
+if [[ "${SMOKE_BOOT_ONLY:-}" != "1" ]]; then
+
+# --- Test 6c: Deterministic search/fast carries the retrieval receipt (PR #18) ---
+log "Test: search/fast retrieval receipt"
+fast_response=$(curl -sf -X POST "$BASE/v1/memories/search/fast" \
+  -H "${AUTH_HEADER[0]}" -H "Content-Type: application/json" \
+  -d '{"user_id":"smoke-test-user","query":"What database is the project using?"}')
+assert_ok "search/fast response includes an audit-grade retrieval receipt" \
+  '[ "$(echo "$fast_response" | jq -r ".retrieval.embedding_model // empty")" != "" ]'
+assert_ok "retrieval receipt includes candidate_ids array + trace_id" \
+  '[ "$(echo "$fast_response" | jq -r ".retrieval.candidate_ids | type")" = "array" ] && [ "$(echo "$fast_response" | jq -r ".retrieval.trace_id // empty")" != "" ]'
+
+# --- Test 6d: external_id idempotency + by-external-id lookup (PR #18) ---
+log "Test: external_id idempotency + by-external-id lookup"
+EXT_ID="smoke-atom-1"
+ingest_ext() {
+  # content_class is required: skip_extraction stores raw content, which the
+  # default RAW_CONTENT_POLICY=reject (PR #18 C3) refuses unless stamped.
+  curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memories/ingest/quick" \
+    -H "${AUTH_HEADER[0]}" -H "Content-Type: application/json" \
+    -d "{\"user_id\":\"smoke-test-user\",\"conversation\":\"Verbatim probe for external-id idempotency.\",\"source_site\":\"docker-smoke-test\",\"skip_extraction\":true,\"content_class\":\"summary\",\"metadata\":{\"externalId\":\"${EXT_ID}\"}}"
+}
+first_ext=$(ingest_ext)
+second_ext=$(ingest_ext)
+assert_ok "re-ingesting the same externalId stays 200 (idempotent, no conflict)" \
+  '[ "$first_ext" = "200" ] && [ "$second_ext" = "200" ]'
+byext_response=$(curl -sf -w '\n%{http_code}' \
+  -H "${AUTH_HEADER[0]}" \
+  "$BASE/v1/memories/by-external-id/${EXT_ID}?user_id=smoke-test-user")
+byext_status=$(echo "$byext_response" | tail -1)
+byext_body=$(echo "$byext_response" | sed '$d')
+assert_ok "GET /v1/memories/by-external-id resolves the live row" \
+  '[ "$byext_status" = "200" ] && [ "$(echo "$byext_body" | jq -r ".id // empty")" != "" ]'
+
+fi  # end receipt/external-id block (skipped when SMOKE_BOOT_ONLY=1)
 
 # --- Test 7: Cleanup via reset-source ---
 log "Test: reset-source cleanup"

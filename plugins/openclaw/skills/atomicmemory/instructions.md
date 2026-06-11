@@ -21,11 +21,11 @@ Use `memory_ingest` with:
 
 - `mode: "text"` for semantic learnings that should be extracted into durable memory.
 - `mode: "messages"` only when the conversational shape matters.
-- `mode: "verbatim"` for deterministic one-record snapshots such as session summaries or handoff state. Include `metadata.source: "openclaw"`, an `event` field such as `"session_summary"`, and `schema_version: 1`.
+- `mode: "verbatim"` for deterministic one-record snapshots such as session summaries or handoff state. Include `metadata.source: "openclaw"`, an `event` field such as `"session_summary"`, and `schema_version: 1`. Set `contentClass: "summary"` — a core with the default raw-content policy rejects unstamped (or raw) verbatim content.
 
 ## Before losing context
 
-If the conversation is ending, context is about to be compacted, or you need to hand off a task, store a compact session snapshot with `mode: "verbatim"`:
+If the conversation is ending, context is about to be compacted, or you need to hand off a task, store a compact session snapshot with `mode: "verbatim"` and `contentClass: "summary"`:
 
 ```text
 User goal:

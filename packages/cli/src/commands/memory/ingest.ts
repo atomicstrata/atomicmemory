@@ -53,6 +53,13 @@ export const ingest: CommandHandler<{
       const kind = ctx.flags.kind as Exclude<AdapterIngestInput['kind'], undefined>;
       payload.kind = kind;
     }
+    if (mode === 'verbatim' && typeof ctx.flags['content-class'] === 'string') {
+      const contentClass = ctx.flags['content-class'];
+      if (contentClass !== 'summary' && contentClass !== 'redacted' && contentClass !== 'raw') {
+        throw new CliError('usage', `invalid --content-class "${contentClass}"; expected summary|redacted|raw`);
+      }
+      payload.contentClass = contentClass;
+    }
   }
 
   const result = await adapter.ingestMemories(payload);

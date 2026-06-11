@@ -14,6 +14,7 @@ export const CORS_ALLOWED_HEADERS_VALUE: string = [
   'Content-Type',
   'Authorization',
   'X-AtomicMemory-User-Id',
+  'X-AtomicMemory-Asserted-User',
   'X-AtomicMemory-Metadata',
   'X-AtomicMemory-Content-Encoding',
 ].join(', ');

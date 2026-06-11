@@ -64,6 +64,11 @@ COPY --from=builder /deploy/package.json ./package.json
 COPY packages/core/src ./src
 COPY packages/core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 COPY packages/core/tsconfig.json ./tsconfig.json
+# The committed OpenAPI spec — loaded eagerly at startup by src/app/openapi-spec.ts
+# (`../../openapi.json` -> /app/openapi.json) and served at GET /openapi.json.
+# Without this the container crashes on boot with ENOENT.
+COPY packages/core/openapi.json ./openapi.json
+COPY packages/core/openapi.yaml ./openapi.yaml
 
 RUN useradd --create-home appuser \
   && mkdir -p /var/lib/atomicmemory/postgres /var/run/atomicmemory-postgres \

@@ -14,6 +14,7 @@ import pg from 'pg';
 import {
   countMemories,
   countNeedsClarification,
+  findMemoryByExternalId,
   findKeywordCandidates,
   findNearDuplicates,
   findNearDuplicatesInWorkspace,
@@ -166,6 +167,10 @@ export class MemoryRepository {
 
   async getMemoryIncludingDeleted(id: string, userId?: string) {
     return getMemory(this.pool, id, userId, true);
+  }
+
+  async getMemoryByExternalId(userId: string, externalId: string) {
+    return findMemoryByExternalId(this.pool, userId, externalId);
   }
 
   async getMemoryIncludingDeletedWithClient(client: pg.PoolClient, id: string, userId?: string) {

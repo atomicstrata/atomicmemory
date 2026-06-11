@@ -115,7 +115,7 @@ describe('migrationStatus() on partial states', () => {
     );
 
     const status = await migrationStatus({ pool });
-    expectOlderDbStatus(status, 1, '0000_previous');
+    expectOlderDbStatus(status, CURRENT_MIGRATION_COUNT, CURRENT_LATEST_MIGRATION);
     expect(status.migrationHistoryStatus).toBe('missing_baseline');
   });
 
@@ -147,9 +147,13 @@ function expectOlderDbStatus(
   expect(status.latestMigrationName).toBe(migrationName);
 }
 
+// Update these two constants whenever a new migration file is added.
+const CURRENT_MIGRATION_COUNT = 2;
+const CURRENT_LATEST_MIGRATION = '0002_entity_settings';
+
 function expectBaselineMigrationCurrent(status: MigrationStatus): void {
-  expect(status.appliedMigrationCount).toBe(1);
-  expect(status.latestMigrationName).toBe('0001_baseline');
+  expect(status.appliedMigrationCount).toBe(CURRENT_MIGRATION_COUNT);
+  expect(status.latestMigrationName).toBe(CURRENT_LATEST_MIGRATION);
   expect(status.migrationHistoryStatus).toBe('current');
   expect(status.embeddingDimension.status).toBe('matches');
 }

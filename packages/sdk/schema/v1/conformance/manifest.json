@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "title": "AtomicMemory cross-provider conformance corpus (v1)",
+  "description": "Versioned, language-neutral conformance corpus. Each case names a contract operation, a concrete request payload, and the expected response *shape* (validated against a v1 JSON Schema entry point under ../, not against exact values). A future MemoryProvider implementation runs every case's request and expected response through these schemas to prove it speaks the v1 contract. Schemas referenced by `request_schema` / `response_schema` are filenames relative to the schema/v1/ directory (the parent of this conformance/ dir).",
+  "cases": [
+    { "name": "ingest-text", "file": "ingest-text.json" },
+    { "name": "ingest-verbatim", "file": "ingest-verbatim.json" },
+    { "name": "search-with-retrieval-receipt", "file": "search-with-retrieval-receipt.json" },
+    { "name": "capabilities-descriptor", "file": "capabilities-descriptor.json" }
+  ]
+}

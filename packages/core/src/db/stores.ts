@@ -15,6 +15,7 @@ import type { EntityAttributesRepository } from './repository-entity-attributes.
 import type { EntityValuesRepository } from './entity-values-repository.js';
 import type { EntityCardsRepository } from './entity-cards-repository.js';
 import type { ContradictionsRepository } from './contradictions-repository.js';
+import type { EntitySettingsRepository } from './entity-settings-repository.js';
 import type { BeliefEdgesRepository } from './belief-edges-repository.js';
 import type {
   AgentScope,
@@ -78,6 +79,8 @@ export interface MemoryStore {
   storeMemory(input: StoreMemoryInput): Promise<string>;
   getMemory(id: string, userId?: string): Promise<MemoryRow | null>;
   getMemoryIncludingDeleted(id: string, userId?: string): Promise<MemoryRow | null>;
+  /** Reverse lookup by caller-owned `metadata.externalId`, scoped to user. */
+  getMemoryByExternalId(userId: string, externalId: string): Promise<MemoryRow | null>;
   listMemories(userId: string, limit?: number, offset?: number, sourceSite?: string, episodeId?: string, sessionId?: string): Promise<MemoryRow[]>;
   softDeleteMemory(userId: string, id: string): Promise<void>;
   updateMemoryContent(userId: string, id: string, content: string, embedding: number[], importance: number, keywords?: string, trustScore?: number): Promise<void>;
@@ -178,6 +181,7 @@ export type ClaimStore = Pick<import('./repository-claims.js').ClaimRepository,
   | 'findClaimByMemoryId'
   | 'getActiveClaimTargetBySlot'
   | 'getClaimVersionByMemoryId'
+  | 'getCurrentVersionIdsByMemoryIds'
   | 'getRecentMutations'
   | 'getReversalChain'
   | 'getUserMutationSummary'
@@ -294,4 +298,6 @@ export interface CoreStores {
    * move behind dedicated store methods.
    */
   pool: pg.Pool;
+  /** Per-entity extraction config (Phase 2). Always constructed — table is created by migration 0002. */
+  entitySettings: EntitySettingsRepository;
 }

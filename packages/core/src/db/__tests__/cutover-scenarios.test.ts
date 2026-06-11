@@ -180,16 +180,25 @@ function assertStructuralEqual(
   before: StructuralSnapshot,
   after: StructuralSnapshot,
 ): void {
-  expect(after.tables).toEqual(before.tables);
-  expect(after.indexes).toEqual(before.indexes);
+  // Post-baseline migrations may add new tables; verify only that existing
+  // tables, indexes, and constraints are unchanged — not removed or altered.
+  for (const t of before.tables) {
+    expect(after.tables).toContainEqual(t);
+  }
+  for (const idx of before.indexes) {
+    expect(after.indexes).toContainEqual(idx);
+  }
   expect(after.checkConstraints).toEqual(before.checkConstraints);
   expect(after.foreignKeys).toEqual(before.foreignKeys);
 }
 
 async function expectOnlyBaselineStamped(): Promise<void> {
   const rows = await pgmigrationsRows(pool);
-  // Additional rows would mean post-baseline migrations exist and ran; none
-  // ship at cutover, so a count > 1 is a regression rather than expected drift.
-  expect(rows.length).toBe(1);
+  // Baseline is always stamped (without re-running against legacy data).
+  // Post-baseline migrations (e.g. 0002_entity_settings) run normally on
+  // legacy installs since those tables did not exist yet. Update the count
+  // and last-name here when new migration files ship.
+  expect(rows.length).toBe(2);
   expect(rows[0].name).toBe(BASELINE_MIGRATION_NAME);
+  expect(rows[1].name).toBe('0002_entity_settings');
 }

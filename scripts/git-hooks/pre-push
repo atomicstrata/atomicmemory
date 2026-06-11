@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# AtomicMemory pre-push guard (committed source; installed into the active
+# hooks dir by scripts/git-hooks/install-hooks.mjs on `pnpm install`).
+#
+# Blocks pushes whose destination is the public mirror (atomicstrata/atomicmemory).
+# git passes: <remote-name> <remote-url>. We forward them to the Node guard,
+# which owns the policy and is unit-tested under scripts/guards/__tests__/.
+root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+guard="${root}/scripts/guards/guard-public-push.mjs"
+# The hook is installed into the shared common hooks dir, so it also runs when a
+# checkout predates the guard (e.g. a branch cut before it landed). If the guard
+# script is not present there is nothing to enforce — allow the push rather than
+# bricking every push from that checkout. This is an accidental-push guard, not
+# a security boundary; the real boundary is public branch protection.
+if [ ! -f "$guard" ]; then
+  exit 0
+fi
+exec node "$guard" "$@"

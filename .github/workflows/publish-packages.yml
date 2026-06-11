@@ -1,0 +1,262 @@
+name: Publish AtomicMemory Packages
+
+# Only ops-orchestrated releases. The local publish-monorepo-packages
+# script repository-dispatches `atomicmemory-package-release` with the
+# release manifest as the client_payload.
+#
+# `run-name` surfaces the manifest's `correlation_id` so the ops side can
+# locate the exact run it dispatched (by token, not by timestamp).
+run-name: >-
+  Publish ${{ github.event.client_payload.public_sha }}
+  [${{ github.event.client_payload.correlation_id }}]
+
+on:
+  repository_dispatch:
+    types:
+      - atomicmemory-package-release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-packages-${{ github.event.client_payload.public_sha }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.15.4"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  manifest:
+    name: parse release manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      manifest_json: ${{ steps.parse.outputs.manifest_json }}
+      public_sha: ${{ steps.parse.outputs.public_sha }}
+      publish: ${{ steps.parse.outputs.publish }}
+      core_selected: ${{ steps.parse.outputs.core_selected }}
+      core_version: ${{ steps.parse.outputs.core_version }}
+      selected_summary: ${{ steps.parse.outputs.selected_summary }}
+    steps:
+      - name: Parse and validate client_payload
+        id: parse
+        env:
+          MANIFEST: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          schema="$(jq -r '.schema_version' <<<"${MANIFEST}")"
+          if [[ "${schema}" != "1" ]]; then
+            echo "::error::Unsupported manifest schema_version='${schema}'."
+            exit 1
+          fi
+          public_sha="$(jq -r '.public_sha' <<<"${MANIFEST}")"
+          if [[ -z "${public_sha}" || "${public_sha}" == "null" ]]; then
+            echo "::error::Manifest is missing public_sha."
+            exit 1
+          fi
+          correlation_id="$(jq -r '.correlation_id' <<<"${MANIFEST}")"
+          if [[ -z "${correlation_id}" || "${correlation_id}" == "null" ]]; then
+            echo "::error::Manifest is missing correlation_id."
+            exit 1
+          fi
+          publish="$(jq -r '.publish // false' <<<"${MANIFEST}")"
+          core_version="$(jq -r '.selected_targets[]? | select(.registry=="npm" and .id=="core") | .version' <<<"${MANIFEST}")"
+          core_selected="false"
+          if [[ -n "${core_version}" ]]; then
+            core_selected="true"
+          fi
+          summary="$(jq -r '.selected_targets[] | "- " + .registry + " " + .name + "@" + .version' <<<"${MANIFEST}")"
+          {
+            echo "manifest_json<<EOF_MANIFEST"
+            echo "${MANIFEST}"
+            echo "EOF_MANIFEST"
+          } >>"${GITHUB_OUTPUT}"
+          {
+            echo "public_sha=${public_sha}"
+            echo "publish=${publish}"
+            echo "core_selected=${core_selected}"
+            echo "core_version=${core_version}"
+          } >>"${GITHUB_OUTPUT}"
+          {
+            echo "selected_summary<<EOF_SUMMARY"
+            echo "${summary}"
+            echo "EOF_SUMMARY"
+          } >>"${GITHUB_OUTPUT}"
+          {
+            echo "### Release manifest"
+            echo ""
+            echo "- public_sha: \`${public_sha}\`"
+            echo "- publish: \`${publish}\`"
+            echo "- selected:"
+            echo ""
+            echo "${summary}"
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+  preflight:
+    name: preflight (pack-dry-run)
+    needs: manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MANIFEST_JSON: ${{ needs.manifest.outputs.manifest_json }}
+      PUBLIC_SHA: ${{ needs.manifest.outputs.public_sha }}
+    steps:
+      - name: Checkout public_sha
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.manifest.outputs.public_sha }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Verify checked-out package versions match manifest
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name version path registry; do
+            if [[ "${registry}" != "npm" ]]; then
+              continue
+            fi
+            actual="$(node -p "require('./${path}/package.json').version")"
+            if [[ "${actual}" != "${version}" ]]; then
+              echo "::error::${path}/package.json is ${actual}, manifest says ${version}"
+              exit 1
+            fi
+            echo "ok: ${name}@${version} at ${path}"
+          done < <(jq -r '.selected_targets[] | [.name,.version,.path,.registry] | @tsv' <<<"${MANIFEST_JSON}")
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: pnpm build
+        run: pnpm run build
+      - name: pnpm typecheck
+        run: pnpm run typecheck
+      - name: pnpm test (excluding core db tests)
+        run: pnpm run test
+      - name: Package metadata
+        run: pnpm run package-metadata
+      - name: pack-dry-run for the whole workspace
+        run: pnpm run pack-dry-run
+      - name: per-selected-package npm pack --dry-run
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name version path registry; do
+            if [[ "${registry}" != "npm" ]]; then
+              continue
+            fi
+            echo "::group::npm pack --dry-run ${name}@${version}"
+            (cd "${path}" && npm pack --dry-run --json)
+            echo "::endgroup::"
+          done < <(jq -r '.selected_targets[] | [.name,.version,.path,.registry] | @tsv' <<<"${MANIFEST_JSON}")
+
+  publish-npm:
+    name: publish npm (Trusted Publishing)
+    needs: [manifest, preflight]
+    if: needs.manifest.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MANIFEST_JSON: ${{ needs.manifest.outputs.manifest_json }}
+      PUBLIC_SHA: ${{ needs.manifest.outputs.public_sha }}
+      ATOMICMEMORY_RELEASE_WORKFLOW: publish-packages
+    steps:
+      - name: Checkout public_sha
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.manifest.outputs.public_sha }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org/"
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Require npm >= 11.5.1 for Trusted Publishing
+        run: |
+          set -euo pipefail
+          npm install -g npm@latest
+          npm --version
+      - name: Install dependencies and build
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run build
+      - name: Write release manifest to disk
+        id: manifest_file
+        run: |
+          set -euo pipefail
+          path="${RUNNER_TEMP}/atomicmemory-release-manifest.json"
+          printf '%s' "${MANIFEST_JSON}" >"${path}"
+          echo "path=${path}" >>"${GITHUB_OUTPUT}"
+      - name: Publish selected npm packages
+        env:
+          ATOMICMEMORY_RELEASE_MANIFEST: ${{ steps.manifest_file.outputs.path }}
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name version path registry; do
+            if [[ "${registry}" != "npm" ]]; then
+              continue
+            fi
+            echo "::group::npm publish ${name}@${version}"
+            (cd "${path}" && npm publish --access public)
+            echo "::endgroup::"
+          done < <(jq -r '.selected_targets[] | [.name,.version,.path,.registry] | @tsv' <<<"${MANIFEST_JSON}")
+
+  verify-npm:
+    name: verify npm registry visibility
+    needs: [manifest, publish-npm]
+    if: needs.manifest.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      MANIFEST_JSON: ${{ needs.manifest.outputs.manifest_json }}
+      PUBLIC_SHA: ${{ needs.manifest.outputs.public_sha }}
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Verify each selected npm package is visible and pinned to public_sha
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name version path registry; do
+            if [[ "${registry}" != "npm" ]]; then
+              continue
+            fi
+            metadata="$(npm view "${name}@${version}" version gitHead --json)"
+            actual_version="$(jq -r '.version' <<<"${metadata}")"
+            actual_head="$(jq -r '.gitHead' <<<"${metadata}")"
+            if [[ "${actual_version}" != "${version}" ]]; then
+              echo "::error::${name}@${version} npm view returned version=${actual_version}"
+              exit 1
+            fi
+            if [[ "${actual_head}" != "${PUBLIC_SHA}" ]]; then
+              echo "::error::${name}@${version} npm gitHead=${actual_head}, manifest public_sha=${PUBLIC_SHA}"
+              exit 1
+            fi
+            echo "verified ${name}@${version} (gitHead=${actual_head})"
+          done < <(jq -r '.selected_targets[] | [.name,.version,.path,.registry] | @tsv' <<<"${MANIFEST_JSON}")
+
+  publish-core-docker:
+    name: publish Core Docker image
+    needs: [manifest, verify-npm]
+    if: needs.manifest.outputs.publish == 'true' && needs.manifest.outputs.core_selected == 'true'
+    uses: ./.github/workflows/publish-core-docker.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      core_version: ${{ needs.manifest.outputs.core_version }}

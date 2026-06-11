@@ -30,7 +30,7 @@ Use `memory_ingest` after meaningful work or when the user shares durable inform
 
 - `mode: "text"` for decisions, preferences, conventions, strategies, anti-patterns, and stable facts.
 - `mode: "messages"` only when the exact conversational turn matters.
-- `mode: "verbatim"` for deterministic one-record snapshots such as session summaries and handoffs.
+- `mode: "verbatim"` for deterministic one-record snapshots such as session summaries and handoffs. Set `contentClass: "summary"` — a core with the default raw-content policy rejects unstamped (or raw) verbatim content.
 
 For deterministic snapshots, include metadata like:
 
@@ -44,7 +44,7 @@ For deterministic snapshots, include metadata like:
 
 ## Before losing context
 
-If the session is ending, context is about to be lost, or a handoff would help, store a compact snapshot with `mode: "verbatim"`:
+If the session is ending, context is about to be lost, or a handoff would help, store a compact snapshot with `mode: "verbatim"` and `contentClass: "summary"`:
 
 ```text
 Cursor session snapshot

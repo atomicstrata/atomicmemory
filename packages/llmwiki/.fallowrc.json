@@ -1,0 +1,44 @@
+{
+  "$schema": "https://fallow.tools/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/live.ts",
+    "src/register.ts"
+  ],
+  "publicPackages": [
+    "@atomicmemory/llmwiki"
+  ],
+  "ignorePatterns": [
+    "src/**/*.test.ts",
+    "src/**/__tests__/**"
+  ],
+  "ignoreDependencies": [
+    "@atomicmemory/sdk"
+  ],
+  "ignoreExports": [
+    {
+      "file": "src/provider.ts",
+      "exports": ["LLMWikiProvider"]
+    },
+    {
+      "file": "src/registration.ts",
+      "exports": ["llmwikiProviderFactory"]
+    }
+  ],
+  "rules": {
+    "unused-class-members": "off",
+    "unused-exports": "warn"
+  },
+  "duplicates": {
+    "ignore": [
+      "src/**/*.test.ts",
+      "src/**/__tests__/**"
+    ]
+  },
+  "health": {
+    "ignore": [
+      "src/**/*.test.ts",
+      "src/**/__tests__/**"
+    ]
+  }
+}

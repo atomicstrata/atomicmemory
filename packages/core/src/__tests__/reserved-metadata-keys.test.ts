@@ -39,7 +39,7 @@ import * as ts from 'typescript';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-import { RESERVED_METADATA_KEYS } from '../db/repository-types';
+import { CALLER_CONTROLLED_METADATA_KEYS, RESERVED_METADATA_KEYS } from '../db/repository-types';
 
 const SRC_ROOT = path.resolve(__dirname, '..');
 // `storage/` adapters use the property name `metadata` for raw-content
@@ -132,13 +132,23 @@ describe('RESERVED_METADATA_KEYS — static-analysis drift guard', () => {
       );
       collectKeys(sf, seen);
     }
-    const unreserved = [...seen].filter(k => !RESERVED_METADATA_KEYS.has(k)).sort();
+    // A metadata key core reads must be EITHER an internal reserved key OR an
+    // explicitly caller-controlled key (e.g. `externalId`, which the caller
+    // supplies and core only reads back — reserving it would break ingest).
+    const unaccounted = [...seen]
+      .filter(k => !RESERVED_METADATA_KEYS.has(k) && !CALLER_CONTROLLED_METADATA_KEYS.has(k))
+      .sort();
     expect(
-      unreserved,
-      `unreserved metadata keys seen in src/: ${unreserved.join(', ')}. ` +
-        'Add them to RESERVED_METADATA_KEYS in src/db/repository-types.ts ' +
-        'or, if a key is genuinely caller-controlled, add the file to ' +
-        'SKIP_DIRS in this test.',
+      unaccounted,
+      `metadata keys seen in src/ that are neither reserved nor caller-controlled: ` +
+        `${unaccounted.join(', ')}. Add an internal key to RESERVED_METADATA_KEYS, ` +
+        'or, if it is genuinely caller-supplied, add it to ' +
+        'CALLER_CONTROLLED_METADATA_KEYS — both in src/db/repository-types.ts.',
     ).toEqual([]);
+  });
+
+  it('no key is both reserved and caller-controlled', () => {
+    const overlap = [...CALLER_CONTROLLED_METADATA_KEYS].filter(k => RESERVED_METADATA_KEYS.has(k));
+    expect(overlap, `keys in both sets (a key cannot be both): ${overlap.join(', ')}`).toEqual([]);
   });
 });

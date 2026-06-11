@@ -15,7 +15,7 @@ import { HindsightProvider } from '../hindsight-provider/hindsight-provider';
 
 export type ProviderRegistry = Record<
   string,
-  (config: any) => MemoryProviderRegistration
+  (config: any) => MemoryProviderRegistration | Promise<MemoryProviderRegistration>
 >;
 
 export const defaultRegistry: ProviderRegistry = {

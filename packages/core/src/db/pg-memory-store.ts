@@ -7,6 +7,7 @@ import type pg from 'pg';
 import type { MemoryStore, StoreMemoryInput } from './stores.js';
 import type { CanonicalMemoryObjectLineage } from './repository-types.js';
 import {
+  findMemoryByExternalId,
   getMemory,
   getMemoryInWorkspace,
   getMemoryStats,
@@ -61,6 +62,7 @@ export class PgMemoryStore implements MemoryStore {
   async storeMemory(input: StoreMemoryInput) { return storeMemory(this.pool, input); }
   async getMemory(id: string, userId?: string) { return getMemory(this.pool, id, userId, false); }
   async getMemoryIncludingDeleted(id: string, userId?: string) { return getMemory(this.pool, id, userId, true); }
+  async getMemoryByExternalId(userId: string, externalId: string) { return findMemoryByExternalId(this.pool, userId, externalId); }
   async listMemories(userId: string, limit = 20, offset = 0, sourceSite?: string, episodeId?: string, sessionId?: string) { return listMemories(this.pool, userId, limit, offset, sourceSite, episodeId, sessionId); }
   async softDeleteMemory(userId: string, id: string) { return softDeleteMemory(this.pool, userId, id); }
   async updateMemoryContent(userId: string, id: string, content: string, embedding: number[], importance: number, keywords?: string, trustScore?: number) { return updateMemoryContent(this.pool, userId, id, content, embedding, importance, keywords, trustScore); }

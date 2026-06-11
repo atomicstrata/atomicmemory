@@ -11,7 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSearchResult } from './test-fixtures.js';
+import { createSearchResult, RECEIPT_EMBEDDING_CONFIG } from './test-fixtures.js';
 
 const {
   mockRunSearchPipelineWithTrace,
@@ -224,6 +224,7 @@ function createDeps(options: DepsOptions, similarityThreshold: number) {
   };
   return {
     config: {
+      ...RECEIPT_EMBEDDING_CONFIG,
       auditLoggingEnabled: false,
       consensusMinMemories: 2,
       consensusValidationEnabled: false,
@@ -232,7 +233,9 @@ function createDeps(options: DepsOptions, similarityThreshold: number) {
     },
     stores: {
       memory: { touchMemory: vi.fn().mockResolvedValue(undefined) },
-      search: {}, link: {}, claim: {}, entity: null, lesson: null,
+      search: {}, link: {},
+      claim: { getCurrentVersionIdsByMemoryIds: vi.fn().mockResolvedValue(new Map()) },
+      entity: null, lesson: null,
       pool,
     },
     observationService: null,

@@ -9,6 +9,7 @@ import type {
   SearchResult,
   IngestResult,
   MemoryVersion,
+  RetrievalReceipt,
   Scope,
 } from '../types';
 
@@ -33,6 +34,20 @@ interface RawMemory {
   namespace?: string;
   session_id?: string | null;
   created_at?: string;
+  /** Per-result retrieval-receipt fields (present on search responses). */
+  version_id?: string | null;
+  observed_at?: string;
+}
+
+/** Raw wire shape of the per-search retrieval receipt (snake_case). */
+interface RawRetrievalReceipt {
+  embedding_provider?: string;
+  embedding_model: string;
+  embedding_model_version: string;
+  embedding_dimensions: number;
+  query_text: string;
+  candidate_ids: string[];
+  trace_id: string;
 }
 
 /**
@@ -141,6 +156,21 @@ export function toSearchResult(raw: RawMemory, scope: Scope): SearchResult {
     ...(similarity !== undefined ? { similarity } : {}),
     ...(rankingScore !== undefined ? { rankingScore } : {}),
     ...(relevance !== undefined ? { relevance } : {}),
+    ...(raw.version_id !== undefined ? { versionId: raw.version_id } : {}),
+    ...(raw.observed_at !== undefined ? { observedAt: raw.observed_at } : {}),
+  };
+}
+
+/** Map the snake_case wire retrieval receipt to the camelCase SDK shape. */
+export function toRetrievalReceipt(raw: RawRetrievalReceipt): RetrievalReceipt {
+  return {
+    ...(raw.embedding_provider !== undefined ? { embeddingProvider: raw.embedding_provider } : {}),
+    embeddingModel: raw.embedding_model,
+    embeddingModelVersion: raw.embedding_model_version,
+    embeddingDimensions: raw.embedding_dimensions,
+    queryText: raw.query_text,
+    candidateIds: raw.candidate_ids,
+    traceId: raw.trace_id,
   };
 }
 

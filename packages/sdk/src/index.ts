@@ -76,6 +76,9 @@ export type { ValidationConfig, ValidationResult } from './kv-cache/validation';
 // Storage API for the public `client.storage` namespace.
 export * from './storage';
 
+// Entity API for the public `client.entities` namespace.
+export * from './entities';
+
 // Logging
 export {
   Logger,
@@ -139,6 +142,7 @@ export { RuntimeConfig, runtimeConfig } from './core/runtime-config';
 export * from './memory/types';
 export * from './memory/errors';
 export * from './memory/provider';
+export * from './memory/capability-profiles';
 export * from './memory/pipeline';
 export * from './memory/registration';
 export * from './memory/atomicmemory-provider';

@@ -7,6 +7,12 @@ on:
 
 jobs:
   sync:
+    # This realign (force-push public main -> atomicmemory-internal main) must
+    # run ONLY from the public repo. The workflow file is mirrored into
+    # atomicmemory-internal by the public export, so without this guard it also
+    # fires on internal merges, where SYNC_TOKEN is absent and the push fails
+    # (and a private->private realign would be meaningless anyway).
+    if: github.repository == 'atomicstrata/atomicmemory'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Public Repo

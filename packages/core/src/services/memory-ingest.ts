@@ -15,7 +15,7 @@ import { processFactThroughPipeline } from './ingest-fact-pipeline.js';
 import { resolveSessionDate } from './session-date.js';
 import { maybeRebuildProfileForUser } from './user-profile-builder.js';
 import { maybeExtractEntityAttributesForIngest } from './entity-attribute-extractor.js';
-import type { MemoryMetadata, WorkspaceContext } from '../db/repository-types.js';
+import type { MemoryMetadata, StoreMemoryInput, WorkspaceContext } from '../db/repository-types.js';
 import type {
   IngestResult,
   EntropyContext,
@@ -101,6 +101,15 @@ function finalizeIngestResult(
 }
 
 /** Full consensus-based ingest pipeline. */
+/**
+ * Persisted in `episodes.content` in place of the raw transcript when the
+ * deployment runs RAW_CONTENT_POLICY=reject and the caller did not stamp a
+ * non-raw `content_class`. Extraction still runs against the real transcript
+ * transiently; only the durable raw copy is withheld.
+ */
+const RAW_INPUT_OMITTED_MARKER =
+  '[raw input omitted by RAW_CONTENT_POLICY=reject]';
+
 export async function performIngest(
   deps: MemoryServiceDeps,
   userId: string,
@@ -109,10 +118,11 @@ export async function performIngest(
   sourceUrl: string = '',
   sessionTimestamp?: Date,
   sessionId?: string,
+  redactRawInput: boolean = false,
 ): Promise<IngestResult> {
   const ingestStart = performance.now();
   const logicalSessionTimestamp = resolveSessionDate(sessionTimestamp, conversationText);
-  const episodeId = await timed('ingest.store-episode', () => deps.stores.episode.storeEpisode({ userId, content: conversationText, sourceSite, sourceUrl, sessionId }));
+  const episodeId = await timed('ingest.store-episode', () => deps.stores.episode.storeEpisode({ userId, content: redactRawInput ? RAW_INPUT_OMITTED_MARKER : conversationText, sourceSite, sourceUrl, sessionId }));
   const facts = await timed('ingest.extract', () => consensusExtractFacts(conversationText, deps.config));
   const traceCollector = new IngestTraceCollector(deps.config.ingestTraceEnabled);
   const acc = createIngestAccumulator();
@@ -198,10 +208,11 @@ export async function performQuickIngest(
   sourceUrl: string = '',
   sessionTimestamp?: Date,
   sessionId?: string,
+  redactRawInput: boolean = false,
 ): Promise<IngestResult> {
   const ingestStart = performance.now();
   const logicalSessionTimestamp = resolveSessionDate(sessionTimestamp, conversationText);
-  const episodeId = await deps.stores.episode.storeEpisode({ userId, content: conversationText, sourceSite, sourceUrl, sessionId });
+  const episodeId = await deps.stores.episode.storeEpisode({ userId, content: redactRawInput ? RAW_INPUT_OMITTED_MARKER : conversationText, sourceSite, sourceUrl, sessionId });
   const facts = timed('quick-ingest.extract', () => Promise.resolve(quickExtractFacts(conversationText)));
   const extractedFacts = await facts;
   const traceCollector = new IngestTraceCollector(deps.config.ingestTraceEnabled);
@@ -235,10 +246,36 @@ export async function performQuickIngest(
   );
 }
 
+/** Fixed importance assigned to every verbatim-stored memory (no extraction signal to score on). */
+const VERBATIM_IMPORTANCE = 0.5;
+
+/** Trust score applied when write-security blocks the content but the verbatim store still persists it. */
+const VERBATIM_BLOCKED_TRUST = 0.5;
+
+/**
+ * Read the caller-owned `metadata.externalId` if it is a non-empty string.
+ * `externalId` is the stable client-side id (the caller's own id) used to
+ * make verbatim ingest idempotent. Anything that is not a non-empty string is
+ * treated as absent — those rows keep plain insert behavior.
+ */
+function readExternalId(metadata: MemoryMetadata | undefined): string | undefined {
+  const raw = metadata?.externalId;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
 /**
  * Store content as a single memory without fact extraction.
  * Used for user-created contexts (text/file uploads) where
  * the content should remain as one canonical memory record.
+ *
+ * Idempotency: when `metadata.externalId` is present, the
+ * verbatim store is idempotent on `(user_id, metadata->>'externalId')` over
+ * LIVE rows. Re-ingesting the same `externalId` UPDATEs the existing live
+ * row's content/embedding/metadata in place (check-then-update) instead of
+ * inserting a second row, so `GET /v1/memories/by-external-id/:externalId`
+ * resolves deterministically to a single row. A partial unique index over
+ * live rows (migration 0002) enforces this at the schema level. Rows WITHOUT
+ * an `externalId` keep plain insert behavior and are not constrained.
  */
 export async function performStoreVerbatim(
   deps: MemoryServiceDeps,
@@ -252,15 +289,16 @@ export async function performStoreVerbatim(
   const episodeId = await deps.stores.episode.storeEpisode({ userId, content, sourceSite, sourceUrl, sessionId });
   const embedding = await embedText(content);
   const writeSecurity = assessWriteSecurity(content, sourceSite, deps.config);
-  const trustScore = writeSecurity.allowed ? writeSecurity.trust.score : 0.5;
+  const trustScore = writeSecurity.allowed ? writeSecurity.trust.score : VERBATIM_BLOCKED_TRUST;
   const traceCollector = new IngestTraceCollector(deps.config.ingestTraceEnabled);
 
-  const memoryId = await deps.stores.memory.storeMemory({
+  const externalId = readExternalId(metadata);
+  const { memoryId, isUpdate } = await writeVerbatimMemory(deps, userId, externalId, {
     userId,
     content,
     embedding,
     memoryType: 'semantic',
-    importance: 0.5,
+    importance: VERBATIM_IMPORTANCE,
     sourceSite,
     sourceUrl,
     episodeId,
@@ -275,7 +313,7 @@ export async function performStoreVerbatim(
     factText: content,
     headline: content.slice(0, 80),
     factType: 'verbatim',
-    importance: 0.5,
+    importance: VERBATIM_IMPORTANCE,
     writeSecurity: {
       allowed: writeSecurity.allowed,
       blockedBy: writeSecurity.blockedBy,
@@ -283,9 +321,9 @@ export async function performStoreVerbatim(
     },
     decision: {
       source: 'verbatim',
-      action: 'ADD',
-      reasonCode: 'verbatim-store',
-      targetMemoryId: null,
+      action: isUpdate ? 'UPDATE' : 'ADD',
+      reasonCode: isUpdate ? 'verbatim-dedup-update' : 'verbatim-store',
+      targetMemoryId: isUpdate ? memoryId : null,
     },
     outcome: 'stored',
     memoryId,
@@ -294,17 +332,80 @@ export async function performStoreVerbatim(
   return {
     episodeId,
     factsExtracted: 1,
-    memoriesStored: 1,
-    memoriesUpdated: 0,
+    memoriesStored: isUpdate ? 0 : 1,
+    memoriesUpdated: isUpdate ? 1 : 0,
     memoriesDeleted: 0,
     memoriesSkipped: 0,
-    storedMemoryIds: [memoryId],
-    updatedMemoryIds: [],
+    storedMemoryIds: isUpdate ? [] : [memoryId],
+    updatedMemoryIds: isUpdate ? [memoryId] : [],
     memoryIds: [memoryId],
     linksCreated: 0,
     compositesCreated: 0,
     ingestTraceId: traceCollector.finalize({ mode: 'verbatim', userId, sourceSite, sourceUrl, episodeId, factsExtracted: 1 }),
   };
+}
+
+/**
+ * Update the existing live verbatim row in place for an idempotent
+ * re-ingest: refresh content/embedding/trust, then merge caller metadata
+ * (JSONB `||`, preserving `externalId`). Returns the row id.
+ */
+/** Postgres unique-violation, SQLSTATE 23505. */
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+}
+
+/**
+ * Idempotent verbatim write keyed by external id. Updates the existing row for
+ * the external id when one is present, otherwise inserts. Handles the concurrent
+ * re-ingest race: when two requests for the same external id both observe no
+ * existing row, the partial-unique index makes one insert fail with a unique
+ * violation (23505); the loser re-reads the winner's row and updates it, so the
+ * call stays idempotent instead of surfacing a 500. Non-unique-violation errors
+ * (and a missing externalId) propagate unchanged.
+ */
+async function writeVerbatimMemory(
+  deps: MemoryServiceDeps,
+  userId: string,
+  externalId: string | undefined,
+  storeArgs: StoreMemoryInput & { trustScore: number },
+): Promise<{ memoryId: string; isUpdate: boolean }> {
+  const existing = externalId ? await deps.stores.memory.getMemoryByExternalId(userId, externalId) : null;
+  if (existing) {
+    return { memoryId: await applyVerbatimUpdate(deps, userId, existing.id, storeArgs.content, storeArgs.embedding, storeArgs.trustScore, storeArgs.metadata), isUpdate: true };
+  }
+  try {
+    return { memoryId: await deps.stores.memory.storeMemory(storeArgs), isUpdate: false };
+  } catch (e) {
+    if (!externalId || !isUniqueViolation(e)) throw e;
+    const raced = await deps.stores.memory.getMemoryByExternalId(userId, externalId);
+    if (!raced) throw e;
+    return { memoryId: await applyVerbatimUpdate(deps, userId, raced.id, storeArgs.content, storeArgs.embedding, storeArgs.trustScore, storeArgs.metadata), isUpdate: true };
+  }
+}
+
+async function applyVerbatimUpdate(
+  deps: MemoryServiceDeps,
+  userId: string,
+  memoryId: string,
+  content: string,
+  embedding: number[],
+  trustScore: number,
+  metadata: MemoryMetadata | undefined,
+): Promise<string> {
+  await deps.stores.memory.updateMemoryContent(
+    userId,
+    memoryId,
+    content,
+    embedding,
+    VERBATIM_IMPORTANCE,
+    '',
+    trustScore,
+  );
+  if (metadata) {
+    await deps.stores.memory.updateMemoryMetadata(userId, memoryId, metadata);
+  }
+  return memoryId;
 }
 
 /** Workspace-scoped ingest: stores memories tagged with workspace_id and agent_id. */
@@ -317,12 +418,13 @@ export async function performWorkspaceIngest(
   workspace: WorkspaceContext,
   sessionTimestamp?: Date,
   sessionId?: string,
+  redactRawInput: boolean = false,
 ): Promise<IngestResult> {
   const ingestStart = performance.now();
   const logicalSessionTimestamp = resolveSessionDate(sessionTimestamp, conversationText);
   const episodeId = await timed('ws-ingest.store-episode', () =>
     deps.stores.episode.storeEpisode({
-      userId, content: conversationText, sourceSite, sourceUrl,
+      userId, content: redactRawInput ? RAW_INPUT_OMITTED_MARKER : conversationText, sourceSite, sourceUrl,
       sessionId,
       workspaceId: workspace.workspaceId, agentId: workspace.agentId,
     }),

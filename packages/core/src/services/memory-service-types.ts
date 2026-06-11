@@ -34,6 +34,7 @@ export type IngestTraceAction = AUDNAction | 'SKIP';
 
 export type IngestTraceReasonCode =
   | 'verbatim-store'
+  | 'verbatim-dedup-update'
   | 'write-security-sanitization'
   | 'write-security-trust'
   | 'entropy-gate'
@@ -198,11 +199,38 @@ export interface IngestResult {
   ingestTraceId?: string;
 }
 
+/**
+ * Audit-grade retrieval receipt. Always present on
+ * `/v1/memories/search` and `/search/fast` responses so a client can log a
+ * retrieval as a replay fixture and replay the downstream decision
+ * bit-for-bit: it pins the embedding model that produced the query vector,
+ * the exact query text, the ranked candidate id ordering, and a correlation
+ * trace id. Not gated on any observability flag.
+ */
+export interface RetrievalReceipt {
+  embeddingProvider: string;
+  embeddingModel: string;
+  embeddingModelVersion: string;
+  embeddingDimensions: number;
+  queryText: string;
+  /** Returned memory ids in ranked order. */
+  candidateIds: string[];
+  traceId: string;
+}
+
 export interface RetrievalResult {
   memories: import('../db/repository-types.js').SearchResult[];
   injectionText: string;
   citations: string[];
   retrievalMode: RetrievalMode;
+  /**
+   * Audit-grade retrieval receipt. Populated by every search
+   * entry point; the route formatter projects it to the snake_case
+   * `retrieval` wire object. Optional on the type only because legacy
+   * in-process callers construct RetrievalResult directly; the HTTP search
+   * paths always set it.
+   */
+  retrievalReceipt?: RetrievalReceipt;
   tierAssignments?: import('./tiered-loading.js').TierAssignment[];
   expandIds?: string[];
   estimatedContextTokens?: number;
@@ -243,6 +271,15 @@ export interface RetrievalOptions {
   skipRepairLoop?: boolean;
   /** Skip cross-encoder reranking for latency-critical paths. */
   skipReranking?: boolean;
+  /**
+   * Hard LLM-free guarantee for the deterministic `/search/fast` path.
+   * When true, EVERY LLM-driven pipeline stage is suppressed regardless of
+   * runtime config: query rewrite (repair loop), cross-encoder rerank, entity
+   * query-expansion, and agentic multi-round retrieval. This is stronger than
+   * `skipRepairLoop` + `skipReranking` alone, which leave the config-gated
+   * expansion/agentic stages free to call the LLM. Set only by `performFastSearch`.
+   */
+  skipLlmStages?: boolean;
   /**
    * Active conversation ID for cross-channel injection. Currently used by the
    * always-on ENTITY_CARD channel to read per-conversation cards before

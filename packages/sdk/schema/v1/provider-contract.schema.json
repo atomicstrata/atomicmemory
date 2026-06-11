@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.atomicmemory.dev/provider-contract/v1/provider-contract.schema.json",
+  "title": "AtomicMemory Provider Contract (v1)",
+  "version": 1,
+  "description": "Versioned, language-neutral JSON Schema for the AtomicMemory MemoryProvider wire contract. Mirrors packages/sdk/src/memory/types.ts. Wire encoding conventions are documented in packages/sdk/CONTRACT.md. SDK field names are camelCase; the snake_case fields under `RetrievalReceipt` and the per-result receipt fields (`version_id`, `observed_at`) mirror the AtomicMemory core search-response wire shape.",
+  "$defs": {
+    "Scope": {
+      "title": "Scope",
+      "description": "Identity and partition context. Providers declare required fields via Capabilities.requiredScope. AtomicMemory maps scope.thread -> session_id and scope.namespace -> namespace_scope on the wire (see CONTRACT.md).",
+      "type": "object",
+      "properties": {
+        "user": { "type": "string" },
+        "agent": { "type": "string" },
+        "namespace": { "type": "string" },
+        "thread": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "Provenance": {
+      "title": "Provenance",
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "sourceId": { "type": "string" },
+        "extractor": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "MemoryKind": {
+      "title": "MemoryKind",
+      "type": "string",
+      "enum": ["fact", "episode", "summary", "procedure", "document"]
+    },
+    "Message": {
+      "title": "Message",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant", "system", "tool"] },
+        "content": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["role", "content"],
+      "additionalProperties": false
+    },
+    "Memory": {
+      "title": "Memory",
+      "description": "A single memory unit. `createdAt`/`updatedAt` are ISO-8601 date-time strings on the wire (Date objects in-process).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "content": { "type": "string" },
+        "scope": { "$ref": "#/$defs/Scope" },
+        "kind": { "$ref": "#/$defs/MemoryKind" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["id", "content", "scope", "createdAt"],
+      "additionalProperties": false
+    },
+    "IngestInput": {
+      "title": "IngestInput",
+      "description": "Discriminated union over `mode`: text, messages, or verbatim. Verbatim is capability-gated (Capabilities.ingestModes must include 'verbatim').",
+      "oneOf": [
+        { "$ref": "#/$defs/TextIngest" },
+        { "$ref": "#/$defs/MessageIngest" },
+        { "$ref": "#/$defs/VerbatimIngest" }
+      ]
+    },
+    "TextIngest": {
+      "title": "TextIngest",
+      "type": "object",
+      "properties": {
+        "mode": { "const": "text" },
+        "content": { "type": "string" },
+        "scope": { "$ref": "#/$defs/Scope" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["mode", "content", "scope"],
+      "additionalProperties": false
+    },
+    "MessageIngest": {
+      "title": "MessageIngest",
+      "type": "object",
+      "properties": {
+        "mode": { "const": "messages" },
+        "messages": { "type": "array", "items": { "$ref": "#/$defs/Message" } },
+        "scope": { "$ref": "#/$defs/Scope" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["mode", "messages", "scope"],
+      "additionalProperties": false
+    },
+    "VerbatimIngest": {
+      "title": "VerbatimIngest",
+      "description": "Bypass LLM extraction; one input = one memory record (deterministic).",
+      "type": "object",
+      "properties": {
+        "mode": { "const": "verbatim" },
+        "content": { "type": "string" },
+        "kind": { "$ref": "#/$defs/MemoryKind" },
+        "scope": { "$ref": "#/$defs/Scope" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["mode", "content", "scope"],
+      "additionalProperties": false
+    },
+    "IngestResult": {
+      "title": "IngestResult",
+      "description": "`unchanged` is always an empty array on the wire today; core does not currently report no-op dedupes (see CONTRACT.md).",
+      "type": "object",
+      "properties": {
+        "created": { "type": "array", "items": { "type": "string" } },
+        "updated": { "type": "array", "items": { "type": "string" } },
+        "unchanged": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["created", "updated", "unchanged"],
+      "additionalProperties": false
+    },
+    "FieldFilter": {
+      "title": "FieldFilter",
+      "description": "`value` Date operands are encoded as ISO-8601 date-time strings on the wire (see CONTRACT.md).",
+      "type": "object",
+      "properties": {
+        "field": { "type": "string" },
+        "op": {
+          "type": "string",
+          "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "exists"]
+        },
+        "value": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" },
+            { "type": "array", "items": { "type": ["string", "number"] } }
+          ]
+        }
+      },
+      "required": ["field", "op"],
+      "additionalProperties": false
+    },
+    "FilterExpr": {
+      "title": "FilterExpr",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "and": { "type": "array", "items": { "$ref": "#/$defs/FilterExpr" } } },
+          "required": ["and"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "or": { "type": "array", "items": { "$ref": "#/$defs/FilterExpr" } } },
+          "required": ["or"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "not": { "$ref": "#/$defs/FilterExpr" } },
+          "required": ["not"],
+          "additionalProperties": false
+        },
+        { "$ref": "#/$defs/FieldFilter" }
+      ]
+    },
+    "SearchRequest": {
+      "title": "SearchRequest",
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
+        "scope": { "$ref": "#/$defs/Scope" },
+        "limit": { "type": "integer", "minimum": 0 },
+        "threshold": { "type": "number" },
+        "filter": { "$ref": "#/$defs/FilterExpr" },
+        "reranker": { "type": "string" }
+      },
+      "required": ["query", "scope"],
+      "additionalProperties": false
+    },
+    "RetrievalReceipt": {
+      "title": "RetrievalReceipt",
+      "description": "Audit-grade retrieval receipt. snake_case mirrors the AtomicMemory core search-response wire shape. Always present on /search and /search/fast; lets a client pin and replay a retrieval bit-for-bit.",
+      "type": "object",
+      "properties": {
+        "embedding_provider": { "type": "string" },
+        "embedding_model": { "type": "string" },
+        "embedding_model_version": { "type": "string" },
+        "embedding_dimensions": { "type": "integer", "minimum": 1 },
+        "query_text": { "type": "string" },
+        "candidate_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Returned memory ids in ranked order."
+        },
+        "trace_id": { "type": "string" }
+      },
+      "required": [
+        "embedding_model",
+        "embedding_model_version",
+        "embedding_dimensions",
+        "query_text",
+        "candidate_ids",
+        "trace_id"
+      ],
+      "additionalProperties": false
+    },
+    "SearchResult": {
+      "title": "SearchResult",
+      "description": "`score` is the backward-compatible provider score (for AtomicMemory the composite rankingScore, not normalized). Prefer `relevance` (normalized [0,1]) for threshold checks. `version_id`/`observed_at` are the per-result fields of the retrieval receipt.",
+      "type": "object",
+      "properties": {
+        "memory": { "$ref": "#/$defs/Memory" },
+        "score": { "type": "number" },
+        "similarity": { "type": "number" },
+        "rankingScore": { "type": "number" },
+        "relevance": { "type": "number", "minimum": 0, "maximum": 1 },
+        "version_id": { "type": ["string", "null"] },
+        "observed_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memory", "score"],
+      "additionalProperties": false
+    },
+    "SearchResultPage": {
+      "title": "SearchResultPage",
+      "type": "object",
+      "properties": {
+        "results": { "type": "array", "items": { "$ref": "#/$defs/SearchResult" } },
+        "cursor": { "type": "string" },
+        "retrieval": { "$ref": "#/$defs/RetrievalReceipt" }
+      },
+      "required": ["results"],
+      "additionalProperties": false
+    },
+    "Capabilities": {
+      "title": "Capabilities",
+      "type": "object",
+      "properties": {
+        "ingestModes": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["text", "messages", "verbatim"] }
+        },
+        "requiredScope": {
+          "type": "object",
+          "properties": {
+            "default": { "$ref": "#/$defs/ScopeFieldList" }
+          },
+          "required": ["default"],
+          "additionalProperties": { "$ref": "#/$defs/ScopeFieldList" }
+        },
+        "extensions": {
+          "type": "object",
+          "properties": {
+            "update": { "type": "boolean" },
+            "package": { "type": "boolean" },
+            "temporal": { "type": "boolean" },
+            "graph": { "type": "boolean" },
+            "forget": { "type": "boolean" },
+            "profile": { "type": "boolean" },
+            "reflect": { "type": "boolean" },
+            "versioning": { "type": "boolean" },
+            "batch": { "type": "boolean" },
+            "health": { "type": "boolean" }
+          },
+          "required": [
+            "update", "package", "temporal", "graph", "forget",
+            "profile", "reflect", "versioning", "batch", "health"
+          ],
+          "additionalProperties": false
+        },
+        "customExtensions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "supportedRerankers": { "type": "array", "items": { "type": "string" } },
+        "supportedFilterOps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldFilter/properties/op" }
+        },
+        "maxTokenBudget": { "type": "number" }
+      },
+      "required": ["ingestModes", "requiredScope", "extensions"],
+      "additionalProperties": false
+    },
+    "ScopeFieldList": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["user", "agent", "namespace", "thread"] }
+    },
+    "CoreCapabilities": {
+      "title": "CoreCapabilities",
+      "description": "Over-the-wire capabilities descriptor served by AtomicMemory core at GET /v1/capabilities. snake_case wire shape that a non-JS protocol caller deserializes to negotiate the feature surface at startup. This is the wire equivalent of the in-process SDK `Capabilities` def above; the two intentionally differ in casing because `Capabilities` is the camelCase SDK provider shape while `CoreCapabilities` is the snake_case HTTP descriptor.",
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "ingest_modes": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["text", "messages", "verbatim"] }
+        },
+        "search": { "type": "boolean" },
+        "retrieval": { "type": "string", "enum": ["semantic"] },
+        "deterministic_fast_path": { "type": "boolean" },
+        "extensions": {
+          "type": "object",
+          "properties": {
+            "health": { "type": "boolean" },
+            "versioning": { "type": "boolean" },
+            "temporal": { "type": "boolean" }
+          },
+          "required": ["health", "versioning", "temporal"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "ingest_modes",
+        "search",
+        "retrieval",
+        "deterministic_fast_path",
+        "extensions"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

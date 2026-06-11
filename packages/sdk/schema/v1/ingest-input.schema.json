@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.atomicmemory.dev/provider-contract/v1/ingest-input.schema.json",
+  "title": "IngestInput (v1)",
+  "version": 1,
+  "description": "Entry-point schema for a single MemoryProvider.ingest() input. Delegates to the IngestInput union defined in provider-contract.schema.json.",
+  "$ref": "https://schemas.atomicmemory.dev/provider-contract/v1/provider-contract.schema.json#/$defs/IngestInput"
+}

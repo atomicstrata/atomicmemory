@@ -17,7 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSearchResult } from './test-fixtures.js';
+import { createSearchResult, RECEIPT_EMBEDDING_CONFIG } from './test-fixtures.js';
 import type { SearchResult } from '../../db/repository-types.js';
 import type { MemoryServiceDeps } from '../memory-service-types.js';
 
@@ -191,6 +191,7 @@ function createDeps(): MemoryServiceDeps {
 function createDepsWithUriResolver(uriResolver: UriResolverStub): MemoryServiceDeps {
   return {
     config: {
+      ...RECEIPT_EMBEDDING_CONFIG,
       lessonsEnabled: false,
       consensusValidationEnabled: false,
       consensusMinMemories: 5,
@@ -199,7 +200,10 @@ function createDepsWithUriResolver(uriResolver: UriResolverStub): MemoryServiceD
     stores: {
       lesson: null,
       memory: { touchMemory: vi.fn().mockResolvedValue(undefined) },
-      claim: { searchClaimVersions: vi.fn().mockResolvedValue([]) },
+      claim: {
+        searchClaimVersions: vi.fn().mockResolvedValue([]),
+        getCurrentVersionIdsByMemoryIds: vi.fn().mockResolvedValue(new Map()),
+      },
       search: {},
       link: {},
       entity: {},

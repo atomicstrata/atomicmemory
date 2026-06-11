@@ -31,6 +31,7 @@ import { UserProfileRepository } from '../db/repository-user-profiles.js';
 import { ReflectionsRepository } from '../db/reflections-repository.js';
 import { ReflectionJobsRepository } from '../db/reflection-jobs-repository.js';
 import { EntityCardsRepository } from '../db/entity-cards-repository.js';
+import { EntitySettingsRepository } from '../db/entity-settings-repository.js';
 import { ContradictionsRepository } from '../db/contradictions-repository.js';
 import { EntityValuesRepository } from '../db/entity-values-repository.js';
 import { TllRepository } from '../db/repository-tll.js';
@@ -105,7 +106,11 @@ export interface CoreRuntimeConfig {
   crossEncoderDtype: CrossEncoderDtype;
   crossEncoderEnabled: boolean;
   crossEncoderModel: string;
+  embeddingProvider: import('../config.js').EmbeddingProviderName;
+  embeddingModel: string;
   embeddingDimensions: number;
+  /** Voyage query-task model; the effective query model when provider === 'voyage'. */
+  voyageQueryModel: string;
   entityGraphEnabled: boolean;
   entitySearchMinSimilarity: number;
   hierarchicalRetrievalEnabled: boolean;
@@ -370,6 +375,7 @@ export async function createCoreRuntime(deps: CoreRuntimeDeps): Promise<CoreRunt
   const reflectionJobs = runtimeConfig.reflectEnabled ? new ReflectionJobsRepository(pool) : null;
   const entityValues = runtimeConfig.phase2SpecialistsEnabled ? new EntityValuesRepository(pool) : null;
   const entityCards = runtimeConfig.entityCardEnabled ? new EntityCardsRepository(pool) : null;
+  const entitySettings = new EntitySettingsRepository(pool);
   const contradictions = buildContradictionsRepo(runtimeConfig, pool);
 
   // TBC dual-write hook: when TBC is enabled, route belief operations
@@ -425,6 +431,7 @@ export async function createCoreRuntime(deps: CoreRuntimeDeps): Promise<CoreRunt
     beliefEdges,
     entityValues,
     entityCards,
+    entitySettings,
     contradictions,
     pool,
   };

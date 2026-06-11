@@ -1,0 +1,8 @@
+{
+  "clone_groups": [
+    "src/__tests__/capability-check.test.ts:105-115|src/__tests__/capability-check.test.ts:73-83",
+    "src/__tests__/load-export.test.ts:127-140|src/__tests__/load-export.test.ts:59-71|src/__tests__/load-export.test.ts:74-87|src/__tests__/load-export.test.ts:90-103",
+    "src/__tests__/load-export.test.ts:106-140|src/__tests__/load-export.test.ts:74-87|src/__tests__/load-export.test.ts:90-103",
+    "src/__tests__/load-export.test.ts:110-140|src/__tests__/load-export.test.ts:90-103"
+  ]
+}

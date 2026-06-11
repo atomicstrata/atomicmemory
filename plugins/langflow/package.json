@@ -1,0 +1,26 @@
+{
+  "name": "@atomicmemory/langflow-plugin",
+  "version": "0.1.17",
+  "description": "AtomicMemory custom components for Langflow.",
+  "license": "Apache-2.0",
+  "bin": { "atomicmemory-langflow": "install.mjs" },
+  "files": [
+    "install.mjs",
+    "plugin.yaml",
+    "README.md",
+    "CHANGELOG.md",
+    "entries/chat_memory.py",
+    "entries/search_context.py",
+    "entries/store_message.py",
+    "entries/delete.py"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "plugins/langflow"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/plugins/langflow#readme"
+}

@@ -68,6 +68,10 @@ describe('memory route config seam', () => {
       citations: [],
       retrievalMode: 'flat',
       budgetConstrained: false,
+      retrievalReceipt: {
+        embeddingProvider: 'openai', embeddingModel: 'm', embeddingModelVersion: 'm',
+        embeddingDimensions: 768, queryText: 'q', candidateIds: [], traceId: 'trace-test',
+      },
     });
 
     const service = {

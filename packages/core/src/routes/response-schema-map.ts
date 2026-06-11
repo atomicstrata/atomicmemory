@@ -41,6 +41,7 @@ export const MEMORY_RESPONSE_SCHEMAS: ResponseSchemaMap = {
   'post /reconcile': R.ReconciliationResponseSchema,
   'get /reconcile/status': R.ReconcileStatusResponseSchema,
   'post /reset-source': R.ResetSourceResponseSchema,
+  'get /by-external-id/:externalId': R.GetMemoryResponseSchema,
   'get /:id': R.GetMemoryResponseSchema,
   'delete /:id': R.SuccessResponseSchema,
   'get /audit/summary': R.MutationSummaryResponseSchema,

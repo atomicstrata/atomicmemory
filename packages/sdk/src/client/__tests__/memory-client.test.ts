@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MemoryClient } from '../memory-client';
+import type { ProviderRegistry } from '../../memory/providers/registry';
 
 describe('MemoryClient', () => {
   it('throws if no providers are configured', () => {
@@ -71,5 +72,61 @@ describe('MemoryClient', () => {
     await client.initialize();
 
     expect(client.capabilities().extensions.reflect).toBe(true);
+  });
+
+  it('concurrent initialize calls run the factory exactly once', async () => {
+    const mockProvider = {
+      name: 'mock',
+      ingest: vi.fn(),
+      search: vi.fn(),
+      get: vi.fn(),
+      delete: vi.fn(),
+      list: vi.fn(),
+      capabilities: vi.fn().mockReturnValue({ extensions: {} }),
+    };
+    const factory = vi.fn(async () => {
+      await new Promise<void>((r) => setTimeout(r, 20));
+      return { provider: mockProvider };
+    });
+    const registry: ProviderRegistry = { mock: factory };
+    const client = new MemoryClient({ providers: { mock: {} } });
+
+    await Promise.all([client.initialize(registry), client.initialize(registry)]);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(client.getProvider('mock')).toBe(mockProvider);
+  });
+
+  it('rejected initialize is sticky — factory called once, error re-thrown on retry', async () => {
+    const markerError = new Error('factory-boom');
+    const factory = vi.fn(async () => { throw markerError; });
+    const registry: ProviderRegistry = { mock: factory };
+    const client = new MemoryClient({ providers: { mock: {} } });
+
+    await expect(client.initialize(registry)).rejects.toThrow(markerError);
+    await expect(client.initialize(registry)).rejects.toThrow(markerError);
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('getProviderStatus reports no provider as initialized after a failed initialize()', async () => {
+    const okProvider = {
+      name: 'ok',
+      ingest: vi.fn(),
+      search: vi.fn(),
+      get: vi.fn(),
+      delete: vi.fn(),
+      list: vi.fn(),
+      capabilities: vi.fn().mockReturnValue({ extensions: {} }),
+    };
+    const registry: ProviderRegistry = {
+      ok: () => ({ provider: okProvider }),
+      bad: async () => { throw new Error('bad-init'); },
+    };
+    const client = new MemoryClient({ providers: { ok: {}, bad: {} } });
+
+    await expect(client.initialize(registry)).rejects.toThrow('bad-init');
+
+    const statuses = client.getProviderStatus();
+    expect(statuses.every((s) => !s.initialized)).toBe(true);
   });
 });

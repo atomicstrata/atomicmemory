@@ -27,7 +27,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node --test 'dist/**/*.test.js'",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs"
   },
   "dependencies": {
     "@atomicmemory/mcp-server": "^0.1.2"
@@ -39,5 +40,9 @@
   "bugs": {
     "url": "https://github.com/atomicstrata/atomicmemory/issues"
   },
-  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/plugins/openclaw#readme"
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/plugins/openclaw#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

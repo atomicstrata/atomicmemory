@@ -18,7 +18,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandlers, type IngestArgs } from './tools.js';
+import { createHandlers, IngestArgsSchema, type IngestArgs } from './tools.js';
 import type {
   IngestInput,
   IngestResult,
@@ -88,6 +88,36 @@ test('memory_ingest verbatim — forwards caller metadata to client.ingest uncha
     session_id: 'session-xyz',
     tool_count: 3,
   });
+});
+
+test('memory_ingest verbatim — forwards a stamped contentClass to client.ingest', async () => {
+  const fake = makeFakeClient();
+  const handlers = createHandlers(fake.client, undefined);
+
+  await handlers.memory_ingest({
+    mode: 'verbatim',
+    content: 'distilled summary line',
+    scope: SCOPE,
+    contentClass: 'summary',
+  } as IngestArgs);
+
+  const call = fake.ingestCalls[0]! as { contentClass?: string };
+  assert.equal(call.contentClass, 'summary');
+});
+
+test('memory_ingest verbatim — omits contentClass when the caller does not stamp one', async () => {
+  const fake = makeFakeClient();
+  const handlers = createHandlers(fake.client, undefined);
+
+  await handlers.memory_ingest({
+    mode: 'verbatim',
+    content: 'unclassified verbatim',
+    scope: SCOPE,
+  } as IngestArgs);
+
+  // Fail closed: no contentClass on the wire, so a reject-policy core refuses it
+  // rather than the MCP server labeling raw content as safe.
+  assert.equal('contentClass' in (fake.ingestCalls[0]! as object), false);
 });
 
 test('memory_ingest verbatim — passes provenance.source / sourceUrl through', async () => {
@@ -209,4 +239,22 @@ test('memory_ingest verbatim — throws when client has no AtomicMemory provider
   );
   // Sanity: the call short-circuits before any HTTP attempt.
   assert.equal(fake.ingestCalls.length, 0);
+});
+
+test('IngestArgsSchema — rejects contentClass on a non-verbatim mode (fail loud, not silent drop)', () => {
+  const textResult = IngestArgsSchema.safeParse({
+    mode: 'text', content: 'hi', scope: SCOPE, contentClass: 'summary',
+  });
+  assert.equal(textResult.success, false);
+  const messagesResult = IngestArgsSchema.safeParse({
+    mode: 'messages', messages: [{ role: 'user', content: 'hi' }], scope: SCOPE, contentClass: 'summary',
+  });
+  assert.equal(messagesResult.success, false);
+});
+
+test('IngestArgsSchema — accepts contentClass on the verbatim mode', () => {
+  const result = IngestArgsSchema.safeParse({
+    mode: 'verbatim', content: 'distilled', scope: SCOPE, contentClass: 'summary',
+  });
+  assert.equal(result.success, true);
 });

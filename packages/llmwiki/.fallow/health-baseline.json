@@ -1,0 +1,14 @@
+{
+  "findings": [
+    "src/load-export.ts:assertRawDepthSafe:130",
+    "src/nesting-guard.ts:pushChildren:60",
+    "src/project-id.ts:validateProjectId:35",
+    "src/metadata.ts:buildLlmwikiMetadata:60",
+    "src/provider.ts:doSearch:189",
+    "src/errors.ts:constructor:54"
+  ],
+  "production_coverage_findings": [],
+  "target_keys": [
+    "src/schema.ts:dead code"
+  ]
+}

@@ -1,0 +1,4 @@
+# Temp subprocess scripts written (and normally unlinked) by tests —
+# e.g. register-dist-contract.test.ts's .tmp-missing-peer-invoke.mjs.
+# A crash between write and the finally-unlink must not dirty the worktree.
+.tmp-*
