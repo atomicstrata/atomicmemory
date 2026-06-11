@@ -160,6 +160,15 @@ export interface SearchPipelineOptions {
   /** Skip cross-encoder reranking for latency-critical paths. */
   skipReranking?: boolean;
   /**
+   * Hard LLM-free guarantee for the deterministic `/search/fast` path.
+   * When true, every LLM-driven pipeline stage is suppressed regardless of
+   * runtime config: repair-loop query rewrite, cross-encoder rerank, entity
+   * query-expansion, and agentic multi-round retrieval. Stronger than
+   * `skipRepairLoop` + `skipReranking`, which leave the config-gated
+   * query-expansion and agentic stages free to call the LLM.
+   */
+  skipLlmStages?: boolean;
+  /**
    * Runtime-owned config threaded through all search-pipeline helpers.
    * When present, gates and thresholds across the entire retrieval path
    * read from this instead of the static module-level config singleton.
@@ -255,12 +264,16 @@ export async function runSearchPipelineWithTrace(
     stores, userId, query, queryEmbedding, withLiteralExpansion, candidateDepth, referenceTime, trace,
   ));
 
-  // Query expansion
-  const withExpansion = await timed('search.query-expansion', () => applyQueryExpansion(
-    stores, userId, query, queryEmbedding, temporalExpansion.memories, candidateDepth, trace, policyConfig,
-  ));
+  // Query expansion (entity-grounded; LLM-driven via extractQueryTerms).
+  // Suppressed entirely on the deterministic /search/fast path,
+  // which must not issue any LLM call regardless of config gates.
+  const withExpansion = options.skipLlmStages
+    ? temporalExpansion.memories
+    : await timed('search.query-expansion', () => applyQueryExpansion(
+      stores, userId, query, queryEmbedding, temporalExpansion.memories, candidateDepth, trace, policyConfig,
+    ));
 
-  const repaired = options.skipRepairLoop
+  const repaired = (options.skipRepairLoop || options.skipLlmStages)
     ? { memories: withExpansion, queryText: searchQuery }
     : await timed('search.repair-loop', () => applyRepairLoop(
       stores,
@@ -300,9 +313,10 @@ export async function runSearchPipelineWithTrace(
     return iterative.memories;
   });
 
-  // Agentic multi-round retrieval
+  // Agentic multi-round retrieval (LLM-driven via llm.chat). Suppressed on the
+  // deterministic /search/fast path regardless of the config gate.
   const results = await timed('search.agentic-retrieval', async () => {
-    if (!policyConfig.agenticRetrievalEnabled) return iterated;
+    if (options.skipLlmStages || !policyConfig.agenticRetrievalEnabled) return iterated;
     const agenticResult = await applyAgenticRetrieval(
       stores.search, userId, query, iterated, candidateDepth, sourceSite, referenceTime, policyConfig,
     );
@@ -326,7 +340,7 @@ export async function runSearchPipelineWithTrace(
     referenceTime,
     temporalExpansion.temporalAnchorFingerprints,
     trace,
-    options.skipReranking,
+    options.skipReranking || options.skipLlmStages,
     policyConfig,
   ));
 

@@ -7,6 +7,19 @@ MCP server that exposes [AtomicMemory core](../../packages/core) as four tools t
 - `memory_package` — token-budgeted context package
 - `memory_list` — list recent scoped memories
 
+## Authoritative contract
+
+The REST API and the [`@atomicmemory/sdk`](../../packages/sdk) type surface are
+the authoritative memory contract — provenance, scope, mutation results,
+retrieval scores, and context-package metadata are defined there. This MCP
+server is a thin callable-tool adapter over that contract.
+
+Tool results are returned as JSON-stringified text for host compatibility, so
+the text payload is a transport convenience, not a separate audit surface. For
+evidence or audit purposes, read the REST/SDK projection rather than parsing MCP
+tool text. New memory semantics land in Core and the SDK first; this adapter
+exposes them, it does not define them.
+
 ## Status: package entrypoint
 
 This package is intended to publish as `@atomicmemory/mcp-server`. Cursor and
@@ -54,7 +67,7 @@ The binary loads config from environment variables:
 
 - `mode: "text"` with `content`: runs the provider's extraction pipeline.
 - `mode: "messages"` with `messages`: runs extraction over structured chat messages.
-- `mode: "verbatim"` with `content`: asks the provider to store exactly one deterministic record. This is intended for lifecycle records such as compact summaries. Providers that cannot guarantee verbatim semantics may reject it.
+- `mode: "verbatim"` with `content`: asks the provider to store exactly one deterministic record. This is intended for lifecycle records such as compact summaries. Providers that cannot guarantee verbatim semantics may reject it. Supply `contentClass` (`summary` | `redacted` | `raw`) describing what you are storing: a core with the default `RAW_CONTENT_POLICY=reject` refuses unstamped or `raw` verbatim content.
 
 Optional `metadata`, `provenance`, and `kind` are accepted. Deterministic AtomicMemory records store the provided `content` directly; provenance is persisted through `sourceSite` / `sourceUrl`. Caller-supplied `metadata` is forwarded to core's `/v1/memories/ingest/quick` route and persisted to the memory's `metadata` JSONB column (atomicmemory-core PR #51 + atomicmemory-sdk PR #15). It also continues to carry integration behavior such as `dedupe_key`, which the MCP layer reads to synthesize a deterministic `sourceUrl` when the caller omits `provenance.sourceUrl`. Reserved keys (`cmo_id`, `headline`, `memberMemoryIds`, etc. — full list in core's `RESERVED_METADATA_KEYS`) are rejected by core with 400.
 

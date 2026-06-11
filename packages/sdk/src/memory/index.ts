@@ -9,6 +9,7 @@
 export * from './types';
 export * from './errors';
 export * from './provider';
+export * from './capability-profiles';
 export * from './pipeline';
 export * from './registration';
 export * from './atomicmemory-provider';

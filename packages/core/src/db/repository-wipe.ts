@@ -42,6 +42,7 @@ const USER_SCOPED_WIPE_TABLES_BEFORE_MEMORIES = [
   'first_mention_events',
   'temporal_linkage_list',
   'entity_relations',
+  'entity_settings',
   'memory_atomic_facts',
   'memory_foresight',
   'canonical_memory_objects',

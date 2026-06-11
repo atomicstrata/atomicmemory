@@ -1,0 +1,39 @@
+{
+  "name": "search-with-retrieval-receipt",
+  "operation": "search",
+  "description": "Semantic search returning ranked hits plus the retrieval receipt (snake_case). The receipt lets a caller pin and replay a retrieval bit-for-bit; per-result version_id/observed_at are the per-hit receipt fields.",
+  "request_schema": "provider-contract.schema.json#/$defs/SearchRequest",
+  "request": {
+    "query": "deploy gate",
+    "scope": { "user": "u1", "namespace": "team-alpha" },
+    "limit": 5
+  },
+  "response_schema": "search-result-page.schema.json",
+  "expected_response": {
+    "results": [
+      {
+        "memory": {
+          "id": "mem_v1",
+          "content": "The deploy gate requires a green PR check.",
+          "scope": { "user": "u1", "namespace": "team-alpha" },
+          "kind": "fact",
+          "createdAt": "2026-05-30T12:00:00.000Z"
+        },
+        "score": 0.82,
+        "similarity": 0.88,
+        "relevance": 0.74,
+        "version_id": "ver_9",
+        "observed_at": "2026-05-30T12:00:00.000Z"
+      }
+    ],
+    "retrieval": {
+      "embedding_provider": "ollama",
+      "embedding_model": "mxbai-embed-large",
+      "embedding_model_version": "mxbai-embed-large",
+      "embedding_dimensions": 1024,
+      "query_text": "deploy gate",
+      "candidate_ids": ["mem_v1"],
+      "trace_id": "trace_abc"
+    }
+  }
+}

@@ -55,9 +55,10 @@
     "generate-config-schema:check": "node --import tsx scripts/generate-config-schema.mjs --check",
     "check-spec-parser-drift": "node scripts/check-spec-parser-drift.mjs",
     "prepack": "pnpm build",
-    "prepublishOnly": "node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
+    "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs && node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
   },
   "dependencies": {
+    "@atomicmemory/llmwiki": "^1.0.0",
     "@atomicmemory/sdk": "^1.0.2",
     "commander": "^12.1.0",
     "ink": "npm:@jrichman/ink@6.6.9",

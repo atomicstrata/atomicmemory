@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSearchResult } from './test-fixtures.js';
+import { createSearchResult, RECEIPT_EMBEDDING_CONFIG } from './test-fixtures.js';
 
 const {
   mockCheckLessons,
@@ -72,7 +72,11 @@ function createDeps(runtimeConfig: {
     claims: {},
     entities: null,
     lessons: {},
-    stores: { memory: repo, search: repo, link: repo, claim: {}, entity: null, lesson: {} },
+    stores: {
+      memory: repo, search: repo, link: repo,
+      claim: { getCurrentVersionIdsByMemoryIds: vi.fn().mockResolvedValue(new Map()) },
+      entity: null, lesson: {},
+    },
     observationService: null,
     uriResolver: { resolve: vi.fn().mockResolvedValue(null), format: vi.fn() },
   } as any;
@@ -92,6 +96,7 @@ describe('performSearch runtime config seam', () => {
 
   it('threads deps.config into the pipeline and gates request-time side effects from it', async () => {
     const runtimeConfig = {
+      ...RECEIPT_EMBEDDING_CONFIG,
       lessonsEnabled: false,
       consensusValidationEnabled: false,
       consensusMinMemories: 2,

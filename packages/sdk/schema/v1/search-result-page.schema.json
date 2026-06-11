@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.atomicmemory.dev/provider-contract/v1/search-result-page.schema.json",
+  "title": "SearchResultPage (v1)",
+  "version": 1,
+  "description": "Entry-point schema for a MemoryProvider.search() response page, including the retrieval receipt. Delegates to provider-contract.schema.json.",
+  "$ref": "https://schemas.atomicmemory.dev/provider-contract/v1/provider-contract.schema.json#/$defs/SearchResultPage"
+}

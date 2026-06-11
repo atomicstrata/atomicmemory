@@ -42,7 +42,7 @@ describe('Phase 2 — baseline schema validator', () => {
 
     await expect(migrate({ pool })).resolves.toBeDefined();
 
-    expect(await pgmigrationsCount()).toBe(1);
+    expect(await pgmigrationsCount()).toBe(2); // baseline + 0002_entity_settings
     expect(await schemaVersionCount()).toBe(1);
   });
 

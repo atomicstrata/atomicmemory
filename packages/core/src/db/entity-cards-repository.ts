@@ -55,6 +55,47 @@ export class EntityCardsRepository {
     );
   }
 
+  /**
+   * Find all recent cards across all entity names for a user.
+   * Use this when you want cards for any entity in the user's graph,
+   * not filtered to a specific entity name.
+   */
+  async findAllByUser(userId: string, limit: number): Promise<EntityCard[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, user_id, conversation_id, entity_name, card_text,
+              source_observation_ids, version, updated_at
+       FROM entity_cards
+       WHERE user_id = $1
+       ORDER BY updated_at DESC
+       LIMIT $2`,
+      [userId, limit],
+    );
+    return rows.map(mapRow);
+  }
+
+  /** Find recent cards for a user by entity name (case-insensitive), most recently updated first. */
+  async findByUser(userId: string, entityName: string, limit: number): Promise<EntityCard[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, user_id, conversation_id, entity_name, card_text,
+              source_observation_ids, version, updated_at
+       FROM entity_cards
+       WHERE user_id = $1 AND lower(entity_name) = lower($2)
+       ORDER BY updated_at DESC
+       LIMIT $3`,
+      [userId, entityName, limit],
+    );
+    return rows.map(mapRow);
+  }
+
+  /** Delete all entity cards for a user. Returns the number of rows deleted. */
+  async deleteAllForUser(userId: string): Promise<number> {
+    const result = await this.pool.query(
+      'DELETE FROM entity_cards WHERE user_id = $1',
+      [userId],
+    );
+    return result.rowCount ?? 0;
+  }
+
   /** Find cards for a (userId, conversationId), most recently updated first. */
   async findByConversation(
     userId: string,

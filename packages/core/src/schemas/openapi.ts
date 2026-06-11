@@ -40,6 +40,7 @@ import {
   ListQuerySchema,
   MemoryByIdQuerySchema,
   UuidIdParamSchema,
+  ExternalIdParamSchema,
   FreeIdParamSchema,
 } from './memories.js';
 import {
@@ -50,6 +51,15 @@ import {
   ConflictIdParamSchema,
   ResolveConflictBodySchema,
 } from './agents.js';
+import {
+  EntityTypeParamSchema,
+  EntityListQuerySchema,
+  GetEntityQuerySchema,
+  AttributesQuerySchema,
+  MemoryHistoryParamSchema,
+  EntitySettingsPatchSchema,
+  MergeBodySchema,
+} from './entities.js';
 import {
   RegisterDocumentBodySchema,
   DocumentIdParamSchema,
@@ -85,6 +95,7 @@ const TAG_AGENTS = 'Agents';
 const TAG_DOCUMENTS = 'Documents';
 const TAG_STORAGE = 'Storage';
 const TAG_ADMIN = 'Admin';
+const TAG_ENTITIES = 'Entities';
 
 const AdminDeleteScopeBodySchema = z.object({
   user_id: z.string().min(1),
@@ -125,6 +136,7 @@ export function buildRegistry(): OpenAPIRegistry {
   registry.register('AdminDeleteScopeBody', AdminDeleteScopeBodySchema);
   registry.register('AdminDeleteScopeResponse', AdminDeleteScopeResponseSchema);
 
+  registerCapabilitiesRoute(registry);
   registerMemoryCoreRoutes(registry);
   registerMemoryLifecycleRoutes(registry);
   registerMemoryAuditRoutes(registry);
@@ -134,6 +146,7 @@ export function buildRegistry(): OpenAPIRegistry {
   registerDocumentRoutes(registry);
   registerStorageRoutes(registry);
   registerAdminRoutes(registry);
+  registerEntityRoutes(registry);
 
   return registry;
 }
@@ -178,6 +191,32 @@ const GenericObjectResponse = z.object({}).passthrough();
 
 function ok(description: string, schema: z.ZodTypeAny = GenericObjectResponse) {
   return { description, content: { 'application/json': { schema } } };
+}
+
+// ---------------------------------------------------------------------------
+// /v1/capabilities — unauthenticated protocol-negotiation descriptor
+// ---------------------------------------------------------------------------
+
+const TAG_CAPABILITIES = 'Capabilities';
+
+function registerCapabilitiesRoute(registry: OpenAPIRegistry): void {
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/capabilities',
+    operationId: 'getCapabilities',
+    tags: [TAG_CAPABILITIES],
+    summary: 'Wire capabilities descriptor for protocol-level callers.',
+    description:
+      'Unauthenticated. A protocol-level caller (e.g. a control-plane service) GETs this at ' +
+      'startup to negotiate the core feature surface WITHOUT the JS SDK. ' +
+      'Mirrors the SDK provider`s capabilities() descriptor over the wire. ' +
+      'Like `/health`, it advertises a static capability surface (no user ' +
+      'data), so it waives the document-level bearer requirement.',
+    security: [],
+    responses: {
+      200: ok('Capabilities descriptor.', R.CapabilitiesResponseSchema),
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +336,28 @@ function registerMemoryCoreRoutes(registry: OpenAPIRegistry): void {
     tags: [TAG_MEMORIES],
     summary: 'Fetch a single memory by UUID.',
     request: { params: UuidIdParamSchema, query: MemoryByIdQuerySchema },
+    responses: {
+      200: ok('Memory object.', R.GetMemoryResponseSchema),
+      400: RESPONSE_400,
+      404: RESPONSE_404,
+      500: RESPONSE_500,
+      502: RESPONSE_502,
+      503: RESPONSE_503,
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/memories/by-external-id/{externalId}',
+    operationId: 'getMemoryByExternalId',
+    tags: [TAG_MEMORIES],
+    summary: 'Fetch a single memory by caller-owned metadata.externalId.',
+    description:
+      'Reverse lookup of a memory by its `metadata.externalId`, scoped to ' +
+      '`user_id`. the caller stamps its own id into `metadata.externalId` ' +
+      'on quick-ingest; this resolves that id back to the core memory. ' +
+      'Returns the same body as GET /v1/memories/{id}.',
+    request: { params: ExternalIdParamSchema, query: UserIdQuerySchema },
     responses: {
       200: ok('Memory object.', R.GetMemoryResponseSchema),
       400: RESPONSE_400,
@@ -1229,6 +1290,165 @@ function registerStorageRoutes(registry: OpenAPIRegistry): void {
         content: { 'application/json': { schema: ErrorBasicSchema } },
       },
       500: RESPONSE_500,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// /v1/entities — entity profile reads, management, and configuration
+// ---------------------------------------------------------------------------
+
+function registerEntityRoutes(registry: OpenAPIRegistry): void {
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/entities',
+    operationId: 'listEntities',
+    tags: [TAG_ENTITIES],
+    summary: 'List all entities with memory counts.',
+    description:
+      'Returns all distinct entity IDs for the authenticated deployment, ' +
+      'ordered by most recently active. Paginated via `page` and `page_size`.',
+    request: { query: EntityListQuerySchema },
+    responses: {
+      200: ok('Paginated entity list.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/v1/entities/merge',
+    operationId: 'mergeEntities',
+    tags: [TAG_ENTITIES],
+    summary: 'Merge a source entity into a target entity.',
+    description:
+      'Re-scopes all memories, attributes, cards, and graph edges from ' +
+      '`source` to `target` in a single transaction, then deletes the source entity.',
+    request: { body: { content: { 'application/json': { schema: MergeBodySchema } }, required: true } },
+    responses: {
+      200: ok('Counts of records moved per table.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/entities/{entity_type}/{entity_id}/profile',
+    operationId: 'getEntityProfile',
+    tags: [TAG_ENTITIES],
+    summary: 'Get the synthesized profile for a user or agent.',
+    description:
+      'Returns the auto-synthesized prose profile from `user_profiles` plus ' +
+      'top structured attribute triples from `entity_attributes`. ' +
+      'No LLM call on the read path — the profile is pre-computed at ingest time. ' +
+      '`profile` is `null` when fewer than 3 memories have been ingested or ' +
+      'when `USER_PROFILE_CHANNEL_ENABLED` is off.',
+    request: { params: EntityTypeParamSchema },
+    responses: {
+      200: ok('Entity profile with attributes and memory count.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/entities/{entity_type}/{entity_id}',
+    operationId: 'getEntity',
+    tags: [TAG_ENTITIES],
+    summary: 'Get entity detail — attributes, relations, and recent cards.',
+    description:
+      'Pass `?entity_name=<name>` to resolve entity relations for a specific named entity ' +
+      'in the user\'s graph. Without `entity_name`, `relations` is always `[]` because ' +
+      'entity-graph lookup requires a semantic name, not an opaque user_id.',
+    request: { params: EntityTypeParamSchema, query: GetEntityQuerySchema },
+    responses: {
+      200: ok('Entity detail with attribute triples, relation edges, and recent entity cards.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/v1/entities/{entity_type}/{entity_id}',
+    operationId: 'deleteEntity',
+    tags: [TAG_ENTITIES],
+    summary: 'Cascade-delete all data for an entity.',
+    description:
+      'Deletes memories, entity attributes, user profile, entity graph records, ' +
+      'entity edges, and entity cards for the given entity ID. Idempotent — ' +
+      'returns zero counts if the entity does not exist.',
+    request: { params: EntityTypeParamSchema },
+    responses: {
+      200: ok('Deleted row counts per table.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/entities/{entity_type}/{entity_id}/attributes',
+    operationId: 'getEntityAttributes',
+    tags: [TAG_ENTITIES],
+    summary: 'Get structured attribute triples for an entity.',
+    description:
+      'Returns `(entity, attribute, value, type)` triples extracted from memories. ' +
+      'Pass `?attribute=<key>` to filter by a specific attribute. ' +
+      'Returns an empty array when `ENTITY_ATTRIBUTES_ENABLED` is off.',
+    request: {
+      params: EntityTypeParamSchema,
+      query: AttributesQuerySchema,
+    },
+    responses: {
+      200: ok('Attribute triples ordered by observed_at DESC.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/v1/entities/{entity_type}/{entity_id}/memories/{memory_id}/history',
+    operationId: 'getMemoryHistory',
+    tags: [TAG_ENTITIES],
+    summary: 'Get the mutation history of a single memory record.',
+    description:
+      'Surfaces the full AUDN version chain for a memory — ADD, UPDATE, SUPERSEDE events ' +
+      'in chronological order.',
+    request: { params: MemoryHistoryParamSchema },
+    responses: {
+      200: ok('Ordered mutation history for the memory.'),
+      400: RESPONSE_400,
+      404: RESPONSE_404,
+      500: RESPONSE_500,
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/v1/entities/{entity_type}/{entity_id}/settings',
+    operationId: 'patchEntitySettings',
+    tags: [TAG_ENTITIES],
+    summary: 'Update per-entity extraction guidance and pipeline config.',
+    description:
+      'Stores an extraction prompt (up to 1,500 chars) and pipeline overrides for a specific ' +
+      'entity. Returns 503 when `entity_settings` is not yet wired into the runtime.',
+    request: {
+      params: EntityTypeParamSchema,
+      body: { content: { 'application/json': { schema: EntitySettingsPatchSchema } }, required: true },
+    },
+    responses: {
+      200: ok('Updated entity settings row.'),
+      400: RESPONSE_400,
+      500: RESPONSE_500,
+      503: {
+        description: 'Entity settings feature not enabled on this deployment.',
+        content: { 'application/json': { schema: ErrorBasicSchema } },
+      },
     },
   });
 }

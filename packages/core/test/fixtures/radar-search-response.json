@@ -1,0 +1,61 @@
+{
+  "count": 2,
+  "retrieval_mode": "flat",
+  "scope": {
+    "kind": "user",
+    "user_id": "u"
+  },
+  "deterministic": true,
+  "retrieval": {
+    "embedding_provider": "openai",
+    "embedding_model": "text-embedding-3-small",
+    "embedding_model_version": "text-embedding-3-small",
+    "embedding_dimensions": 768,
+    "query_text": "what is the plan",
+    "candidate_ids": [
+      "mem-1",
+      "mem-2"
+    ],
+    "trace_id": "trace-fixed-123"
+  },
+  "memories": [
+    {
+      "id": "mem-1",
+      "content": "memory mem-1",
+      "similarity": 0.9,
+      "score": 0.9,
+      "semantic_similarity": 0.9,
+      "ranking_score": 0.9,
+      "relevance": 0.9,
+      "importance": 0.5,
+      "source_site": "site",
+      "session_id": null,
+      "version_id": "ver-1",
+      "observed_at": "2026-05-20T10:00:00.000Z",
+      "created_at": "2026-05-20T10:00:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "mem-2",
+      "content": "memory mem-2",
+      "similarity": 0.9,
+      "score": 0.9,
+      "semantic_similarity": 0.9,
+      "ranking_score": 0.9,
+      "relevance": 0.9,
+      "importance": 0.5,
+      "source_site": "site",
+      "session_id": null,
+      "version_id": null,
+      "observed_at": "2026-05-20T10:00:00.000Z",
+      "created_at": "2026-05-20T10:00:00.000Z",
+      "metadata": {}
+    }
+  ],
+  "injection_text": "ctx",
+  "citations": [
+    "mem-1",
+    "mem-2"
+  ],
+  "budget_constrained": false
+}

@@ -1,0 +1,36 @@
+{
+  "finding_counts": {
+    "src/errors.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/load-export.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "src/metadata.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/nesting-guard.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/project-id.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "src/schema.ts:dead code"
+  ]
+}

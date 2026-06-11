@@ -69,8 +69,23 @@ export const IngestArgsSchema = z
     metadata: MetadataArg.optional(),
     provenance: ProvenanceArg.optional(),
     kind: z.enum(['fact', 'episode', 'summary', 'procedure', 'document']).optional(),
+    contentClass: z.enum(['summary', 'redacted', 'raw']).optional(),
   })
-  .strict();
+  .strict()
+  // contentClass only reaches core on the verbatim path: the SDK forwards
+  // content_class for mode='verbatim' alone (text/messages run core-side
+  // extraction, which the SDK does not stamp). Accepting it on those modes
+  // would silently drop it and mislead a caller into thinking they had
+  // classified a transcript. Reject loudly instead.
+  .superRefine((args, ctx) => {
+    if (args.contentClass !== undefined && args.mode !== 'verbatim') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['contentClass'],
+        message: "contentClass is only valid with mode='verbatim'",
+      });
+    }
+  });
 
 export const PackageArgsSchema = z
   .object({
@@ -291,5 +306,9 @@ async function ingestVerbatim(
     scope: { user: scope.user },
     provenance: { source, sourceUrl },
     metadata: callerMetadata,
+    // Forward the caller-chosen sensitivity class. Never defaulted: an unstamped
+    // verbatim ingest fails closed against a core with RAW_CONTENT_POLICY=reject
+    // (the default) rather than the MCP server labeling raw content as safe.
+    ...(args.contentClass ? { contentClass: args.contentClass } : {}),
   });
 }

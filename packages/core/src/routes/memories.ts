@@ -12,7 +12,12 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { config, updateRuntimeConfig, type RuntimeConfig } from '../config.js';
+import {
+  config,
+  updateRuntimeConfig,
+  type RuntimeConfig,
+  type RawContentPolicy,
+} from '../config.js';
 import {
   readRuntimeConfigRouteSnapshot as projectRuntimeConfigRouteSnapshot,
   type RuntimeConfigRouteSnapshot,
@@ -38,6 +43,7 @@ import {
   formatMutationSummaryResponse,
   formatAuditTrailEntry,
   formatObservability,
+  formatRetrievalReceipt,
 } from './memory-response-formatters.js';
 import type { AgentScope, WorkspaceContext } from '../db/repository-types.js';
 import { handleRouteError } from './route-errors.js';
@@ -48,6 +54,7 @@ import { MEMORY_RESPONSE_SCHEMAS } from './response-schema-map.js';
 import {
   IngestBodySchema,
   type IngestBody,
+  type ContentClass,
   SearchBodySchema,
   type SearchBody,
   ExpandBodySchema,
@@ -65,6 +72,7 @@ import {
   MemoryByIdQuerySchema,
   UuidIdParamSchema,
   FreeIdParamSchema,
+  ExternalIdParamSchema,
   ConfigBodySchema,
 } from '../schemas/memories.js';
 import { verifyAnswer } from '../services/answer-verifier.js';
@@ -159,6 +167,7 @@ export function createMemoryRouter(
   registerLessonRoutes(router, service);
   registerReconcileRoute(router, service);
   registerResetSourceRoute(router, service);
+  registerGetByExternalIdRoute(router, service);
   registerGetRoute(router, service);
   registerDeleteRoute(router, service);
   return router;
@@ -203,6 +212,25 @@ function registerQuickIngestRoute(
   });
 }
 
+/**
+ * Predicate: does this (policy, content_class) pair count as raw content the
+ * `reject` policy must act on? True when the content is explicitly `raw` OR
+ * carries no `content_class` at all (absent ⇒ unknown ⇒ raw); `summary` and
+ * `redacted` pass. The `allow` policy never flags content on this axis.
+ *
+ * How a `true` result is enforced is the caller's decision and depends on the
+ * path: a verbatim write is refused (422 raw_content_rejected), while an
+ * extraction path proceeds with the raw transcript withheld from the durable
+ * audit episode.
+ */
+function shouldRejectRawContent(
+  policy: RawContentPolicy,
+  contentClass: ContentClass | undefined,
+): boolean {
+  if (policy === 'allow') return false;
+  return contentClass === undefined || contentClass === 'raw';
+}
+
 async function handleIngestRequest(
   service: MemoryService,
   req: Request,
@@ -211,6 +239,31 @@ async function handleIngestRequest(
   mode: 'full' | 'quick',
 ): Promise<void> {
   const { body, effectiveConfig } = readIngestRequest(req, res, configRouteAdapter);
+  // trust-boundary gate: under RAW_CONTENT_POLICY=reject a hosted core
+  // treats `content_class: 'raw'` — and content carrying NO `content_class`
+  // at all (unknown ⇒ raw) — as raw. Enforcement then depends on the path:
+  // a verbatim write is refused outright (below), while an extraction path
+  // proceeds with the raw transcript withheld from the durable audit
+  // episode. Either way, no raw prompt/diff/source leaks into a shared store.
+  const rejectsRawContent = shouldRejectRawContent(
+    configRouteAdapter.base().rawContentPolicy,
+    body.contentClass,
+  );
+  const isVerbatimWrite = mode === 'quick' && body.skipExtraction === true && !body.workspace;
+  // Verbatim persists the content AS the memory — nothing is derived, so
+  // unstamped/raw content must be refused. Fail closed.
+  if (rejectsRawContent && isVerbatimWrite) {
+    res.status(422).json({
+      error_code: 'raw_content_rejected',
+      error:
+        'this deployment refuses raw/unstamped content; supply content_class: "summary"|"redacted"',
+    });
+    return;
+  }
+  // Extraction paths persist the raw transcript only as the audit episode; the
+  // stored memories are derived. Under reject, withhold the raw transcript from
+  // the episode (extraction still runs transiently) rather than refusing it.
+  const redactRawInput = rejectsRawContent;
   // Caller-supplied `metadata` is only honored on the verbatim branch
   // (mode === 'quick' && skip_extraction === true && no workspace).
   // Reject loudly elsewhere — silent drops would violate the
@@ -226,7 +279,7 @@ async function handleIngestRequest(
     });
     return;
   }
-  const result = await runIngest(service, body, effectiveConfig, mode);
+  const result = await runIngest(service, body, effectiveConfig, mode, redactRawInput);
   res.json(formatIngestResponse(result));
 }
 
@@ -235,6 +288,7 @@ async function runIngest(
   body: IngestBody,
   effectiveConfig: MemoryServiceDeps['config'] | undefined,
   mode: 'full' | 'quick',
+  redactRawInput: boolean,
 ) {
   if (body.workspace) {
     return service.workspaceIngest({
@@ -245,6 +299,7 @@ async function runIngest(
       workspace: body.workspace,
       effectiveConfig,
       sessionId: body.sessionId,
+      redactRawInput,
     });
   }
   if (mode === 'full') {
@@ -255,6 +310,7 @@ async function runIngest(
       sourceUrl: body.sourceUrl,
       effectiveConfig,
       sessionId: body.sessionId,
+      redactRawInput,
     });
   }
   if (body.skipExtraction) {
@@ -275,6 +331,7 @@ async function runIngest(
     sourceUrl: body.sourceUrl,
     effectiveConfig,
     sessionId: body.sessionId,
+    redactRawInput,
   });
 }
 
@@ -345,7 +402,9 @@ function registerSearchRoute(
         retrievalOptions,
         effectiveConfig,
       });
-      res.json(formatSearchResponse(result, scope));
+      // /search may run the LLM repair/rerank loop, so it is not the
+      // deterministic, replayable path.
+      res.json(formatSearchResponse(result, scope, false));
     } catch (err) {
       handleRouteError(res, 'POST /v1/memories/search', err);
     }
@@ -354,7 +413,15 @@ function registerSearchRoute(
 
 /**
  * Latency-optimized search endpoint for UC1 (memory injection, <200ms target).
- * Skips the LLM repair loop which accounts for ~88% of search latency.
+ *
+ * This is the LLM-free, replayable retrieval path. It makes NO LLM
+ * call: `performFastSearch` forces `skipRepairLoop` and `skipReranking` on for
+ * every query class (the two LLM-driven pipeline stages — query rewrite and
+ * cross-encoder rerank), and never escalates to the repair/rerank loop. Given a
+ * pinned embedding model — whose identity is carried by the C1 retrieval
+ * receipt on the response — the same fixture corpus replays bit-for-bit. The
+ * response therefore carries `deterministic: true`. The non-fast `/search`
+ * endpoint may run the LLM repair loop and reports `deterministic: false`.
  */
 function registerFastSearchRoute(
   router: Router,
@@ -376,7 +443,9 @@ function registerFastSearchRoute(
         retrievalOptions,
         effectiveConfig,
       });
-      res.json(formatSearchResponse(result, scope));
+      // Fast path is LLM-free and replayable given a pinned embedding model
+      // The receipt carries the model identity.
+      res.json(formatSearchResponse(result, scope, true));
     } catch (err) {
       handleRouteError(res, 'POST /v1/memories/search/fast', err);
     }
@@ -720,6 +789,44 @@ function registerResetSourceRoute(router: Router, service: MemoryService): void 
   });
 }
 
+/**
+ * GET /v1/memories/by-external-id/:externalId?user_id=X
+ *
+ * Reverse lookup of a single memory by its caller-owned
+ * `metadata.externalId`, scoped to `user_id` (the trust boundary).
+ * the caller stamps its own id into `metadata.externalId` on
+ * `POST /v1/memories/ingest/quick`; this resolves that atom id back to
+ * the core memory so a caller can implement its `get`/`list` over the same
+ * id space. Returns the same body shape as `GET /v1/memories/:id` (the
+ * normalized MemoryRow, including the C1 `current_version_id`/`observed_at`
+ * fields the row carries), or 404 when no live row matches.
+ *
+ * `externalId` is validated for non-empty + length bound by
+ * `ExternalIdParamSchema`; this is a fixed two-segment path so it does
+ * not collide with the single-segment `GET /:id`.
+ */
+function registerGetByExternalIdRoute(router: Router, service: MemoryService): void {
+  router.get(
+    '/by-external-id/:externalId',
+    validateParams(ExternalIdParamSchema),
+    validateQuery(UserIdQuerySchema),
+    async (req: Request, res: Response) => {
+      try {
+        const { externalId } = req.params as unknown as { externalId: string };
+        const { userId } = req.query as unknown as { userId: string };
+        const memory = await service.getByExternalId(userId, externalId);
+        if (!memory) {
+          res.status(404).json({ error: 'Memory not found' });
+          return;
+        }
+        res.json(memory);
+      } catch (err) {
+        handleRouteError(res, 'GET /v1/memories/by-external-id/:externalId', err);
+      }
+    },
+  );
+}
+
 function registerGetRoute(router: Router, service: MemoryService): void {
   router.get(
     '/:id',
@@ -936,12 +1043,26 @@ function formatHealthConfig(runtimeConfig: RuntimeConfigRouteSnapshot) {
   };
 }
 
-function formatSearchResponse(result: RetrievalResult, scope: MemoryScope) {
+/**
+ * @param deterministic Marks an LLM-free, replayable retrieval.
+ *   `/search/fast` passes `true`; `/search` passes `false` because it may run
+ *   the LLM repair/rerank loop. The model identity that makes the fast path
+ *   replayable is carried by the C1 retrieval receipt.
+ */
+function formatSearchResponse(result: RetrievalResult, scope: MemoryScope, deterministic: boolean) {
   const observability = buildRetrievalObservability(result);
+  if (!result.retrievalReceipt) {
+    // Every HTTP search path runs the receipt finalizer; a missing receipt
+    // means a new search entry point bypassed it. Fail loudly rather than
+    // emit a search response without the audit-grade receipt.
+    throw new Error('formatSearchResponse: retrievalReceipt missing — search path did not run finalizeRetrievalReceipt');
+  }
   return {
     count: result.memories.length,
     retrieval_mode: result.retrievalMode,
     scope: formatScope(scope),
+    deterministic,
+    retrieval: formatRetrievalReceipt(result.retrievalReceipt),
     memories: result.memories.map((memory) => ({
       id: memory.id,
       content: memory.content,
@@ -953,6 +1074,8 @@ function formatSearchResponse(result: RetrievalResult, scope: MemoryScope) {
       importance: memory.importance,
       source_site: memory.source_site,
       session_id: memory.session_id,
+      version_id: memory.current_version_id ?? null,
+      observed_at: memory.observed_at,
       created_at: memory.created_at,
       metadata: memory.metadata,
     })),

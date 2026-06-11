@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atomicmemory-langflow"
+version = "0.1.17"
+description = "AtomicMemory custom components for Langflow."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Atomic Strata" }]
+dependencies = [
+    "atomicmemory>=1.0.1,<2.0.0",
+    # Wide range: Langflow's lfx pins langchain-core>=1.2.28; standalone use can be
+    # on 0.3.x. Our code only touches stable APIs (BaseChatMessageHistory, messages).
+    "langchain-core>=0.3,<2.0",
+]
+
+[project.optional-dependencies]
+langflow = ["langflow>=1.6,<2.0"]
+
+[project.urls]
+Repository = "https://github.com/atomicstrata/atomicmemory"
+
+[tool.setuptools]
+packages = ["atomicmemory_langflow"]
+
+[tool.setuptools.package-dir]
+atomicmemory_langflow = "atomicmemory_langflow"
+
+[tool.setuptools.package-data]
+atomicmemory_langflow = ["py.typed"]

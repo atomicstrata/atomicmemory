@@ -454,7 +454,8 @@ am_quick_ingest_body() {
         conversation: $conversation,
         source_site: "claude-code",
         source_url: $source_url,
-        skip_extraction: true
+        skip_extraction: true,
+        content_class: "summary"
       }'
   else
     # Validate the caller's metadata is parseable JSON BEFORE
@@ -476,6 +477,7 @@ am_quick_ingest_body() {
         source_site: "claude-code",
         source_url: $source_url,
         skip_extraction: true,
+        content_class: "summary",
         metadata: $metadata
       }'
   fi

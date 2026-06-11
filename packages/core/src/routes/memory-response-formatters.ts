@@ -9,7 +9,8 @@
  * snake_case column names and pass through unchanged.
  */
 
-import type { IngestResult, MemoryScope, RetrievalObservability } from '../services/memory-service-types.js';
+import { createHash } from 'node:crypto';
+import type { IngestResult, MemoryScope, RetrievalObservability, RetrievalReceipt } from '../services/memory-service-types.js';
 import type {
   ConsolidationResult,
   ConsolidationExecutionResult,
@@ -233,6 +234,22 @@ function formatAssemblyTrace(summary: AssemblyTraceSummary) {
   };
 }
 
+/**
+ * Audit-grade retrieval receipt → snake_case wire object.
+ * Always emitted on search responses; not gated on any observability flag.
+ */
+export function formatRetrievalReceipt(receipt: RetrievalReceipt) {
+  return {
+    embedding_provider: receipt.embeddingProvider,
+    embedding_model: receipt.embeddingModel,
+    embedding_model_version: receipt.embeddingModelVersion,
+    embedding_dimensions: receipt.embeddingDimensions,
+    query_text: receipt.queryText,
+    candidate_ids: receipt.candidateIds,
+    trace_id: receipt.traceId,
+  };
+}
+
 export function formatObservability(observability: RetrievalObservability) {
   return {
     ...(observability.retrieval ? { retrieval: formatRetrievalTrace(observability.retrieval) } : {}),
@@ -241,11 +258,46 @@ export function formatObservability(observability: RetrievalObservability) {
   };
 }
 
+/**
+ * Domain-separation prefix for the per-version content hash.
+ * Prefixing the digest input pins this hash to the "claim-version content"
+ * domain so its bytes can never collide with a hash computed elsewhere over
+ * the same string in a different context. Versioning the tag (`v1`) lets a
+ * future content-identity change (e.g. folding in more version fields) ship
+ * as `radar-claim-version-content:v2` without silently reinterpreting old
+ * anchors.
+ */
+const CONTENT_HASH_DOMAIN = 'radar-claim-version-content:v1';
+
+/**
+ * Stable, content-addressable digest of an audit-trail version's content
+ *. Computed as `sha256(domain + "\n" + content)` and hex-encoded.
+ *
+ * Properties an external audit chain relies on:
+ *  - Deterministic: identical `content` always yields the same hash, with no
+ *    dependence on wall-clock, row id, or map iteration order.
+ *  - Distinguishing: any change to the content bytes changes the hash.
+ *  - Content-addressable: the hash is derived only from data already loaded
+ *    for the audit response, so no extra query is needed and an external
+ *    consumer can recompute it from the version's content string alone.
+ *
+ * It hashes the version's content string — the minimum that defines the
+ * version's textual identity. It is NOT a chain hash; a prev+current chain
+ * hash (anchoring `previous_version_id`'s hash into this one) is the natural
+ * next step if a caller needs tamper-evident ordering, and would be added as a
+ * sibling `chain_hash` field rather than by changing this content hash.
+ */
+function computeVersionContentHash(content: string): string {
+  return createHash('sha256').update(`${CONTENT_HASH_DOMAIN}\n${content}`).digest('hex');
+}
+
 export function formatAuditTrailEntry(entry: AuditTrailEntry) {
   return {
     version_id: entry.versionId,
     claim_id: entry.claimId,
     content: entry.content,
+    // stable per-version content hash. See computeVersionContentHash.
+    content_hash: computeVersionContentHash(entry.content),
     mutation_type: entry.mutationType,
     mutation_reason: entry.mutationReason,
     actor_model: entry.actorModel,

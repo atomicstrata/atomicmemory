@@ -21,6 +21,7 @@ defaults:
 env:
   NODE_VERSION: "22"
   PNPM_VERSION: "9.15.4"
+  ONNXRUNTIME_NODE_INSTALL_CUDA: "skip"
 
 jobs:
   repo-hygiene:
@@ -52,6 +53,24 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Run package metadata checks
         run: node scripts/ci/package-metadata.mjs
+
+  release-policy:
+    name: release-policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Run release-policy guardrails
+        run: node scripts/ci/release-policy.mjs
+      - name: Run release-policy unit tests
+        run: node --test scripts/ci/__tests__/release-policy.test.mjs
+      - name: Run guard unit tests
+        run: node --test scripts/guards/__tests__/*.test.mjs
 
   affected-build-test:
     name: affected-build-test (node ${{ matrix.node-version }})
@@ -178,6 +197,44 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run public integration smoke
         run: node scripts/ci/run-root-script.mjs ci:public-smoke
+
+  core-docker-smoke:
+    name: core-docker-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Build + boot the real core image only when core changes — guards the
+      # class of bug where the image builds but crashes on boot (e.g. a runtime
+      # file the Dockerfile forgot to COPY). The unit/affected suites never
+      # exercise the container, so without this a boot crash ships to publish.
+      - name: Detect core-affecting changes
+        id: changes
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "core=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed="$(git diff --name-only "$BASE" HEAD || echo FORCE)"
+          # Include root build-context files: a change to the workspace manifest,
+          # turbo config, lockfile, or this workflow can alter the built image.
+          if [ "$changed" = "FORCE" ] || printf '%s\n' "$changed" | grep -qE '^(packages/core/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|turbo\.json$|\.github/workflows/ci\.yml$)'; then
+            echo "core=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "core=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build core image + boot smoke
+        if: steps.changes.outputs.core == 'true'
+        # Boot-only keeps the gate deterministic: the ingest/search steps need a
+        # networked model download that flakes. Boot + /openapi.json + capabilities
+        # catch the image-won't-boot class (PR #31).
+        env:
+          SMOKE_BOOT_ONLY: '1'
+        run: bash packages/core/scripts/docker-smoke-test.sh
 
   security-compliance:
     name: security-compliance

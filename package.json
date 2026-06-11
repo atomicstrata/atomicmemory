@@ -18,6 +18,7 @@
     "pnpm": ">=9.15.4"
   },
   "scripts": {
+    "prepare": "node scripts/git-hooks/install-hooks.mjs || true",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test --filter='!@atomicmemory/core'",
@@ -30,6 +31,9 @@
     "repo-hygiene": "node scripts/ci/repo-hygiene.mjs",
     "security-compliance": "node scripts/security/security-compliance.mjs",
     "pack-dry-run": "node scripts/ci/pack-dry-run.mjs",
+    "release-policy": "node scripts/ci/release-policy.mjs",
+    "test:guards": "node --test scripts/guards/__tests__/*.test.mjs",
+    "test:release-policy": "node --test scripts/ci/__tests__/release-policy.test.mjs",
     "check:plugin-versions": "node scripts/version-families.mjs plugin --check",
     "check:adapter-versions": "node scripts/version-families.mjs adapter --check",
     "check:tool-versions": "node scripts/version-families.mjs tool --check",

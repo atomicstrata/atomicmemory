@@ -51,4 +51,13 @@ export class UserProfileRepository {
       [userId, profileText, sourceMemoryIds],
     );
   }
+
+  /** Delete the synthesized profile row for a user. Returns 1 if deleted, 0 if not found. */
+  async deleteForUser(userId: string): Promise<number> {
+    const result = await this.pool.query(
+      'DELETE FROM user_profiles WHERE user_id = $1',
+      [userId],
+    );
+    return result.rowCount ?? 0;
+  }
 }

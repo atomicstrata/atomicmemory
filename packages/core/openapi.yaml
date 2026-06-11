@@ -1012,6 +1012,61 @@ paths:
       summary: Set the calling user's trust level for a given agent.
       tags:
         - Agents
+  /v1/capabilities:
+    get:
+      description: Unauthenticated. A protocol-level caller (e.g. a control-plane service) GETs this at startup to negotiate the core feature surface WITHOUT the JS SDK. Mirrors the SDK provider`s capabilities() descriptor over the wire. Like `/health`, it advertises a static capability surface (no user data), so it waives the document-level bearer requirement.
+      operationId: getCapabilities
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                description: Wire capabilities descriptor. What the running core advertises to a protocol-level caller that negotiates at startup without the JS SDK.
+                properties:
+                  deterministic_fast_path:
+                    type: boolean
+                  extensions:
+                    properties:
+                      health:
+                        type: boolean
+                      temporal:
+                        type: boolean
+                      versioning:
+                        type: boolean
+                    required:
+                      - health
+                      - versioning
+                      - temporal
+                    type: object
+                  ingest_modes:
+                    items:
+                      enum:
+                        - text
+                        - messages
+                        - verbatim
+                      type: string
+                    type: array
+                  retrieval:
+                    enum:
+                      - semantic
+                    type: string
+                  search:
+                    type: boolean
+                  version:
+                    type: integer
+                required:
+                  - version
+                  - ingest_modes
+                  - search
+                  - retrieval
+                  - deterministic_fast_path
+                  - extensions
+                type: object
+          description: Capabilities descriptor.
+      security: []
+      summary: Wire capabilities descriptor for protocol-level callers.
+      tags:
+        - Capabilities
   /v1/documents:
     get:
       description: "Returns active documents for the supplied `user_id`, ordered `(created_at DESC, id DESC)`. The opaque `cursor` is the `next_cursor` from the previous page (base64-url JSON tuple); malformed cursors return 400. The `status` query param buckets rows for the recovery surfaces: `'failed'` (any layer failed), `'unsupported'` (extraction marked unsupported), `'pending'` (extraction or semantic_index in pending/running), or `'all'` (default — every active row)."
@@ -4970,6 +5025,594 @@ paths:
       summary: Upload managed raw bytes for a registered document.
       tags:
         - Documents
+  /v1/entities:
+    get:
+      description: Returns all distinct entity IDs for the authenticated deployment, ordered by most recently active. Paginated via `page` and `page_size`.
+      operationId: listEntities
+      parameters:
+        - in: query
+          name: entity_type
+          required: false
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: query
+          name: page
+          required: false
+          schema:
+            default: 1
+            minimum: 1
+            type: integer
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            default: 50
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Paginated entity list.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: List all entities with memory counts.
+      tags:
+        - Entities
+  /v1/entities/merge:
+    post:
+      description: Re-scopes all memories, attributes, cards, and graph edges from `source` to `target` in a single transaction, then deletes the source entity.
+      operationId: mergeEntities
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                source:
+                  properties:
+                    entity_id:
+                      minLength: 1
+                      type: string
+                    entity_type:
+                      enum:
+                        - user
+                        - agent
+                        - session
+                      type: string
+                  required:
+                    - entity_type
+                    - entity_id
+                  type: object
+                target:
+                  properties:
+                    entity_id:
+                      minLength: 1
+                      type: string
+                    entity_type:
+                      enum:
+                        - user
+                        - agent
+                        - session
+                      type: string
+                  required:
+                    - entity_type
+                    - entity_id
+                  type: object
+              required:
+                - source
+                - target
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Counts of records moved per table.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: Merge a source entity into a target entity.
+      tags:
+        - Entities
+  /v1/entities/{entity_type}/{entity_id}:
+    delete:
+      description: Deletes memories, entity attributes, user profile, entity graph records, entity edges, and entity cards for the given entity ID. Idempotent — returns zero counts if the entity does not exist.
+      operationId: deleteEntity
+      parameters:
+        - in: path
+          name: entity_type
+          required: true
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Deleted row counts per table.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: Cascade-delete all data for an entity.
+      tags:
+        - Entities
+    get:
+      description: Pass `?entity_name=<name>` to resolve entity relations for a specific named entity in the user's graph. Without `entity_name`, `relations` is always `[]` because entity-graph lookup requires a semantic name, not an opaque user_id.
+      operationId: getEntity
+      parameters:
+        - in: path
+          name: entity_type
+          required: true
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+        - in: query
+          name: entity_name
+          required: false
+          schema:
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Entity detail with attribute triples, relation edges, and recent entity cards.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: Get entity detail — attributes, relations, and recent cards.
+      tags:
+        - Entities
+  /v1/entities/{entity_type}/{entity_id}/attributes:
+    get:
+      description: Returns `(entity, attribute, value, type)` triples extracted from memories. Pass `?attribute=<key>` to filter by a specific attribute. Returns an empty array when `ENTITY_ATTRIBUTES_ENABLED` is off.
+      operationId: getEntityAttributes
+      parameters:
+        - in: path
+          name: entity_type
+          required: true
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+        - in: query
+          name: attribute
+          required: false
+          schema:
+            minLength: 1
+            type: string
+        - in: query
+          name: entity
+          required: false
+          schema:
+            minLength: 1
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            default: 50
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Attribute triples ordered by observed_at DESC.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: Get structured attribute triples for an entity.
+      tags:
+        - Entities
+  /v1/entities/{entity_type}/{entity_id}/memories/{memory_id}/history:
+    get:
+      description: Surfaces the full AUDN version chain for a memory — ADD, UPDATE, SUPERSEDE events in chronological order.
+      operationId: getMemoryHistory
+      parameters:
+        - in: path
+          name: entity_type
+          required: true
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+        - in: path
+          name: memory_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Ordered mutation history for the memory.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "404":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Memory not found
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: Get the mutation history of a single memory record.
+      tags:
+        - Entities
+  /v1/entities/{entity_type}/{entity_id}/profile:
+    get:
+      description: Returns the auto-synthesized prose profile from `user_profiles` plus top structured attribute triples from `entity_attributes`. No LLM call on the read path — the profile is pre-computed at ingest time. `profile` is `null` when fewer than 3 memories have been ingested or when `USER_PROFILE_CHANNEL_ENABLED` is off.
+      operationId: getEntityProfile
+      parameters:
+        - in: path
+          name: entity_type
+          required: true
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Entity profile with attributes and memory count.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+      summary: Get the synthesized profile for a user or agent.
+      tags:
+        - Entities
+  /v1/entities/{entity_type}/{entity_id}/settings:
+    patch:
+      description: Stores an extraction prompt (up to 1,500 chars) and pipeline overrides for a specific entity. Returns 503 when `entity_settings` is not yet wired into the runtime.
+      operationId: patchEntitySettings
+      parameters:
+        - in: path
+          name: entity_type
+          required: true
+          schema:
+            enum:
+              - user
+              - agent
+              - session
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                decay_enabled:
+                  type: boolean
+                extraction_prompt:
+                  maxLength: 1500
+                  type: string
+                memory_kinds:
+                  items:
+                    type: string
+                  type: array
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                properties: {}
+                type: object
+          description: Updated entity settings row.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+        "503":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Entity settings feature not enabled on this deployment.
+      summary: Update per-entity extraction guidance and pipeline config.
+      tags:
+        - Entities
   /v1/memories/audit/recent:
     get:
       operationId: getRecentAudit
@@ -5337,6 +5980,260 @@ paths:
       summary: Aggregate mutation statistics for a user's memory store.
       tags:
         - Audit
+  /v1/memories/by-external-id/{externalId}:
+    get:
+      description: Reverse lookup of a memory by its `metadata.externalId`, scoped to `user_id`. the caller stamps its own id into `metadata.externalId` on quick-ingest; this resolves that id back to the core memory. Returns the same body as GET /v1/memories/{id}.
+      operationId: getMemoryByExternalId
+      parameters:
+        - in: path
+          name: externalId
+          required: true
+          schema:
+            maxLength: 256
+            minLength: 1
+            type: string
+        - in: query
+          name: user_id
+          required: true
+          schema:
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                description: Full memory row as emitted by core.
+                properties:
+                  access_count:
+                    type: number
+                  agent_id:
+                    type:
+                      - string
+                      - "null"
+                  content:
+                    type: string
+                  created_at:
+                    type: string
+                  deleted_at:
+                    type:
+                      - string
+                      - "null"
+                  embedding:
+                    items:
+                      type: number
+                    type: array
+                  episode_id:
+                    type:
+                      - string
+                      - "null"
+                  expired_at:
+                    type:
+                      - string
+                      - "null"
+                  id:
+                    type: string
+                  importance:
+                    type: number
+                  keywords:
+                    type: string
+                  last_accessed_at:
+                    type: string
+                  memory_type:
+                    type: string
+                  metadata:
+                    additionalProperties: {}
+                    type: object
+                  namespace:
+                    type:
+                      - string
+                      - "null"
+                  network: {}
+                  observation_subject:
+                    type:
+                      - string
+                      - "null"
+                  observed_at:
+                    type: string
+                  opinion_confidence:
+                    type:
+                      - number
+                      - "null"
+                  overview:
+                    type: string
+                  source_site:
+                    type: string
+                  source_url:
+                    type: string
+                  status:
+                    enum:
+                      - active
+                      - needs_clarification
+                    type: string
+                  summary:
+                    type: string
+                  trust_score:
+                    type: number
+                  user_id:
+                    type: string
+                  visibility:
+                    enum:
+                      - agent_only
+                      - restricted
+                      - workspace
+                      - null
+                    type:
+                      - string
+                      - "null"
+                  workspace_id:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - id
+                  - user_id
+                  - content
+                  - embedding
+                  - memory_type
+                  - importance
+                  - source_site
+                  - source_url
+                  - status
+                  - metadata
+                  - keywords
+                  - summary
+                  - overview
+                  - trust_score
+                  - observed_at
+                  - created_at
+                  - last_accessed_at
+                  - access_count
+                type: object
+          description: Memory object.
+        "400":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Input validation error
+        "404":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Memory not found
+        "500":
+          content:
+            application/json:
+              schema:
+                description: Standard error envelope. 400 for input validation errors, 500 for uncaught exceptions.
+                example:
+                  error: user_id is required
+                properties:
+                  error:
+                    type: string
+                required:
+                  - error
+                type: object
+          description: Internal server error
+        "502":
+          content:
+            application/json:
+              schema:
+                description: Upstream AI provider failure envelope (502 / 503).
+                example:
+                  details: "Incorrect API key provided: [REDACTED_API_KEY]."
+                  error: Upstream provider authentication failed
+                  error_code: upstream_provider_auth_failed
+                  message: The configured AI provider rejected the request credentials. Check the provider API key and account access.
+                  provider_status: 401
+                  retryable: false
+                properties:
+                  details:
+                    type: string
+                  error:
+                    type: string
+                  error_code:
+                    enum:
+                      - upstream_provider_auth_failed
+                      - upstream_provider_rate_limited
+                      - upstream_provider_quota_exceeded
+                      - upstream_provider_error
+                    type: string
+                  message:
+                    type: string
+                  provider_status:
+                    type: integer
+                  retryable:
+                    type: boolean
+                required:
+                  - error_code
+                  - error
+                  - message
+                  - provider_status
+                  - retryable
+                  - details
+                type: object
+          description: Upstream AI provider returned an unrecoverable failure (auth, non-retryable 4xx).
+        "503":
+          content:
+            application/json:
+              schema:
+                description: Upstream AI provider failure envelope (502 / 503).
+                example:
+                  details: "Incorrect API key provided: [REDACTED_API_KEY]."
+                  error: Upstream provider authentication failed
+                  error_code: upstream_provider_auth_failed
+                  message: The configured AI provider rejected the request credentials. Check the provider API key and account access.
+                  provider_status: 401
+                  retryable: false
+                properties:
+                  details:
+                    type: string
+                  error:
+                    type: string
+                  error_code:
+                    enum:
+                      - upstream_provider_auth_failed
+                      - upstream_provider_rate_limited
+                      - upstream_provider_quota_exceeded
+                      - upstream_provider_error
+                    type: string
+                  message:
+                    type: string
+                  provider_status:
+                    type: integer
+                  retryable:
+                    type: boolean
+                required:
+                  - error_code
+                  - error
+                  - message
+                  - provider_status
+                  - retryable
+                  - details
+                type: object
+          description: Upstream AI provider is rate-limited, quota-exhausted, or returned 5xx; consult `retryable`.
+      summary: Fetch a single memory by caller-owned metadata.externalId.
+      tags:
+        - Memories
   /v1/memories/cap:
     get:
       operationId: checkMemoryCap
@@ -6416,6 +7313,13 @@ paths:
                       - type: "null"
                   description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation."
                   type: object
+                content_class:
+                  description: "Optional sensitivity class of the supplied content: 'summary' (distilled, hosted-safe), 'redacted' (sensitive spans removed by the caller), or 'raw' (verbatim prompt/response/diff/source). When the deployment runs RAW_CONTENT_POLICY=reject, a verbatim write of 'raw' content — or content with no content_class at all (treated as unknown/raw) — is rejected with 422 raw_content_rejected; on extraction paths the raw transcript is instead withheld from the stored audit episode."
+                  enum:
+                    - summary
+                    - redacted
+                    - raw
+                  type: string
                 conversation:
                   description: Required. conversation.
                   minLength: 1
@@ -6633,6 +7537,13 @@ paths:
                       - type: "null"
                   description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation."
                   type: object
+                content_class:
+                  description: "Optional sensitivity class of the supplied content: 'summary' (distilled, hosted-safe), 'redacted' (sensitive spans removed by the caller), or 'raw' (verbatim prompt/response/diff/source). When the deployment runs RAW_CONTENT_POLICY=reject, a verbatim write of 'raw' content — or content with no content_class at all (treated as unknown/raw) — is rejected with 422 raw_content_rejected; on extraction paths the raw transcript is instead withheld from the stored audit episode."
+                  enum:
+                    - summary
+                    - redacted
+                    - raw
+                  type: string
                 conversation:
                   description: Required. conversation.
                   minLength: 1
@@ -8296,6 +9207,9 @@ paths:
                     type: object
                   count:
                     type: number
+                  deterministic:
+                    description: "True only on the LLM-free /search/fast path: no LLM call is made, so the result is replayable given the pinned embedding model in the retrieval receipt. /search reports false because it may run the LLM repair/rerank loop."
+                    type: boolean
                   estimated_context_tokens:
                     type: number
                   expand_ids:
@@ -8339,6 +9253,9 @@ paths:
                           additionalProperties: {}
                           description: Memory metadata persisted on the row, including caller-supplied verbatim metadata (set via /v1/memories/ingest/quick with skip_extraction=true) and core-generated metadata (e.g. cmo_id, memberMemoryIds, headline). Mirrors the shape /v1/memories/list and /v1/memories/:id return.
                           type: object
+                        observed_at:
+                          description: When the memory was observed/recorded. Part of the retrieval receipt.
+                          type: string
                         ranking_score:
                           description: Composite ranking/debug score. It is not normalized and may be outside the [0,1] relevance range.
                           type:
@@ -8357,12 +9274,21 @@ paths:
                           type:
                             - number
                             - "null"
+                        session_id:
+                          type:
+                            - string
+                            - "null"
                         similarity:
                           type:
                             - number
                             - "null"
                         source_site:
                           type: string
+                        version_id:
+                          description: Owning claim's current_version_id (a claim-version id) for the memory, enabling a client to pin the exact retrieved version as a replay fixture. null when the memory has no claim version (e.g. workspace-pool rows).
+                          type:
+                            - string
+                            - "null"
                       required:
                         - id
                         - content
@@ -8532,6 +9458,36 @@ paths:
                           - skip_repair
                         type: object
                     type: object
+                  retrieval:
+                    description: Audit-grade retrieval receipt.
+                    properties:
+                      candidate_ids:
+                        description: Returned memory ids in ranked order.
+                        items:
+                          type: string
+                        type: array
+                      embedding_dimensions:
+                        type: number
+                      embedding_model:
+                        type: string
+                      embedding_model_version:
+                        description: Embedding model version. No supported provider exposes a separate immutable version string, so this is the resolved model id — the most precise model identity the provider reports, never a fabricated value.
+                        type: string
+                      embedding_provider:
+                        type: string
+                      query_text:
+                        type: string
+                      trace_id:
+                        type: string
+                    required:
+                      - embedding_provider
+                      - embedding_model
+                      - embedding_model_version
+                      - embedding_dimensions
+                      - query_text
+                      - candidate_ids
+                      - trace_id
+                    type: object
                   retrieval_mode:
                     enum:
                       - flat
@@ -8591,6 +9547,7 @@ paths:
                   - count
                   - retrieval_mode
                   - scope
+                  - retrieval
                   - memories
                   - budget_constrained
                 type: object
@@ -8823,6 +9780,9 @@ paths:
                     type: object
                   count:
                     type: number
+                  deterministic:
+                    description: "True only on the LLM-free /search/fast path: no LLM call is made, so the result is replayable given the pinned embedding model in the retrieval receipt. /search reports false because it may run the LLM repair/rerank loop."
+                    type: boolean
                   estimated_context_tokens:
                     type: number
                   expand_ids:
@@ -8866,6 +9826,9 @@ paths:
                           additionalProperties: {}
                           description: Memory metadata persisted on the row, including caller-supplied verbatim metadata (set via /v1/memories/ingest/quick with skip_extraction=true) and core-generated metadata (e.g. cmo_id, memberMemoryIds, headline). Mirrors the shape /v1/memories/list and /v1/memories/:id return.
                           type: object
+                        observed_at:
+                          description: When the memory was observed/recorded. Part of the retrieval receipt.
+                          type: string
                         ranking_score:
                           description: Composite ranking/debug score. It is not normalized and may be outside the [0,1] relevance range.
                           type:
@@ -8884,12 +9847,21 @@ paths:
                           type:
                             - number
                             - "null"
+                        session_id:
+                          type:
+                            - string
+                            - "null"
                         similarity:
                           type:
                             - number
                             - "null"
                         source_site:
                           type: string
+                        version_id:
+                          description: Owning claim's current_version_id (a claim-version id) for the memory, enabling a client to pin the exact retrieved version as a replay fixture. null when the memory has no claim version (e.g. workspace-pool rows).
+                          type:
+                            - string
+                            - "null"
                       required:
                         - id
                         - content
@@ -9059,6 +10031,36 @@ paths:
                           - skip_repair
                         type: object
                     type: object
+                  retrieval:
+                    description: Audit-grade retrieval receipt.
+                    properties:
+                      candidate_ids:
+                        description: Returned memory ids in ranked order.
+                        items:
+                          type: string
+                        type: array
+                      embedding_dimensions:
+                        type: number
+                      embedding_model:
+                        type: string
+                      embedding_model_version:
+                        description: Embedding model version. No supported provider exposes a separate immutable version string, so this is the resolved model id — the most precise model identity the provider reports, never a fabricated value.
+                        type: string
+                      embedding_provider:
+                        type: string
+                      query_text:
+                        type: string
+                      trace_id:
+                        type: string
+                    required:
+                      - embedding_provider
+                      - embedding_model
+                      - embedding_model_version
+                      - embedding_dimensions
+                      - query_text
+                      - candidate_ids
+                      - trace_id
+                    type: object
                   retrieval_mode:
                     enum:
                       - flat
@@ -9118,6 +10120,7 @@ paths:
                   - count
                   - retrieval_mode
                   - scope
+                  - retrieval
                   - memories
                   - budget_constrained
                 type: object
@@ -9835,6 +10838,9 @@ paths:
                           type: string
                         content:
                           type: string
+                        content_hash:
+                          description: Stable, content-addressable SHA-256 (hex) of this version's content computed as sha256("radar-claim-version-content:v1\n" + content). Deterministic — identical content yields the same hash — so a downstream caller audit chain can anchor to a specific claim version. Not a chain hash.
+                          type: string
                         contradiction_confidence:
                           type:
                             - number
@@ -9878,6 +10884,7 @@ paths:
                         - version_id
                         - claim_id
                         - content
+                        - content_hash
                         - mutation_type
                         - mutation_reason
                         - actor_model

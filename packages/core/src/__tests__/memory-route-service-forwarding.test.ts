@@ -74,6 +74,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       source_site: 'site',
       source_url: 'https://example.test/full',
       session_id: 'thread-full',
+      content_class: 'summary',
     });
 
     expect(response.status).toBe(200);
@@ -84,6 +85,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       sourceUrl: 'https://example.test/full',
       effectiveConfig: undefined,
       sessionId: 'thread-full',
+      redactRawInput: false,
     });
   });
 
@@ -94,6 +96,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       source_site: 'site',
       source_url: 'https://example.test/quick',
       session_id: 'thread-quick',
+      content_class: 'summary',
     });
 
     expect(response.status).toBe(200);
@@ -104,6 +107,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       sourceUrl: 'https://example.test/quick',
       effectiveConfig: undefined,
       sessionId: 'thread-quick',
+      redactRawInput: false,
     });
   });
 
@@ -117,6 +121,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       session_id: 'thread-verbatim',
       skip_extraction: true,
       metadata,
+      content_class: 'summary',
     });
 
     expect(response.status).toBe(200);
@@ -140,6 +145,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       agent_id: '00000000-0000-4000-8000-000000000001',
       visibility: 'workspace',
       session_id: 'thread-workspace',
+      content_class: 'summary',
     });
 
     expect(response.status).toBe(200);
@@ -155,6 +161,7 @@ describe('memory routes — object-shaped service forwarding', () => {
       },
       effectiveConfig: undefined,
       sessionId: 'thread-workspace',
+      redactRawInput: false,
     });
   });
 

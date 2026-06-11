@@ -43,6 +43,7 @@ import type { HttpOptions } from './http';
 import {
   toMemory,
   toSearchResult,
+  toRetrievalReceipt,
   toIngestResult,
   toMemoryVersion,
 } from './mappers';
@@ -145,6 +146,14 @@ export class AtomicMemoryProvider
     ) {
       body.metadata = input.metadata;
     }
+    // Forward the caller-chosen sensitivity class on the verbatim path. Core
+    // honors `content_class` only on /ingest/quick + skip_extraction and, under
+    // the default RAW_CONTENT_POLICY=reject, rejects raw/unclassified content.
+    // Never defaulted: the SDK does not label content on the caller's behalf, so
+    // omitting it fails closed rather than mislabeling raw content as safe.
+    if (input.mode === 'verbatim' && input.contentClass) {
+      body.content_class = input.contentClass;
+    }
 
     // Verbatim mode → /memories/ingest/quick with skip_extraction=true,
     // which core maps to storeVerbatim: one input = one memory record,
@@ -172,7 +181,7 @@ export class AtomicMemoryProvider
       session_id: request.scope.thread,
     };
 
-    const raw = await fetchJson<{ memories: any[]; count: number }>(
+    const raw = await fetchJson<{ memories: any[]; count: number; retrieval?: any }>(
       this.http,
       this.route('/memories/search/fast'),
       { method: 'POST', body: JSON.stringify(body) }
@@ -182,6 +191,7 @@ export class AtomicMemoryProvider
       results: this.applyMetaFactFilter(
         raw.memories.map((m: any) => toSearchResult(m, request.scope)),
       ),
+      ...(raw.retrieval ? { retrieval: toRetrievalReceipt(raw.retrieval) } : {}),
     };
   }
 
@@ -378,6 +388,7 @@ export class AtomicMemoryProvider
 
         const raw = await fetchJson<{
           memories: any[];
+          retrieval?: any;
         }>(this.http, this.route('/memories/search'), {
           method: 'POST',
           body: JSON.stringify(body),
@@ -387,6 +398,7 @@ export class AtomicMemoryProvider
           results: this.applyMetaFactFilter(
             raw.memories.map((m: any) => toSearchResult(m, request.scope)),
           ),
+          ...(raw.retrieval ? { retrieval: toRetrievalReceipt(raw.retrieval) } : {}),
         };
       }
     );

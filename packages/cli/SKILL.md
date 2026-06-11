@@ -20,7 +20,7 @@ Use `atomicmemory package "<query>" --token-budget 1200 --agent` when you need p
 
 ## Ingest
 
-Use `atomicmemory add "<fact>"` for a short text memory. Use `atomicmemory ingest --mode verbatim --file <path>` only when the exact content should be stored as one deterministic record.
+Use `atomicmemory add "<fact>"` for a short text memory. Use `atomicmemory ingest --mode verbatim --content-class summary --file <path>` only when distilled content should be stored as one deterministic record. Use `--content-class redacted` for redacted-but-not-summarized content; do not use verbatim ingest for raw transcripts or secrets.
 
 Prefer `--metadata`, `--source`, and `--source-url` when provenance matters. Never put secrets, credentials, tokens, or private keys into memory.
 

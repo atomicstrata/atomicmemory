@@ -1,0 +1,20 @@
+{
+  "name": "capabilities-descriptor",
+  "operation": "capabilities",
+  "description": "Over-the-wire capabilities descriptor served by core at GET /v1/capabilities. A protocol caller GETs this (no request body) to negotiate the feature surface at startup without the JS SDK. snake_case wire shape.",
+  "request_schema": null,
+  "request": null,
+  "response_schema": "capabilities-descriptor.schema.json",
+  "expected_response": {
+    "version": 1,
+    "ingest_modes": ["text", "messages", "verbatim"],
+    "search": true,
+    "retrieval": "semantic",
+    "deterministic_fast_path": true,
+    "extensions": {
+      "health": true,
+      "versioning": true,
+      "temporal": true
+    }
+  }
+}

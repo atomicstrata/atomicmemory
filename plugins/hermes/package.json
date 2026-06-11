@@ -30,7 +30,8 @@
     "README.md"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover tests"
+    "test": "python3 -m unittest discover tests",
+    "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs"
   },
   "bugs": {
     "url": "https://github.com/atomicstrata/atomicmemory/issues"

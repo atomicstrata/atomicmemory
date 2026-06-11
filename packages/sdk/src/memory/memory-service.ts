@@ -44,22 +44,38 @@ export class MemoryService {
   async initialize(
     registry: ProviderRegistry = defaultRegistry
   ): Promise<void> {
-    for (const [name, providerConfig] of Object.entries(
-      this.config.providerConfigs
-    )) {
-      const factory = registry[name];
-      if (!factory) continue;
-      const registration: MemoryProviderRegistration = factory(providerConfig);
-      this.providers.set(name, registration.provider);
-      this.pipelines.set(
-        name,
-        registration.pipeline ?? noopMemoryPipeline
-      );
-
-      if (registration.provider.initialize) {
-        await registration.provider.initialize();
+    // Stage registrations locally and commit only on full success, so a
+    // mid-loop failure can never leave partially registered providers
+    // observable via getProviderStatus()/getAvailableProviders().
+    const stagedProviders = new Map<string, MemoryProvider>();
+    const stagedPipelines = new Map<string, MemoryProcessingPipeline>();
+    try {
+      for (const [name, providerConfig] of Object.entries(
+        this.config.providerConfigs
+      )) {
+        const factory = registry[name];
+        if (!factory) continue;
+        const registration: MemoryProviderRegistration = await factory(providerConfig);
+        stagedProviders.set(name, registration.provider);
+        stagedPipelines.set(
+          name,
+          registration.pipeline ?? noopMemoryPipeline
+        );
+        if (registration.provider.initialize) {
+          await registration.provider.initialize();
+        }
       }
+    } catch (cause) {
+      // Best-effort teardown of providers that already initialized during
+      // staging, so a failed init doesn't leak connections. The original
+      // error still propagates.
+      await Promise.allSettled(
+        [...stagedProviders.values()].map((p) => p.close?.()),
+      );
+      throw cause;
     }
+    for (const [name, provider] of stagedProviders) this.providers.set(name, provider);
+    for (const [name, pipeline] of stagedPipelines) this.pipelines.set(name, pipeline);
   }
 
   getProvider(name?: string): MemoryProvider {

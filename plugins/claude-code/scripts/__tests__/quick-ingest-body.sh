@@ -65,9 +65,12 @@ assert "no metadata key in body" "$cond"
 [ "$(printf '%s' "$body1" | jq -e '.skip_extraction == true' >/dev/null 2>&1 && echo true || echo false)" = "true" ] \
   && cond=true || cond=false
 assert "skip_extraction true" "$cond"
-[ "$(printf '%s' "$body1" | jq 'keys | length' 2>/dev/null)" = "5" ] \
+[ "$(printf '%s' "$body1" | jq -r '.content_class' 2>/dev/null)" = "summary" ] \
   && cond=true || cond=false
-assert "exactly 5 keys" "$cond"
+assert "content_class summary" "$cond"
+[ "$(printf '%s' "$body1" | jq 'keys | length' 2>/dev/null)" = "6" ] \
+  && cond=true || cond=false
+assert "exactly 6 keys" "$cond"
 
 # ---------------------------------------------------------------------------
 # Case 2 — '{}' literal → same as no metadata
@@ -77,9 +80,9 @@ body2=$(am_quick_ingest_body "content_x" "https://example.com/y" '{}')
 [ "$(printf '%s' "$body2" | jq -e 'has("metadata") | not' >/dev/null 2>&1 && echo true || echo false)" = "true" ] \
   && cond=true || cond=false
 assert "no metadata key in body for '{}'" "$cond"
-[ "$(printf '%s' "$body2" | jq 'keys | length' 2>/dev/null)" = "5" ] \
+[ "$(printf '%s' "$body2" | jq 'keys | length' 2>/dev/null)" = "6" ] \
   && cond=true || cond=false
-assert "exactly 5 keys for '{}'" "$cond"
+assert "exactly 6 keys for '{}'" "$cond"
 
 # ---------------------------------------------------------------------------
 # Case 3 — real metadata → 6-field body, metadata round-trips exactly
@@ -90,9 +93,9 @@ body3=$(am_quick_ingest_body "content_x" "https://example.com/y" "$md")
 [ "$(printf '%s' "$body3" | jq -e 'has("metadata")' >/dev/null 2>&1 && echo true || echo false)" = "true" ] \
   && cond=true || cond=false
 assert "metadata key present" "$cond"
-[ "$(printf '%s' "$body3" | jq 'keys | length' 2>/dev/null)" = "6" ] \
+[ "$(printf '%s' "$body3" | jq 'keys | length' 2>/dev/null)" = "7" ] \
   && cond=true || cond=false
-assert "exactly 6 keys" "$cond"
+assert "exactly 7 keys" "$cond"
 expected_metadata=$(printf '%s' "$md" | jq -c .)
 actual_metadata=$(printf '%s' "$body3" | jq -c '.metadata')
 [ "$actual_metadata" = "$expected_metadata" ] && cond=true || cond=false

@@ -1,0 +1,10 @@
+name: atomicmemory
+version: 0.1.17
+description: "AtomicMemory custom components for Langflow — memory-provider-aware, SDK-backed."
+pip_dependencies:
+  - "atomicmemory-langflow==0.1.17"
+components:
+  - chat_memory
+  - search_context
+  - store_message
+  - delete

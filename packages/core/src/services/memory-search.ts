@@ -9,7 +9,7 @@ import { type SearchResult } from '../db/memory-repository.js';
 import { checkLessons, recordConsensusLessons, type LessonCheckResult } from './lesson-service.js';
 import { validateConsensus, type ConsensusResult } from './consensus-validation.js';
 import { embedText } from './embedding.js';
-import { resolveSearchLimitDetailed, classifyQueryDetailed } from './retrieval-policy.js';
+import { resolveSearchLimitDetailed } from './retrieval-policy.js';
 import { runSearchPipelineWithTrace } from './search-pipeline.js';
 import { buildCitations as buildRichCitations, buildInjection, computePackagingSignal, type EpisodeForInjection } from './retrieval-format.js';
 import type { ChainDetectorResult } from './event-chain-detector.js';
@@ -24,6 +24,7 @@ import {
 import { finalizePackagingTrace } from './packaging-observability.js';
 import { isCurrentStateQuery } from './current-state-ranking.js';
 import { TraceCollector } from './retrieval-trace.js';
+import { finalizeRetrievalReceipt } from './retrieval-receipt.js';
 import { excludeStaleComposites } from './composite-staleness.js';
 import { applyFlatPackagingPolicy } from './composite-dedup.js';
 import { recordSearchSideEffects } from './retrieval-side-effects.js';
@@ -241,6 +242,7 @@ async function executeSearchStep(
     searchStrategy: retrievalOptions?.searchStrategy,
     skipRepairLoop: retrievalOptions?.skipRepairLoop,
     skipReranking: retrievalOptions?.skipReranking,
+    skipLlmStages: retrievalOptions?.skipLlmStages,
     runtimeConfig: deps.config,
   });
   return {
@@ -569,6 +571,15 @@ export async function performSearch(
   deps: MemoryServiceDeps,
   input: PerformSearchInput,
 ): Promise<RetrievalResult> {
+  const result = await runSearch(deps, input);
+  return finalizeRetrievalReceipt(deps.stores.claim, deps.config, input.userId, input.query, result);
+}
+
+/** Core search orchestration. The receipt finalizer wraps every return path. */
+async function runSearch(
+  deps: MemoryServiceDeps,
+  input: PerformSearchInput,
+): Promise<RetrievalResult> {
   const {
     userId,
     query,
@@ -635,9 +646,21 @@ function maybeApplyTemporalRerank(
 }
 
 /**
- * Latency-optimized search that skips repair/reranking for simple and medium
- * queries, but escalates to the full pipeline for multi-hop, aggregation, and
- * complex queries where the LLM rewrite materially improves retrieval.
+ * Latency-optimized search backing `/v1/memories/search/fast` (UC1, <200ms).
+ *
+ * This is the LLM-free, replayable retrieval path. It unconditionally
+ * skips the two LLM-driven pipeline stages — the repair loop (query rewrite) and
+ * cross-encoder reranking — for EVERY query class. It deliberately does NOT
+ * escalate to the repair/rerank loop for multi-hop / aggregation / complex
+ * queries: escalation would issue an LLM call, breaking the determinism contract
+ * the route advertises via `deterministic: true`. Given a pinned embedding model
+ * (carried by the C1 retrieval receipt), the same fixture corpus replays
+ * bit-for-bit. Callers needing the LLM repair loop must use `performSearch`
+ * (`/v1/memories/search`), which is not deterministic.
+ *
+ * Caller `retrievalOptions` still flow through for packaging, threshold, and
+ * strategy controls, but `skipRepairLoop` / `skipReranking` are forced on and
+ * cannot be overridden back to an LLM-calling configuration.
  */
 export async function performFastSearch(
   deps: MemoryServiceDeps,
@@ -649,10 +672,6 @@ export async function performFastSearch(
   sessionId?: string,
   retrievalOptions?: RetrievalOptions,
 ): Promise<RetrievalResult> {
-  const label = classifyQueryDetailed(query).label;
-  const escalate = label === 'multi-hop' || label === 'aggregation' || label === 'complex';
-  // Fast search owns these latency toggles based on query class; caller options
-  // still flow through for packaging, threshold, and strategy controls.
   return performSearch(deps, {
     userId,
     query,
@@ -661,8 +680,13 @@ export async function performFastSearch(
     namespaceScope,
     retrievalOptions: {
       ...retrievalOptions,
-      skipRepairLoop: !escalate,
-      skipReranking: !escalate,
+      // Hard LLM-free guarantee: skipLlmStages suppresses every
+      // LLM-driven pipeline stage (query-expansion, repair, agentic, rerank)
+      // regardless of runtime config. skipRepairLoop/skipReranking are kept
+      // explicit so the intent is legible at the two stages they name.
+      skipLlmStages: true,
+      skipRepairLoop: true,
+      skipReranking: true,
     },
     sessionId,
   });
@@ -796,11 +820,12 @@ export async function performWorkspaceSearch(
   const outputMemories = injection.includedMemories;
   updateRetrievalSummary(trace, outputMemories, query, options.retrievalOptions, relevanceFilter);
   trace.finalize(outputMemories);
-  return {
+  const result: RetrievalResult = {
     memories: outputMemories,
     citations: outputMemories.map((m) => m.id),
     retrievalMode: mode,
     retrievalSummary: trace.getRetrievalSummary(),
     ...injection,
   };
+  return finalizeRetrievalReceipt(deps.stores.claim, deps.config, userId, query, result);
 }

@@ -6,10 +6,11 @@ import { existsSync } from "node:fs";
 import { packageJsonFiles, readJson, listRepoFiles } from "./lib/repo-files.mjs";
 
 const FALLOW_VERSION = "2.75.0";
-const REQUIRED_CODE_HEALTH = new Set(["packages/core", "packages/sdk"]);
+const REQUIRED_CODE_HEALTH = new Set(["packages/core", "packages/sdk", "packages/llmwiki"]);
 const REQUIRED_SCRIPT_MARKERS = new Map([
   ["packages/core", ["fallow", "--fail-on-issues"]],
   ["packages/sdk", ["fallow audit", "--health-baseline", "--dupes-baseline", "check-baseline-ratchet.sh"]],
+  ["packages/llmwiki", ["fallow audit", "--health-baseline", "--dupes-baseline", "check-baseline-ratchet.sh"]],
 ]);
 const EXEMPT_TS_PACKAGES = new Map([
   ["packages/cli", "no historical fallow gate; covered by build, typecheck, lint, tests, and pack validation"],

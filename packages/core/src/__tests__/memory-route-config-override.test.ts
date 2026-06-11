@@ -65,6 +65,10 @@ describe('POST /memories/* — per-request config_override', () => {
   beforeAll(async () => {
     scopedSearch.mockResolvedValue({
       memories: [], injectionText: '', citations: [], retrievalMode: 'flat', budgetConstrained: false,
+      retrievalReceipt: {
+        embeddingProvider: 'openai', embeddingModel: 'm', embeddingModelVersion: 'm',
+        embeddingDimensions: 768, queryText: 'q', candidateIds: [], traceId: 'trace-test',
+      },
     });
     ingest.mockResolvedValue({
       episodeId: 'ep', factsExtracted: 0, memoriesStored: 0, memoriesUpdated: 0,
@@ -198,7 +202,7 @@ describe('POST /memories/* — per-request config_override', () => {
       memoryIds: [], linksCreated: 0, compositesCreated: 0, ingestTraceId: 'ingest-trace-1',
     });
     const res = await postJson(`/memories/ingest`, {
-        user_id: 'u', conversation: 'hi', source_site: 's',
+        user_id: 'u', conversation: 'hi', source_site: 's', content_class: 'summary',
         config_override: { chunkedExtractionEnabled: true, ingestTraceEnabled: true },
       });
     expect(res.status).toBe(200);
@@ -214,7 +218,7 @@ describe('POST /memories/* — per-request config_override', () => {
 
   it('POST /ingest/quick with override → headers + named effectiveConfig input', async () => {
     const res = await postJson(`/memories/ingest/quick`, {
-        user_id: 'u', conversation: 'hi', source_site: 's',
+        user_id: 'u', conversation: 'hi', source_site: 's', content_class: 'summary',
         config_override: { entropyGateEnabled: false, fastAudnEnabled: true },
       });
     expect(res.status).toBe(200);

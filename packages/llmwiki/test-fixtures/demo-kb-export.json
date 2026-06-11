@@ -1,0 +1,93 @@
+{
+  "exportedAt": "2026-05-28T05:29:19.904Z",
+  "pageCount": 3,
+  "pages": [
+    {
+      "title": "Chunking",
+      "slug": "chunking",
+      "pageDirectory": "concepts",
+      "path": "wiki/concepts/chunking.md",
+      "summary": "Splitting content into retrieval units.",
+      "sources": [
+        "paper.md"
+      ],
+      "tags": [
+        "retrieval"
+      ],
+      "createdAt": "2026-05-28T05:29:19.897Z",
+      "updatedAt": "2026-05-28T05:29:19.898Z",
+      "links": [],
+      "body": "\nChunking splits long documents into bounded fragments. ^[paper.md:20-25]\n",
+      "kind": "concept",
+      "advisoryConfidence": 0.7,
+      "provenanceState": "merged",
+      "contradictedBy": [
+        {
+          "slug": "sliding-window",
+          "reason": "chunk-vs-stream paradigm conflict"
+        }
+      ],
+      "citations": [
+        {
+          "file": "paper.md",
+          "start": 20,
+          "end": 25
+        }
+      ],
+      "aliases": [
+        "llmwiki/demo/concepts/segmentation"
+      ],
+      "advisoryFreshnessStatus": "unverified"
+    },
+    {
+      "title": "Retrieval",
+      "slug": "retrieval",
+      "pageDirectory": "concepts",
+      "path": "wiki/concepts/retrieval.md",
+      "summary": "Selective lookup over a knowledge corpus.",
+      "sources": [
+        "paper.md"
+      ],
+      "tags": [
+        "retrieval"
+      ],
+      "createdAt": "2026-05-28T05:29:19.898Z",
+      "updatedAt": "2026-05-28T05:29:19.898Z",
+      "links": [
+        "chunking"
+      ],
+      "body": "\nRetrieval is the act of selectively fetching relevant material from a\ncorpus. ^[paper.md:10-15]\n\nIt often pairs with [[chunking]] in practice.\n",
+      "kind": "concept",
+      "advisoryConfidence": 0.85,
+      "provenanceState": "extracted",
+      "citations": [
+        {
+          "file": "paper.md",
+          "start": 10,
+          "end": 15
+        }
+      ],
+      "advisoryFreshnessStatus": "unverified"
+    },
+    {
+      "title": "What is retrieval?",
+      "slug": "what-is-retrieval",
+      "pageDirectory": "queries",
+      "path": "wiki/queries/what-is-retrieval.md",
+      "summary": "A query saved for revisiting.",
+      "sources": [],
+      "tags": [],
+      "createdAt": "2026-05-28T05:29:19.898Z",
+      "updatedAt": "2026-05-28T05:29:19.898Z",
+      "links": [
+        "retrieval",
+        "chunking"
+      ],
+      "body": "\nSee [[retrieval]] and [[chunking]].\n",
+      "kind": "comparison",
+      "citations": [],
+      "advisoryFreshnessStatus": "unverified"
+    }
+  ],
+  "projectId": "demo-kb"
+}

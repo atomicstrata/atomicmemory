@@ -52,6 +52,18 @@ export type RawContentCodecName = 'none' | 'aes_gcm';
  */
 export type RawStorageDeploymentEnv = 'production' | 'staging' | 'local';
 
+/**
+ * Server-side sensitivity gate for ingest content (trust-boundary defense-in-depth). `reject` (the safe default) refuses to
+ * persist a verbatim write classified as `raw` — or one that arrives
+ * without a `content_class` stamp at all (treated as unknown ⇒ raw) —
+ * with 422 raw_content_rejected. On extraction paths it does not refuse;
+ * it withholds the raw transcript from the durable audit episode while
+ * the derived memories are still stored. `allow` accepts any
+ * `content_class` and never redacts; it is intended for single-user local
+ * deployments where the persistence target is not a shared/hosted store.
+ */
+export type RawContentPolicy = 'reject' | 'allow';
+
 export interface RuntimeConfig {
   databaseUrl: string;
   openaiApiKey: string;
@@ -63,6 +75,23 @@ export interface RuntimeConfig {
    * restarting the server with a new value.
    */
   coreApiKey: string;
+  /**
+   * Trusted-proxy identity guard. When `true`, every
+   * user-scoped request carrying a `user_id` MUST also carry the same
+   * value in the `X-AtomicMemory-Asserted-User` header, which the
+   * trusted caller (the control plane) sets after its own
+   * user authentication. The `assertedUserGuard` middleware fails closed
+   * (403 `asserted_user_mismatch`) on a missing or mismatched header.
+   * Safe-by-default: effective `true` whenever
+   * `RAW_STORAGE_DEPLOYMENT_ENV` is `production` or `staging` (hosted /
+   * multi-tenant), even when `TRUSTED_PROXY_MODE` is unset; explicitly setting
+   * `TRUSTED_PROXY_MODE=false` in a hosted env FAILS startup. Local deployments
+   * default `false` and honor an explicit value. This is defense-in-depth: it
+   * does NOT make `user_id` trustworthy on its own (the shared `CORE_API_KEY`
+   * still only authenticates the caller process); it catches cross-assertion
+   * bugs in the proxy. See `SECURITY.md`. Env: `TRUSTED_PROXY_MODE`.
+   */
+  trustedProxyMode: boolean;
   /**
    * Optional admin API key for test-scope cleanup endpoints. When unset,
    * admin routes are not mounted. Operators should use a different secret
@@ -612,6 +641,14 @@ export interface RuntimeConfig {
   /** Required at startup; drives fail-closed policy in cross-validation. */
   rawStorageDeploymentEnv: RawStorageDeploymentEnv;
   /**
+   * Server-side raw-content policy. `reject` (default) refuses a
+   * verbatim write of `content_class: 'raw'` or unstamped content (422),
+   * and redacts the raw transcript from the audit episode on extraction
+   * paths; `allow` accepts any class and never redacts. Read at the
+   * ingest boundary; not runtime-mutable. Env: `RAW_CONTENT_POLICY`.
+   */
+  rawContentPolicy: RawContentPolicy;
+  /**
    * Parsed Synapse-shaped Filecoin provider config. Populated only
    * when `rawStorageProvider === 'filecoin'`; `null` otherwise. The
    * cross-provider guard in `validateRawStorageConfig` rejects any
@@ -636,6 +673,21 @@ export interface RuntimeConfig {
    * is downstream-consumer hygiene, not SSRF defence.
    */
   rawStoragePointerUriSchemes: ReadonlyArray<PointerUriScheme>;
+  /**
+   * Offline Personal profile guard. When `true`, validated at
+   * startup that `EMBEDDING_PROVIDER` is one of the local-only set
+   * (`transformers`, `ollama`) — cloud embedding providers (`openai`,
+   * `voyage`, `openai-compatible`) are rejected with a clear startup
+   * error so a misconfigured offline deployment fails fast rather than
+   * silently calling out to external APIs.
+   *
+   * When `false` (the default), no constraint is imposed; the embedding
+   * provider choice is unrestricted. See `docs/OFFLINE.md` for the
+   * complete Offline Personal profile env combo.
+   *
+   * Env: `OFFLINE_MODE` (`true` | `false`). Default `false`.
+   */
+  offlineMode: boolean;
 }
 
 /** Closed set of pointer-mode URI schemes operators can allowlist. */
@@ -760,6 +812,21 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+/**
+ * Strict boolean env parser. Unlike the widespread `(env ?? 'false') ===
+ * 'true'` idiom, this rejects any value other than the literal `'true'` /
+ * `'false'` rather than silently treating a typo (e.g. `TRUSTED_PROXY_MODE=
+ * ture`) as `false`. Used for security-relevant gates where a silent
+ * mis-parse would disable a guard. Fails closed at startup.
+ */
+function parseStrictBoolEnv(name: string, fallback: boolean): boolean {
+  const raw = optionalEnv(name);
+  if (raw === undefined) return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new Error(`${name} must be 'true' or 'false' (got '${raw}')`);
+}
+
 function parseVectorBackend(value: string | undefined): VectorBackendName {
   if (!value) return 'pgvector';
   if (value === 'pgvector' || value === 'ruvector-mock' || value === 'zvec-mock') return value;
@@ -850,6 +917,58 @@ function parseRawStorageDeploymentEnv(value: string | undefined): RawStorageDepl
   );
 }
 
+/** Deployment envs treated as hosted/multi-tenant for safe-by-default gating. */
+const HOSTED_DEPLOYMENT_ENVS: ReadonlySet<RawStorageDeploymentEnv> = new Set([
+  'production',
+  'staging',
+]);
+
+/**
+ * Resolve the effective `trustedProxyMode` safe-by-default
+ * for hosted deployments.
+ *
+ * The C4 cross-user-assertion guard (`assertedUserGuard`) is only active when
+ * `trustedProxyMode` is true. In a hosted/multi-tenant deployment
+ * (`RAW_STORAGE_DEPLOYMENT_ENV` = `production` | `staging`) leaving it off
+ * keeps the shared-`CORE_API_KEY` blast radius open, so the SAFE path is the
+ * default there:
+ *   - hosted + `TRUSTED_PROXY_MODE` unset  → effective `true` (guard on)
+ *   - hosted + `TRUSTED_PROXY_MODE=false`  → FAIL startup (refuse to ship the
+ *     guard explicitly disabled in a multi-tenant env)
+ *   - hosted + `TRUSTED_PROXY_MODE=true`   → `true`
+ *   - local  + unset/any explicit value    → honor the value, default `false`
+ *
+ * `parseStrictBoolEnv` still rejects non-boolean values everywhere.
+ */
+function resolveTrustedProxyMode(deploymentEnv: RawStorageDeploymentEnv): boolean {
+  const hosted = HOSTED_DEPLOYMENT_ENVS.has(deploymentEnv);
+  const raw = optionalEnv('TRUSTED_PROXY_MODE');
+  if (hosted) {
+    if (raw === undefined) return true;
+    if (parseStrictBoolEnv('TRUSTED_PROXY_MODE', true) === false) {
+      throw new Error(
+        `TRUSTED_PROXY_MODE=false is not allowed when ` +
+          `RAW_STORAGE_DEPLOYMENT_ENV='${deploymentEnv}' (hosted/multi-tenant). ` +
+          `The cross-user-assertion guard must stay on in hosted deployments. ` +
+          `Unset TRUSTED_PROXY_MODE (defaults on) or set it to 'true'. See SECURITY.md.`,
+      );
+    }
+    return true;
+  }
+  return parseStrictBoolEnv('TRUSTED_PROXY_MODE', false);
+}
+
+/**
+ * Parse the `RAW_CONTENT_POLICY` knob. Defaults to `'reject'`
+ * (safe / defense-in-depth) when unset — a hosted core refuses raw or
+ * unstamped content unless an operator explicitly opts into `'allow'`.
+ */
+function parseRawContentPolicy(value: string | undefined): RawContentPolicy {
+  if (!value || value === 'reject') return 'reject';
+  if (value === 'allow') return 'allow';
+  throw new Error(`Invalid RAW_CONTENT_POLICY '${value}'. Must be 'reject' or 'allow'.`);
+}
+
 /**
  * Parse `RAW_STORAGE_LEGACY_PROVIDERS` (csv). The active provider is
  * NEVER allowed in this list — that check happens in
@@ -875,6 +994,56 @@ function parseLegacyProviders(value: string | undefined): ReadonlyArray<RawStora
     out.push(entry);
   }
   return out;
+}
+
+/** Embedding providers that make no external network calls. */
+const LOCAL_EMBEDDING_PROVIDERS: ReadonlySet<EmbeddingProviderName> = new Set([
+  'transformers',
+  'ollama',
+]);
+
+/**
+ * LLM providers that run locally and make no external network calls:
+ * `ollama` (local server), `claude-code` and `codex` (local host CLIs that
+ * talk to an on-host agent process). Every other LLM provider in
+ * `LLMProviderName` (`openai`, `anthropic`, `groq`, `google-genai`,
+ * `openai-compatible`) reaches a cloud endpoint and is forbidden offline.
+ */
+const LOCAL_LLM_PROVIDERS: ReadonlySet<LLMProviderName> = new Set([
+  'ollama',
+  'claude-code',
+  'codex',
+]);
+
+/**
+ * Offline mode guard. When `offlineMode` is
+ * `true`, both the embedding provider AND the LLM provider must be local-only;
+ * either one making external network calls breaks the offline guarantee.
+ * `/v1/memories/ingest` LLM extraction calls the LLM provider, so a cloud LLM
+ * under offline mode would silently reach out to a cloud API. Runs once at
+ * startup so a misconfigured offline deployment fails immediately with a clear
+ * error rather than degrading into cloud calls.
+ */
+export function validateOfflineMode(
+  offlineMode: boolean,
+  embeddingProvider: EmbeddingProviderName,
+  llmProvider: LLMProviderName,
+): void {
+  if (!offlineMode) return;
+  if (!LOCAL_EMBEDDING_PROVIDERS.has(embeddingProvider)) {
+    throw new Error(
+      `OFFLINE_MODE=true requires a local-only EMBEDDING_PROVIDER. ` +
+        `Got '${embeddingProvider}'. Use 'transformers' or 'ollama'. ` +
+        `See docs/OFFLINE.md for the complete Offline Personal profile.`,
+    );
+  }
+  if (!LOCAL_LLM_PROVIDERS.has(llmProvider)) {
+    throw new Error(
+      `OFFLINE_MODE=true requires a local-only LLM_PROVIDER. ` +
+        `Got '${llmProvider}'. Use 'claude-code', 'codex', or 'ollama'. ` +
+        `See docs/OFFLINE.md for the complete Offline Personal profile.`,
+    );
+  }
 }
 
 /**
@@ -1080,6 +1249,8 @@ function validateLegacyProviders(args: RawStorageValidationInput): void {
 
 const embeddingProvider = parseEmbeddingProvider(optionalEnv('EMBEDDING_PROVIDER'), 'openai');
 const llmProvider = parseLlmProvider(optionalEnv('LLM_PROVIDER'), 'openai');
+const rawStorageDeploymentEnv = parseRawStorageDeploymentEnv(optionalEnv('RAW_STORAGE_DEPLOYMENT_ENV'));
+const trustedProxyMode = resolveTrustedProxyMode(rawStorageDeploymentEnv);
 const retrievalProfile = parseRetrievalProfile(optionalEnv('RETRIEVAL_PROFILE'));
 const retrievalProfileSettings = getRetrievalProfile(retrievalProfile);
 const DEFAULT_SIMILARITY_THRESHOLD = 0.3;
@@ -1129,6 +1300,7 @@ export const config: RuntimeConfig = {
   databaseUrl: requireEnv('DATABASE_URL'),
   openaiApiKey,
   coreApiKey: requireEnv('CORE_API_KEY'),
+  trustedProxyMode,
   coreAdminApiKey: optionalEnv('CORE_ADMIN_API_KEY'),
   coreTestScopeAllowPattern: parseRegexEnv('CORE_TEST_SCOPE_ALLOW_PATTERN'),
   storageKeyHmacSecret: parseStorageKeyHmacSecret(requireEnv('STORAGE_KEY_HMAC_SECRET')),
@@ -1322,12 +1494,14 @@ export const config: RuntimeConfig = {
   rawContentCodec: parseRawContentCodec(optionalEnv('RAW_CONTENT_CODEC')),
   rawContentCodecKeys: parseRawContentCodecKeys(optionalEnv('RAW_CONTENT_CODEC_KEYS')),
   rawContentCodecActiveKeyId: optionalEnv('RAW_CONTENT_CODEC_ACTIVE_KEY_ID') ?? null,
-  rawStorageDeploymentEnv: parseRawStorageDeploymentEnv(optionalEnv('RAW_STORAGE_DEPLOYMENT_ENV')),
+  rawStorageDeploymentEnv,
+  rawContentPolicy: parseRawContentPolicy(optionalEnv('RAW_CONTENT_POLICY')),
   filecoinProvider: null,
   rawStorageLegacyProviders: parseLegacyProviders(optionalEnv('RAW_STORAGE_LEGACY_PROVIDERS')),
   rawStoragePointerUriSchemes: parsePointerUriSchemes(
     optionalEnv('RAW_STORAGE_POINTER_URI_SCHEMES'),
   ),
+  offlineMode: parseStrictBoolEnv('OFFLINE_MODE', false),
 };
 
 const filecoinEnvKeysSet = collectFilecoinProviderEnvKeys(process.env);
@@ -1356,6 +1530,8 @@ if (config.rawStorageProvider === 'filecoin') {
   // on missing / malformed values.
   config.filecoinProvider = parseFilecoinProviderConfig(process.env);
 }
+
+validateOfflineMode(config.offlineMode, config.embeddingProvider, config.llmProvider);
 
 export function applyRuntimeConfigUpdates(
   target: RuntimeConfig,
@@ -1402,14 +1578,15 @@ export function updateRuntimeConfig(updates: RuntimeConfigUpdates): string[] {
  */
 export const SUPPORTED_RUNTIME_CONFIG_FIELDS = [
   // Infrastructure
-  'databaseUrl', 'openaiApiKey', 'coreApiKey', 'coreAdminApiKey',
+  'databaseUrl', 'openaiApiKey', 'coreApiKey', 'trustedProxyMode',
+  'coreAdminApiKey',
   'coreTestScopeAllowPattern', 'storageKeyHmacSecret', 'port',
   // Provider / model selection (startup config)
   'embeddingProvider', 'embeddingModel', 'embeddingDimensions',
   'embeddingApiUrl', 'embeddingApiKey',
   'voyageApiKey', 'voyageDocumentModel', 'voyageQueryModel',
   'llmProvider', 'llmModel', 'llmApiUrl', 'llmApiKey',
-  'groqApiKey', 'anthropicApiKey', 'googleApiKey',
+  'groqApiKey', 'anthropicApiKey', 'googleApiKey', 'codexAuthPath',
   'ollamaBaseUrl', 'vectorBackend', 'skipVectorIndexes', 'llmSeed',
   'crossEncoderModel', 'crossEncoderDtype',
   // Operator-visible runtime
@@ -1590,6 +1767,8 @@ export const INTERNAL_POLICY_CONFIG_FIELDS = [
   'rawContentCodecKeys',
   'rawContentCodecActiveKeyId',
   'rawStorageDeploymentEnv',
+  // server-side raw-content rejection policy at the ingest boundary.
+  'rawContentPolicy',
   // Synapse-shaped Filecoin provider config. Single grouped field on
   // `RuntimeConfig`; the underlying env var surface is
   // `RAW_STORAGE_FILECOIN_*` and the parser lives in
@@ -1597,6 +1776,9 @@ export const INTERNAL_POLICY_CONFIG_FIELDS = [
   'filecoinProvider',
   'rawStorageLegacyProviders',
   'rawStoragePointerUriSchemes',
+  // offline Personal profile guard — rejects cloud embedding providers
+  // at startup when OFFLINE_MODE=true.
+  'offlineMode',
 ] as const;
 
 export type SupportedRuntimeConfigField = typeof SUPPORTED_RUNTIME_CONFIG_FIELDS[number];

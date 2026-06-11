@@ -77,6 +77,7 @@ export interface ProviderStatus {
 export class MemoryClient {
   private readonly service: MemoryService;
   private initialized = false;
+  private initPromise?: Promise<void>;
 
   constructor(config: MemoryClientConfig) {
     const providerConfigs: Record<string, unknown> = { ...config.providers };
@@ -97,13 +98,20 @@ export class MemoryClient {
   }
 
   /**
-   * Initialize all configured providers. Must be called before any
-   * memory operation. Idempotent.
+   * Initialize all configured providers. Must be called before any memory
+   * operation. Idempotent and concurrency-safe: concurrent and subsequent
+   * calls share a single initialization run. The `registry` argument of the
+   * first call wins; later calls share that run and their argument is ignored.
+   * A REJECTED initialization is sticky — retrying on the same instance
+   * re-throws the original error (partial provider state from a failed run is
+   * never reused); resolve the cause (e.g. install a missing optional peer)
+   * and construct a new client.
    */
   async initialize(registry: ProviderRegistry = defaultRegistry): Promise<void> {
-    if (this.initialized) return;
-    await this.service.initialize(registry);
-    this.initialized = true;
+    this.initPromise ??= this.service.initialize(registry).then(() => {
+      this.initialized = true;
+    });
+    return this.initPromise;
   }
 
   /**

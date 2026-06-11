@@ -31,7 +31,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "smoke:backend": "pnpm build && node scripts/smoke-backend.mjs",
     "prepack": "pnpm build",
-    "prepublishOnly": "node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
+    "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs && node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
   },
   "dependencies": {
     "@atomicmemory/sdk": "^1.0.2",
@@ -46,5 +46,9 @@
   "bugs": {
     "url": "https://github.com/atomicstrata/atomicmemory/issues"
   },
-  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/openai-agents#readme"
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/openai-agents#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }
