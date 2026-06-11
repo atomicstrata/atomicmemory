@@ -16,9 +16,15 @@ import { runReflectForConversation } from '../services/reflect.js';
 import { callAnthropicTool } from '../services/llm.js';
 import { embedText } from '../services/embedding.js';
 import { createStorageRouter } from '../routes/storage.js';
+import { createEntityRouter } from '../routes/entities.js';
 import { MAX_INDEX_TEXT_BYTES } from '../schemas/documents.js';
 import { requireBearer } from '../middleware/require-bearer.js';
+import { assertedUserGuard } from '../middleware/asserted-user.js';
 import { CORS_ALLOWED_HEADERS_VALUE } from './cors-headers.js';
+import { openApiSpec } from './openapi-spec.js';
+import { CORE_CAPABILITIES } from './capabilities-descriptor.js';
+import { verifyCapabilitiesDescriptor } from './verify-capabilities.js';
+import { SearchBodySchema } from '../schemas/memories.js';
 import type { CoreRuntime } from './runtime-container.js';
 
 /** Default JSON-body cap for non-document routers. */
@@ -67,17 +73,34 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
   // `/health` and `/openapi.json` stay outside this scope.
   const auth = requireBearer(runtime.config.coreApiKey);
 
+  // defense-in-depth: when TRUSTED_PROXY_MODE is on, the trusted
+  // caller must restate the user it authenticated in the
+  // `X-AtomicMemory-Asserted-User` header, and the guard cross-checks it
+  // against the request's `user_id` (body/query) or `X-AtomicMemory-User-Id`
+  // header. A no-op when off (default). Built once and reused; mounted AFTER
+  // each router's body parser so it can read the parsed wire `user_id`, and
+  // BEFORE the router so a mismatch never reaches a handler.
+  const assertUser = assertedUserGuard(runtime.config.trustedProxyMode);
+
   // Route-scoped 1 MiB JSON parsers for the non-document routers.
+  const memoryRouter = createMemoryRouter(runtime.services.memory, runtime.configRouteAdapter);
+  // fail startup if the advertised capabilities descriptor
+  // over-promises relative to what the memory router actually mounts. Runs
+  // before the route is served so `GET /v1/capabilities` only ever returns a
+  // descriptor verified against live wiring.
+  verifyCapabilitiesDescriptor(CORE_CAPABILITIES, memoryRouter, SearchBodySchema);
   app.use(
     '/v1/memories',
     auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
-    createMemoryRouter(runtime.services.memory, runtime.configRouteAdapter),
+    assertUser,
+    memoryRouter,
   );
   app.use(
     '/v1/agents',
     auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
+    assertUser,
     createAgentRouter(runtime.repos.trust),
   );
 
@@ -128,9 +151,13 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
   // parsers (JSON for pointer-mode put + verify, `express.raw` for
   // managed-mode put), so we mount it WITHOUT a global JSON parser
   // at this prefix to avoid double-parsing managed-mode bodies.
+  // Direct-storage identity is the `X-AtomicMemory-User-Id` header, which
+  // the C4 guard reads without a parsed body, so it mounts right after
+  // `auth`. The storage router internally rejects body/query `user_id`.
   app.use(
     '/v1/storage',
     auth,
+    assertUser,
     createStorageRouter({
       capabilities: {
         activeStore,
@@ -138,6 +165,21 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
       },
       service: runtime.services.storage,
       managedUploadMaxBytes: runtime.config.rawUploadMaxBytes,
+    }),
+  );
+
+  app.use(
+    '/v1/entities',
+    auth,
+    express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
+    createEntityRouter({
+      pool: runtime.pool,
+      memory: runtime.repos.memory,
+      entities: runtime.repos.entities,
+      userProfile: runtime.stores.userProfile,
+      entityAttributes: runtime.stores.entityAttributes,
+      entityCards: runtime.stores.entityCards,
+      entitySettings: runtime.stores.entitySettings,
     }),
   );
 
@@ -207,6 +249,27 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
   // versioned application API. Versioned endpoints live under `/v1/*`.
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  // `GET /openapi.json` serves the committed OpenAPI spec. Like
+  // `/health` it is unversioned and unauthenticated — it is published API
+  // documentation, not user data, and tooling fetches it before holding a
+  // bearer token. The spec object is loaded once at module import (see
+  // `openapi-spec.ts`), so this handler does no per-request disk I/O.
+  app.get('/openapi.json', (_req, res) => {
+    res.json(openApiSpec);
+  });
+
+  // `GET /v1/capabilities` serves the running core's wire capabilities
+  // descriptor so a protocol-level caller (e.g. a control-plane
+  // daemon) can negotiate at startup WITHOUT the JS SDK. Unauthenticated
+  // like `/health` and `/openapi.json`: it advertises a static capability
+  // surface, not user data, and tooling fetches it before holding a bearer
+  // token. The descriptor is a frozen single-source-of-truth const, so this
+  // handler emits no per-request literals. Versioned under `/v1` because it
+  // is part of the application contract (unlike the infra `/health` probe).
+  app.get('/v1/capabilities', (_req, res) => {
+    res.json(CORE_CAPABILITIES);
   });
 
   return app;

@@ -33,7 +33,7 @@ Store key learnings using `memory_ingest`:
 
 - Use `mode: "text"` for semantic facts, decisions, preferences, conventions, and anti-patterns that should be extracted into durable memory.
 - Use `mode: "messages"` only when the exact conversational shape matters.
-- Use `mode: "verbatim"` for deterministic one-record records such as session summaries or handoff state. Include metadata such as `{ "source": "codex", "event": "session_summary", "schema_version": 1 }`.
+- Use `mode: "verbatim"` for deterministic one-record records such as session summaries or handoff state. Include metadata such as `{ "source": "codex", "event": "session_summary", "schema_version": 1 }`. Set `contentClass: "summary"` for these distilled records — a core with the default raw-content policy rejects unstamped (or raw) verbatim content.
 
 | What to store | Suggested note |
 |---|---|
@@ -48,7 +48,7 @@ Memories can be detailed — include file paths, function names, dates, and reas
 
 ## Before losing context
 
-If context is about to be compacted or the session is ending, ingest a compact session summary with `mode: "verbatim"`:
+If context is about to be compacted or the session is ending, ingest a compact session summary with `mode: "verbatim"` and `contentClass: "summary"`:
 
 ```
 User goal:

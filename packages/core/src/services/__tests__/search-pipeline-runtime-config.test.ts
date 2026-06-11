@@ -186,6 +186,33 @@ describe('runSearchPipelineWithTrace runtime config', () => {
     expect(agentic.applyAgenticRetrieval).toHaveBeenCalled();
   });
 
+  it('skipLlmStages suppresses every LLM-driven stage even when config enables them (radar C2)', async () => {
+    const initialResults = twoLowSimilarityResults();
+    const agentic = await import('../agentic-retrieval.js');
+    const extraction = await import('../extraction.js');
+    const expansion = await import('../query-expansion.js');
+
+    await runSearchPipelineWithTrace(
+      createStores(initialResults), 'user-1', 'multi hop deploy caching rollback query', 2,
+      undefined, undefined,
+      {
+        skipLlmStages: true,
+        runtimeConfig: {
+          ...mockConfig,
+          agenticRetrievalEnabled: true,
+          queryExpansionEnabled: true,
+          entityGraphEnabled: true,
+          crossEncoderEnabled: true,
+        } as any,
+      },
+    );
+
+    expect(agentic.applyAgenticRetrieval).not.toHaveBeenCalled();
+    expect(extraction.rewriteQuery).not.toHaveBeenCalled();
+    expect(expansion.expandQueryViaEntities).not.toHaveBeenCalled();
+    expect(mockRerankCandidates).not.toHaveBeenCalled();
+  });
+
   it('threads runtime reranker model and dtype through rerank and trace metadata', async () => {
     const initialResults = twoLowSimilarityResults();
     const rerankedResults = [...initialResults].reverse();

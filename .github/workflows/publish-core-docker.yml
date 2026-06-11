@@ -4,13 +4,19 @@ on:
   repository_dispatch:
     types:
       - core-npm-published
+  workflow_call:
+    inputs:
+      core_version:
+        description: "Published @atomicmemory/core version to build and tag."
+        required: true
+        type: string
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  group: publish-core-docker-${{ github.event.client_payload.core_version }}
+  group: publish-core-docker-${{ inputs.core_version || github.event.client_payload.core_version }}
   cancel-in-progress: false
 
 defaults:
@@ -47,7 +53,7 @@ jobs:
       - name: Resolve published package source
         id: package
         env:
-          CORE_VERSION_INPUT: ${{ github.event.client_payload.core_version }}
+          CORE_VERSION_INPUT: ${{ inputs.core_version || github.event.client_payload.core_version }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
           set -euo pipefail
@@ -99,75 +105,127 @@ jobs:
             tag_has_platform "$1" linux amd64 && tag_has_platform "$1" linux arm64
           }
 
+          tag_revision() {
+            local image_ref="$1"
+            if ! docker pull "${image_ref}" >/dev/null 2>&1; then
+              return 1
+            fi
+            docker inspect "${image_ref}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null
+          }
+
           is_latest="$([[ "${version}" == "${latest_version}" ]] && echo true || echo false)"
           release_refs=(
             "${IMAGE_NAME}:${version}"
             "${IMAGE_NAME}:${short_sha}"
             "${IMAGE_NAME}:sha-${short_sha}"
           )
-          missing_platform_refs=()
 
+          # Treat release tags as immutable. For each existing ref: refuse if
+          # its revision differs from the expected gitHead, and refuse if its
+          # platform coverage is incomplete -- fixing either case would
+          # require overwriting an existing semver tag with a new digest.
+          existing_refs=()
+          missing_refs=()
           for image_ref in "${release_refs[@]}"; do
-            if ! tag_exists "${image_ref}" || ! tag_has_required_platforms "${image_ref}"; then
-              missing_platform_refs+=("${image_ref}")
+            if ! tag_exists "${image_ref}"; then
+              missing_refs+=("${image_ref}")
+              continue
             fi
+            existing_rev="$(tag_revision "${image_ref}" || true)"
+            if [[ -z "${existing_rev}" || "${existing_rev}" == "<no value>" ]]; then
+              echo "::error::${image_ref} exists but has no org.opencontainers.image.revision label; refusing to retag or rebuild."
+              exit 1
+            fi
+            if [[ "${existing_rev}" != "${git_head}" ]]; then
+              echo "::error::${image_ref} exists with revision=${existing_rev}, expected ${git_head} (gitHead of @atomicmemory/core@${CORE_VERSION_INPUT}). Refusing to rebuild a different image over an existing release tag."
+              exit 1
+            fi
+            if ! tag_has_required_platforms "${image_ref}"; then
+              echo "::error::${image_ref} exists with matching revision ${git_head} but is missing linux/amd64 or linux/arm64. Refusing to overwrite an existing release tag to repair platform coverage; investigate the manifest and re-tag manually if needed."
+              exit 1
+            fi
+            existing_refs+=("${image_ref}")
+            echo "${image_ref}: existing image revision matches gitHead ${git_head}."
           done
 
-          release_tags_have_required_platforms=false
-          if [[ "${#missing_platform_refs[@]}" == "0" ]]; then
-            release_tags_have_required_platforms=true
+          all_release_refs_present="false"
+          if [[ "${#missing_refs[@]}" == "0" ]]; then
+            all_release_refs_present="true"
           fi
 
-          if [[ "${release_tags_have_required_platforms}" == "true" && "${is_latest}" == "true" ]]; then
+          common_outputs=(
+            "version=${version}"
+            "git_head=${git_head}"
+            "short_sha=${short_sha}"
+            "tarball=${tarball}"
+            "is_latest=${is_latest}"
+          )
+
+          if [[ "${all_release_refs_present}" == "true" && "${is_latest}" == "true" ]]; then
             {
               echo "should_publish=true"
               echo "retag_latest_only=true"
-              echo "version=${version}"
-              echo "git_head=${git_head}"
-              echo "short_sha=${short_sha}"
-              echo "tarball=${tarball}"
-              echo "is_latest=true"
+              echo "retag_aliases_only=false"
+              printf '%s\n' "${common_outputs[@]}"
             } >>"${GITHUB_OUTPUT}"
-            echo "Release tags already include linux/amd64 and linux/arm64; ensuring latest points to ${IMAGE_NAME}:${version}."
+            echo "Release tags already exist with required platforms; ensuring latest points to ${IMAGE_NAME}:${version}."
             exit 0
           fi
 
-          if [[ "${release_tags_have_required_platforms}" == "true" ]]; then
+          if [[ "${all_release_refs_present}" == "true" ]]; then
             echo "should_publish=false" >>"${GITHUB_OUTPUT}"
-            echo "skip_reason=Release tags already include linux/amd64 and linux/arm64." >>"${GITHUB_OUTPUT}"
-            echo "Release tags already include linux/amd64 and linux/arm64; no Docker publish required."
+            echo "skip_reason=Release tags already exist with required platforms." >>"${GITHUB_OUTPUT}"
+            echo "Release tags already exist with required platforms; no Docker publish required."
+            exit 0
+          fi
+
+          if [[ "${#existing_refs[@]}" -gt 0 ]]; then
+            # Some refs exist (and were validated above); copy them to the missing siblings
+            # via docker buildx imagetools create so the existing version manifest is never
+            # overwritten with a new digest.
+            retag_targets=("${missing_refs[@]}")
+            if [[ "${is_latest}" == "true" ]]; then
+              retag_targets+=("${IMAGE_NAME}:latest")
+            fi
+            {
+              echo "should_publish=true"
+              echo "retag_latest_only=false"
+              echo "retag_aliases_only=true"
+              echo "retag_source=${existing_refs[0]}"
+              echo "retag_targets=${retag_targets[*]}"
+              printf '%s\n' "${common_outputs[@]}"
+            } >>"${GITHUB_OUTPUT}"
+            echo "Existing release ref ${existing_refs[0]} matches gitHead ${git_head}; will retag missing siblings:"
+            printf '  - %s\n' "${retag_targets[@]}"
             exit 0
           fi
 
           {
             echo "should_publish=true"
             echo "retag_latest_only=false"
-            echo "version=${version}"
-            echo "git_head=${git_head}"
-            echo "short_sha=${short_sha}"
-            echo "tarball=${tarball}"
-            echo "is_latest=${is_latest}"
+            echo "retag_aliases_only=false"
+            printf '%s\n' "${common_outputs[@]}"
           } >>"${GITHUB_OUTPUT}"
 
           echo "Resolved @atomicmemory/core@${version}"
           echo "gitHead=${git_head}"
           echo "tarball=${tarball}"
-          printf 'Rebuilding release tags without complete linux/amd64 and linux/arm64 coverage:\n'
-          printf '  - %s\n' "${missing_platform_refs[@]}"
+          printf 'No existing release refs; building from source and pushing:\n'
+          printf '  - %s\n' "${missing_refs[@]}"
 
       - name: Report skipped publish
         if: steps.package.outputs.should_publish != 'true'
         run: echo "${{ steps.package.outputs.skip_reason }}"
 
       - name: Checkout package gitHead
-        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.package.outputs.git_head }}
           path: release-source
 
       - name: Verify checked-out package version
-        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         working-directory: release-source
         run: |
           set -euo pipefail
@@ -178,7 +236,7 @@ jobs:
           fi
 
       - name: Build local release image
-        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         run: |
           set -euo pipefail
 
@@ -199,7 +257,7 @@ jobs:
           fi
 
       - name: Verify image package version
-        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         run: |
           set -euo pipefail
           image_version="$(docker run --rm --entrypoint node "${IMAGE_NAME}:${{ steps.package.outputs.version }}" -p "require('./package.json').version")"
@@ -209,7 +267,7 @@ jobs:
           fi
 
       - name: Smoke test local release image
-        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         env:
           CORE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.package.outputs.version }}
         run: |
@@ -340,7 +398,7 @@ jobs:
           test "${bad_status}" = "400"
 
       - name: Build and push multi-platform release tags
-        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true'
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         run: |
           set -euo pipefail
 
@@ -374,6 +432,22 @@ jobs:
           docker buildx imagetools create \
             --tag "${IMAGE_NAME}:latest" \
             "${IMAGE_NAME}:${{ steps.package.outputs.version }}"
+
+      - name: Retag missing release aliases from existing image
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_aliases_only == 'true'
+        env:
+          RETAG_SOURCE: ${{ steps.package.outputs.retag_source }}
+          RETAG_TARGETS: ${{ steps.package.outputs.retag_targets }}
+        run: |
+          set -euo pipefail
+          read -r -a targets <<<"${RETAG_TARGETS}"
+          tag_args=()
+          for target in "${targets[@]}"; do
+            tag_args+=(--tag "${target}")
+          done
+          echo "Retagging from ${RETAG_SOURCE} to:"
+          printf '  - %s\n' "${targets[@]}"
+          docker buildx imagetools create "${tag_args[@]}" "${RETAG_SOURCE}"
 
       - name: Verify release platforms
         if: steps.package.outputs.should_publish == 'true'

@@ -1,0 +1,70 @@
+{
+  "name": "@atomicmemory/llmwiki",
+  "version": "1.1.0",
+  "description": "Bridge adapter for importing llmwiki JSON exports into AtomicMemory as verbatim memory records.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atomicstrata/atomicmemory.git",
+    "directory": "packages/llmwiki"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "bugs": {
+    "url": "https://github.com/atomicstrata/atomicmemory/issues"
+  },
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/packages/llmwiki#readme",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./live": {
+      "types": "./dist/live.d.ts",
+      "import": "./dist/live.js"
+    },
+    "./register": {
+      "types": "./dist/register.d.ts",
+      "import": "./dist/register.js"
+    }
+  },
+  "files": [
+    "dist",
+    "test-fixtures",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --import tsx 'src/**/*.test.ts'",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "code-health": "fallow audit --dead-code-baseline=.fallow/dead-code-baseline.json --health-baseline=.fallow/health-baseline.json --dupes-baseline=.fallow/dupes-baseline.json --base=${FALLOW_BASE_REF:-origin/main} --no-cache && bash ../sdk/scripts/check-baseline-ratchet.sh ${FALLOW_BASE_REF:-origin/main}",
+    "prepack": "pnpm build",
+    "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "@atomicmemory/sdk": "^1.1.0",
+    "llm-wiki-compiler": "^0.9.0"
+  },
+  "peerDependenciesMeta": {
+    "llm-wiki-compiler": { "optional": true }
+  },
+  "devDependencies": {
+    "@atomicmemory/sdk": "^1.1.0",
+    "@types/node": "^22.0.0",
+    "llm-wiki-compiler": "0.9.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

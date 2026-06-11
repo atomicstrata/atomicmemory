@@ -114,6 +114,36 @@ export class ClaimRepository {
     };
   }
 
+  /**
+   * Batched lookup of each memory's owning claim's `current_version_id`.
+   *
+   * One round-trip for the whole result set (keyed on `= ANY($2)`), never
+   * N+1 per memory. Memories with no claim version (e.g. workspace-pool
+   * rows that never entered the user-scoped claim ledger) are simply
+   * absent from the returned map. Used to stamp the retrieval-receipt
+   * `version_id` field on search results.
+   */
+  async getCurrentVersionIdsByMemoryIds(
+    userId: string,
+    memoryIds: string[],
+  ): Promise<Map<string, string>> {
+    if (memoryIds.length === 0) return new Map();
+    const result = await this.pool.query(
+      `SELECT cv.memory_id, c.current_version_id
+       FROM memory_claim_versions cv
+       JOIN memory_claims c ON c.id = cv.claim_id
+       WHERE cv.user_id = $1
+         AND cv.memory_id = ANY($2::uuid[])
+         AND c.current_version_id IS NOT NULL`,
+      [userId, memoryIds],
+    );
+    const byMemory = new Map<string, string>();
+    for (const row of result.rows) {
+      byMemory.set(row.memory_id, row.current_version_id);
+    }
+    return byMemory;
+  }
+
   async listClaimsMissingSlots(userId: string): Promise<SlotBackfillCandidate[]> {
     const result = await this.pool.query(
       `SELECT

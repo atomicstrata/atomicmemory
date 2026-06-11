@@ -108,6 +108,7 @@ function ingestVerbatim(input: AdapterIngestInput, tail: IngestTail): SdkIngestI
     mode: 'verbatim',
     content: input.text,
     ...(input.kind !== undefined ? { kind: input.kind } : {}),
+    ...(input.contentClass !== undefined ? { contentClass: input.contentClass } : {}),
     ...tail,
   };
 }

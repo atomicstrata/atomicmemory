@@ -8,9 +8,21 @@
 
 import type { MemoryRow, SearchResult } from '../../db/repository-types.js';
 import type { MemoryService } from '../memory-service.js';
-import type { Mock } from 'vitest';
+import { vi, type Mock } from 'vitest';
 
 const DEFAULT_NOW = new Date('2026-03-27T00:00:00.000Z');
+
+/**
+ * Embedding identity fields the retrieval-receipt finalizer reads off
+ * `deps.config`. Spread into search-test config bags so the receipt path
+ * has a concrete model identity without standing up a real composition root.
+ */
+export const RECEIPT_EMBEDDING_CONFIG = {
+  embeddingProvider: 'openai' as const,
+  embeddingModel: 'text-embedding-3-small',
+  embeddingDimensions: 768,
+  voyageQueryModel: 'voyage-4-lite',
+};
 
 interface SearchPipelineMockContextMocks {
   mockRunSearchPipelineWithTrace: Mock;
@@ -212,7 +224,10 @@ function createSearchPipelineMockContext(mocks: SearchPipelineMockContextMocks):
     touchMemory: (...args: unknown[]) => (mocks.mockTouchMemory as Function)(...args),
     getPool: () => ({}),
   } as any;
-  const claims = {} as any;
+  // getCurrentVersionIdsByMemoryIds: the retrieval-receipt finalizer batches
+  // one claim lookup per search; mock tests have no claim ledger, so it
+  // resolves to an empty map (every result gets version_id = null).
+  const claims = { getCurrentVersionIdsByMemoryIds: vi.fn().mockResolvedValue(new Map()) } as any;
   const trace = {
     stage: mocks.mockTraceStage,
     event: mocks.mockTraceEvent,

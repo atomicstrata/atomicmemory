@@ -29,6 +29,7 @@
 import { MemoryClient, type MemoryClientConfig } from './memory-client';
 import { ConcreteStorageClient } from '../storage/client';
 import type { StorageClient } from '../storage/interfaces';
+import { EntitiesClient } from '../entities/client';
 
 /**
  * Constructor config for the aggregator. All three transport fields
@@ -61,6 +62,7 @@ export interface AtomicMemoryClientConfig {
 export class AtomicMemoryClient {
   readonly memory: MemoryClient;
   readonly storage: StorageClient;
+  readonly entities: EntitiesClient;
 
   constructor(config: AtomicMemoryClientConfig) {
     if (!config.apiUrl) {
@@ -89,6 +91,11 @@ export class AtomicMemoryClient {
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
       userId: config.userId,
+      fetch: config.fetch,
+    });
+    this.entities = new EntitiesClient({
+      apiUrl: config.apiUrl,
+      apiKey: config.apiKey,
       fetch: config.fetch,
     });
   }

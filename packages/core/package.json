@@ -73,7 +73,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && tsx scripts/generate-schema-hash.ts",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
     "check:openapi": "pnpm run generate:openapi && git diff --exit-code openapi.yaml openapi.json",
-    "prepublishOnly": "npm run generate:openapi && npm run build",
+    "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs && npm run generate:openapi && npm run build",
     "test": "dotenv -e .env.test -- vitest run --reporter verbose",
     "test:watch": "dotenv -e .env.test -- vitest --reporter verbose",
     "test:deployment": "vitest run src/__tests__/deployment-config.test.ts --reporter verbose",
@@ -85,7 +85,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.140",
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@anthropic-ai/sdk": "^0.93.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@aws-sdk/client-s3": "^3.1045.0",
     "@filoz/synapse-core": "^0.5.1",

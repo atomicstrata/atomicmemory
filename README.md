@@ -117,6 +117,34 @@ Until latency benchmarks are linked from the docs, treat the engine as
 "designed for single-digit-ms local retrieval on a developer laptop at typical
 agent corpus sizes" — a design target, not a guarantee.
 
+## Validation boundary
+
+This section documents what this repository's public CI proves on its own, so
+readers can see exactly what is verified here and do not assume this repository
+independently proves every product claim. For what this repository is not
+responsible for, see "What This Is Not" above.
+
+**Proven in this repository's public CI (every pull request):**
+
+- repo hygiene
+- package metadata checks
+- affected build, typecheck, lint, and self-contained package tests (Node 22
+  and 24)
+- code-health gates
+- package `pack` dry-run plus tarball-shape verification
+- docs contract (install commands, package status labels, and smoke rows stay
+  in sync)
+- public integration smoke
+- security compliance
+
+**Also in this repository, run in package or release contexts (not the per-PR
+affected lane):**
+
+- Core OpenAPI generation and drift check (`generate:openapi` / `check:openapi`)
+- Core API schema tests (Schemathesis)
+- Core Docker image smoke (runs in the Docker image publish workflow)
+- DB-backed Core tests, which require Postgres/pgvector provisioning
+
 ## Quickstart
 
 For the full walkthrough, see the
@@ -187,6 +215,7 @@ Status labels follow the docs contract:
 | `@atomicmemory/sdk` | `packages/sdk` | published |
 | `@atomicmemory/cli` | `packages/cli` | published |
 | `@atomicmemory/mcp-server` | `packages/mcp-server` | published |
+| `@atomicmemory/llmwiki` | `packages/llmwiki` | implemented, publish pending |
 
 ### Framework adapters
 
@@ -282,6 +311,14 @@ still cover `@atomicmemory/core` in public CI.
 
 Per-package commands (`pnpm --filter @atomicmemory/sdk run build`, etc.) work
 for packages in `packages/`, `adapters/`, and `plugins/`.
+
+## Companion: llmwiki
+
+[llmwiki](https://github.com/atomicstrata/llmwiki) is a separate knowledge compiler that turns raw sources into an interlinked markdown wiki. It is **valuable on its own** — useful as a notebook, RAG index, CI-checked knowledge base, or domain pack source — and remains so whether or not AtomicMemory is in the picture.
+
+`@atomicmemory/llmwiki` (in this monorepo at `packages/llmwiki/`) is a one-way bridge: it imports an `llmwiki export --target json` envelope as one verbatim AtomicMemory record per wiki page, with all advisory metadata (kind, citations, confidence, provenance state, contradictions, aliases, freshness) preserved under `memory.metadata.llmwiki.*`. Either direction holds value standalone; the bridge just lets you choose runtime semantic recall on top of compiled knowledge.
+
+See [`packages/llmwiki/README.md`](packages/llmwiki/README.md) and [`packages/llmwiki/docs/cookbook.md`](packages/llmwiki/docs/cookbook.md) for the full workflow.
 
 ## Release Notes
 

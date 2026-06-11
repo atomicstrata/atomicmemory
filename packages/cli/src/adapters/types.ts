@@ -55,6 +55,9 @@ export interface AdapterAddInput {
   provenance?: AdapterProvenance;
 }
 
+/** Sensitivity class for verbatim content; mirrors core's `content_class`. */
+export type AdapterContentClass = 'summary' | 'redacted' | 'raw';
+
 export interface AdapterIngestInput {
   mode: AdapterIngestMode;
   scope: CliScope;
@@ -64,6 +67,12 @@ export interface AdapterIngestInput {
   messages?: AdapterMessage[];
   /** Optional override for verbatim ingestion. */
   kind?: AdapterMemoryKind;
+  /**
+   * Sensitivity class for verbatim content. Required to ingest verbatim
+   * against a core running the default RAW_CONTENT_POLICY=reject; the SDK never
+   * infers it, so an unstamped verbatim ingest fails closed.
+   */
+  contentClass?: AdapterContentClass;
   metadata?: Record<string, unknown>;
   provenance?: AdapterProvenance;
 }

@@ -22,6 +22,16 @@ export const SearchMemoryItemSchema = z.object({
   }),
   importance: NumberOrNaN.optional(),
   source_site: z.string().optional(),
+  session_id: z.string().nullable().optional(),
+  version_id: z.string().nullable().optional().openapi({
+    description:
+      "Owning claim's current_version_id (a claim-version id) for the memory, " +
+      'enabling a client to pin the exact retrieved version as a replay fixture. ' +
+      'null when the memory has no claim version (e.g. workspace-pool rows).',
+  }),
+  observed_at: IsoDateString.optional().openapi({
+    description: 'When the memory was observed/recorded. Part of the retrieval receipt.',
+  }),
   created_at: IsoDateString.optional(),
   metadata: z.record(z.string(), z.unknown()).optional().openapi({
     description:
@@ -106,6 +116,29 @@ const AssemblyTraceSchema = z.object({
   primary_evidence_position: z.number().nullable(),
   blocks: z.array(z.string()),
 });
+
+/**
+ * Audit-grade retrieval receipt. Always present on search
+ * responses (both /search and /search/fast); not gated on retrieval tracing.
+ * Lets a client log a retrieval as a replay fixture and replay the
+ * downstream decision bit-for-bit.
+ */
+export const RetrievalReceiptResponseSchema = z.object({
+  embedding_provider: z.string(),
+  embedding_model: z.string(),
+  embedding_model_version: z.string().openapi({
+    description:
+      'Embedding model version. No supported provider exposes a separate immutable ' +
+      'version string, so this is the resolved model id — the most precise model identity ' +
+      'the provider reports, never a fabricated value.',
+  }),
+  embedding_dimensions: z.number(),
+  query_text: z.string(),
+  candidate_ids: z.array(z.string()).openapi({
+    description: 'Returned memory ids in ranked order.',
+  }),
+  trace_id: z.string(),
+}).openapi({ description: 'Audit-grade retrieval receipt.' });
 
 export const ObservabilityResponseSchema = z.object({
   retrieval: RetrievalTraceSchema.optional(),

@@ -63,6 +63,42 @@ export async function getMemoryWithClient(
   return result.rows[0] ? normalizeMemoryRow(result.rows[0]) : null;
 }
 
+/**
+ * Fetch the most recent active memory for a user whose
+ * `metadata.externalId` equals the supplied value. `metadata` is a JSONB
+ * column, so the lookup is `metadata->>'externalId' = $2`. Scoped to
+ * `user_id` (the trust boundary) and to live rows (not deleted/expired).
+ *
+ * The caller stamps its own id into `metadata.externalId` on
+ * `POST /v1/memories/ingest/quick`; this is the reverse lookup that lets
+ * a caller resolve a core memory from that atom id. `externalId` is
+ * caller-owned and not guaranteed unique, so ties break on `created_at
+ * DESC, id DESC` (deterministic) and the newest row wins. Returns `null`
+ * when no row matches.
+ */
+export async function findMemoryByExternalId(
+  pool: pg.Pool,
+  userId: string,
+  externalId: string,
+): Promise<MemoryRow | null> {
+  const result = await pool.query(
+    `SELECT memories.*, episodes.session_id
+     FROM memories
+     LEFT JOIN episodes
+       ON episodes.id = memories.episode_id
+      AND episodes.user_id = memories.user_id
+     WHERE memories.user_id = $1
+       AND memories.metadata->>'externalId' = $2
+       AND memories.deleted_at IS NULL
+       AND memories.expired_at IS NULL
+       AND memories.status = 'active'
+     ORDER BY memories.created_at DESC, memories.id DESC
+     LIMIT 1`,
+    [userId, externalId],
+  );
+  return result.rows[0] ? normalizeMemoryRow(result.rows[0]) : null;
+}
+
 export async function listMemories(pool: pg.Pool, userId: string, limit: number, offset: number, sourceSite?: string, episodeId?: string, sessionId?: string): Promise<MemoryRow[]> {
   const params: unknown[] = [userId, limit, offset];
   let extraClauses = '';

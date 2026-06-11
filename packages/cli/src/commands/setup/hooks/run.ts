@@ -157,6 +157,9 @@ async function ingestHookRecord(
     scope,
     text: content,
     kind,
+    // Hook records are distilled session summaries, not raw transcripts, so a
+    // core with the default reject policy accepts them as 'summary'.
+    contentClass: 'summary',
     metadata: {
       source: host,
       event: event.replaceAll('-', '_'),

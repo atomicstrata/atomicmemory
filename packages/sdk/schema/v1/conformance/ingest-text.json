@@ -1,0 +1,18 @@
+{
+  "name": "ingest-text",
+  "operation": "ingest",
+  "description": "Full-extraction text ingest. The request is an IngestInput with mode=text; the response is an IngestResult naming created/updated/unchanged ids.",
+  "request_schema": "ingest-input.schema.json",
+  "request": {
+    "mode": "text",
+    "content": "We agreed to block deploys when the PR check is red.",
+    "scope": { "user": "u1", "namespace": "team-alpha" },
+    "provenance": { "source": "app", "extractor": "codex-hook" }
+  },
+  "response_schema": "provider-contract.schema.json#/$defs/IngestResult",
+  "expected_response": {
+    "created": ["mem_a1"],
+    "updated": [],
+    "unchanged": []
+  }
+}

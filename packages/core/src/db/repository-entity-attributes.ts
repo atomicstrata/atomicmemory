@@ -111,6 +111,24 @@ export class EntityAttributesRepository {
     return result.rows;
   }
 
+  /**
+   * Fetch all attributes for a user scope, ordered by observed_at DESC.
+   * Use this when you want all attributes across all entity names for a user,
+   * rather than filtering by a specific entity name.
+   */
+  async findByUser(userId: string, limit = 50): Promise<EntityAttributeRow[]> {
+    const result = await this.pool.query<EntityAttributeRow>(
+      `SELECT id, user_id, entity_name, attribute_key, attribute_value, value_type,
+              source_memory_id, observed_at, created_at
+       FROM entity_attributes
+       WHERE user_id = $1
+       ORDER BY observed_at DESC
+       LIMIT $2`,
+      [userId, limit],
+    );
+    return result.rows;
+  }
+
   async deleteAllForUser(userId: string): Promise<number> {
     const result = await this.pool.query('DELETE FROM entity_attributes WHERE user_id = $1', [userId]);
     return result.rowCount ?? 0;

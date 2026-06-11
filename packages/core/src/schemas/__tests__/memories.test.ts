@@ -135,6 +135,34 @@ describe('IngestBodySchema — session scope', () => {
   });
 });
 
+describe('IngestBodySchema — content_class (Radar C3)', () => {
+  const base = { user_id: 'u', conversation: 'x', source_site: 's' };
+
+  it('accepts each valid content_class and surfaces it as contentClass', () => {
+    for (const content_class of ['summary', 'redacted', 'raw'] as const) {
+      const r = IngestBodySchema.parse({ ...base, content_class });
+      expect(r.contentClass).toBe(content_class);
+    }
+  });
+
+  it('absent content_class → contentClass undefined (handler treats as raw)', () => {
+    const r = IngestBodySchema.parse({ ...base });
+    expect(r.contentClass).toBeUndefined();
+  });
+
+  it('rejects an invalid content_class value', () => {
+    const r = IngestBodySchema.safeParse({ ...base, content_class: 'verbatim' });
+    expect(firstIssueMessage(r)).toBe(
+      'content_class must be one of: summary, redacted, raw',
+    );
+  });
+
+  it('rejects a non-string content_class', () => {
+    const r = IngestBodySchema.safeParse({ ...base, content_class: 7 });
+    expect(firstIssueMessage(r)).toMatch(/content_class must be one of/);
+  });
+});
+
 describe('ListQuerySchema — session scope', () => {
   it('preserves session_id as sessionId', () => {
     const r = ListQuerySchema.parse({

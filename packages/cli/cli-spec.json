@@ -173,6 +173,7 @@
         "--mode text|messages|verbatim",
         "--file PATH|-",
         "--kind fact|episode|summary|procedure|document",
+        "--content-class summary|redacted|raw",
         "--stdin",
         "--api-key-stdin"
       ]
@@ -229,12 +230,21 @@
     },
     {
       "name": "import",
-      "usage": "atomicmemory import <file|->",
-      "summary": "Bulk import JSON memory records.",
+      "usage": "atomicmemory import <file|-> [--type llmwiki --project-id ID]",
+      "summary": "Bulk import JSON memory records. Use --type llmwiki to import an llmwiki export.",
       "category": "memory",
       "allowed_outputs": ["text", "json", "quiet", "agent"],
       "args": ["<file>"],
-      "flags": ["--stdin", "--api-key-stdin"]
+      "flags": [
+        "--stdin",
+        "--api-key-stdin",
+        "--type llmwiki",
+        "--project-id <id>",
+        "--dry-run",
+        "--allow-append-only",
+        "--accept-duplicates",
+        "--yes"
+      ]
     },
     {
       "name": "completion",

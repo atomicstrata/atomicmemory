@@ -5,6 +5,7 @@
  */
 
 import { config } from '../config.js';
+import { EntitySettingsRepository } from '../db/entity-settings-repository.js';
 import { MemoryRepository } from '../db/memory-repository.js';
 import { ClaimRepository } from '../db/claim-repository.js';
 import { EntityRepository } from '../db/repository-entities.js';
@@ -39,6 +40,8 @@ interface IngestInput {
   sessionTimestamp?: Date;
   effectiveConfig?: MemoryServiceDeps['config'];
   sessionId?: string;
+  /** Replace the durable raw transcript with a redaction marker (RAW_CONTENT_POLICY=reject, unstamped extraction). */
+  redactRawInput?: boolean;
 }
 
 interface StoreVerbatimInput {
@@ -114,6 +117,7 @@ function buildDefaultStores(bag: MemoryServiceConstructorBag): CoreStores {
     beliefEdges: null,
     entityValues: null,
     pool: typeof repo.getPool === 'function' ? repo.getPool() : ({} as never),
+    entitySettings: new EntitySettingsRepository(typeof repo.getPool === 'function' ? repo.getPool() : ({} as never)),
   };
 }
 
@@ -183,13 +187,13 @@ export class MemoryService {
   // --- Ingest ---
 
   async ingest(input: IngestInput): Promise<IngestResult> {
-    const { userId, conversationText, sourceSite, sourceUrl = '', sessionTimestamp, effectiveConfig, sessionId } = input;
-    return performIngest(this.depsFor(effectiveConfig), userId, conversationText, sourceSite, sourceUrl, sessionTimestamp, sessionId);
+    const { userId, conversationText, sourceSite, sourceUrl = '', sessionTimestamp, effectiveConfig, sessionId, redactRawInput = false } = input;
+    return performIngest(this.depsFor(effectiveConfig), userId, conversationText, sourceSite, sourceUrl, sessionTimestamp, sessionId, redactRawInput);
   }
 
   async quickIngest(input: IngestInput): Promise<IngestResult> {
-    const { userId, conversationText, sourceSite, sourceUrl = '', sessionTimestamp, effectiveConfig, sessionId } = input;
-    return performQuickIngest(this.depsFor(effectiveConfig), userId, conversationText, sourceSite, sourceUrl, sessionTimestamp, sessionId);
+    const { userId, conversationText, sourceSite, sourceUrl = '', sessionTimestamp, effectiveConfig, sessionId, redactRawInput = false } = input;
+    return performQuickIngest(this.depsFor(effectiveConfig), userId, conversationText, sourceSite, sourceUrl, sessionTimestamp, sessionId, redactRawInput);
   }
 
   /**
@@ -203,8 +207,8 @@ export class MemoryService {
   }
 
   async workspaceIngest(input: WorkspaceIngestInput): Promise<IngestResult> {
-    const { userId, conversationText, sourceSite, sourceUrl = '', workspace, sessionTimestamp, effectiveConfig, sessionId } = input;
-    return performWorkspaceIngest(this.depsFor(effectiveConfig), userId, conversationText, sourceSite, sourceUrl, workspace, sessionTimestamp, sessionId);
+    const { userId, conversationText, sourceSite, sourceUrl = '', workspace, sessionTimestamp, effectiveConfig, sessionId, redactRawInput = false } = input;
+    return performWorkspaceIngest(this.depsFor(effectiveConfig), userId, conversationText, sourceSite, sourceUrl, workspace, sessionTimestamp, sessionId, redactRawInput);
   }
 
   // --- Search (scope-dispatching) ---
@@ -302,6 +306,8 @@ export class MemoryService {
     return crud.listMemories(this.deps, userId, limit, offset, sourceSite, episodeId, sessionId);
   }
   async get(id: string, userId: string) { return crud.getMemory(this.deps, id, userId); }
+  /** Reverse lookup of a user-scoped memory by caller-owned `metadata.externalId`. */
+  async getByExternalId(userId: string, externalId: string) { return crud.getMemoryByExternalId(this.deps, userId, externalId); }
   async expand(userId: string, memoryIds: string[]) { return crud.expandMemories(this.deps, userId, memoryIds); }
   async delete(id: string, userId: string) { return crud.deleteMemory(this.deps, id, userId); }
   async resetBySource(userId: string, sourceSite: string) { return crud.resetBySource(this.deps, userId, sourceSite); }

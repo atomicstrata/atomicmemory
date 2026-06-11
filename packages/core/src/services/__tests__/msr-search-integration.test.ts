@@ -10,7 +10,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSearchResult } from './test-fixtures.js';
+import { createSearchResult, RECEIPT_EMBEDDING_CONFIG } from './test-fixtures.js';
 
 const {
   mockRunSearchPipelineWithTrace,
@@ -74,6 +74,7 @@ function createTrace() {
 function createDeps(msrAggregatorEnabled: boolean) {
   return {
     config: {
+      ...RECEIPT_EMBEDDING_CONFIG,
       similarityThreshold: 0,
       auditLoggingEnabled: false,
       consensusMinMemories: 2,
@@ -94,7 +95,7 @@ function createDeps(msrAggregatorEnabled: boolean) {
       memory: { touchMemory: vi.fn().mockResolvedValue(undefined) },
       search: {},
       link: {},
-      claim: {},
+      claim: { getCurrentVersionIdsByMemoryIds: vi.fn().mockResolvedValue(new Map()) },
       entity: null,
       lesson: null,
       pool: {},

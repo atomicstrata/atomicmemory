@@ -84,6 +84,27 @@ export const RESERVED_METADATA_KEYS = new Set<string>([
 ]);
 
 /**
+ * Metadata keys core READS but that are deliberately CALLER-CONTROLLED — the
+ * inverse of `RESERVED_METADATA_KEYS`. These keys MUST NOT be reserved (a
+ * reserved key is rejected by `IngestBodySchema`), because the caller is the
+ * one that supplies them; core only reads them back.
+ *
+ * `externalId`: the caller-owned stable id (the caller stamps its own id
+ * into `metadata.externalId` on `POST /v1/memories/ingest/quick`). Core reads
+ * it to (a) resolve `GET /v1/memories/by-external-id/:externalId` and (b) make
+ * verbatim ingest idempotent. It is intentionally spoofable
+ * *by its owner* — it namespaces the caller's own rows, scoped to `user_id`.
+ *
+ * The reserved-metadata drift guard
+ * (`src/__tests__/reserved-metadata-keys.test.ts`) excludes these from the
+ * "must be reserved" assertion so a genuinely caller-controlled key does not
+ * force a reservation that would break the feature.
+ */
+export const CALLER_CONTROLLED_METADATA_KEYS = new Set<string>([
+  'externalId',
+]);
+
+/**
  * Shared write-shape for memory rows. Used by the repository write path
  * and the MemoryStore interface so the two stay in lockstep.
  */
@@ -224,6 +245,14 @@ export interface SearchResult extends MemoryRow {
    * after the relevance gate (see `hydrateChainMemories`).
    */
   retrieval_signal?: 'tll-chain';
+  /**
+   * Owning claim's `current_version_id` (a `ClaimVersionRow.id`), stamped
+   * onto returned rows by the retrieval-receipt finalizer so a client can
+   * pin the exact memory version it retrieved. `null` when the memory has
+   * no claim version (e.g. workspace-pool rows). Not selected by the search
+   * SQL — populated post-query via a single batched lookup.
+   */
+  current_version_id?: string | null;
 }
 
 export type AtomicFactType = 'preference' | 'project' | 'knowledge' | 'person' | 'plan';

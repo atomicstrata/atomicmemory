@@ -366,4 +366,65 @@ describe('MemoryService', () => {
       );
     });
   });
+
+  describe('async provider factories', () => {
+    it('awaits an async factory for a configured provider', async () => {
+      const svc = new MemoryService({ defaultProvider: 'x', providerConfigs: { x: {} } });
+      const provider = new MockProvider();
+      await svc.initialize({ x: async () => ({ provider }) });
+      expect(svc.getProvider('x')).toBe(provider);
+    });
+
+    it('never invokes a factory for a non-configured provider', async () => {
+      const svc = new MemoryService({ defaultProvider: 'x', providerConfigs: { x: {} } });
+      const configuredFactory = vi.fn(async () => ({ provider: new MockProvider() }));
+      const unregisteredFactory = vi.fn(async () => ({ provider: new MockProvider() }));
+      await svc.initialize({ x: configuredFactory, unused: unregisteredFactory });
+      expect(configuredFactory).toHaveBeenCalledTimes(1);
+      expect(unregisteredFactory).not.toHaveBeenCalled();
+    });
+
+    it('still supports sync factories (backward compat)', async () => {
+      const svc = new MemoryService({ defaultProvider: 'x', providerConfigs: { x: {} } });
+      const provider = new MockProvider();
+      await svc.initialize({ x: () => ({ provider }) });
+      expect(svc.getProvider('x')).toBe(provider);
+    });
+  });
+
+  describe('initialize atomicity', () => {
+    /** Returns a registry + service where "ok" succeeds and "bad" throws "boom". */
+    function buildFailingScenario(okProvider: MockProvider) {
+      const registry: ProviderRegistry = {
+        ok: () => ({ provider: okProvider }),
+        bad: async () => { throw new Error('boom'); },
+      };
+      const svc = new MemoryService({
+        defaultProvider: 'ok',
+        providerConfigs: { ok: {}, bad: {} },
+      });
+      return { registry, svc };
+    }
+
+    it('leaves no partial state when a later factory throws', async () => {
+      const { registry, svc } = buildFailingScenario(new MockProvider());
+
+      await expect(svc.initialize(registry)).rejects.toThrow('boom');
+
+      expect(svc.getAvailableProviders()).toEqual([]);
+      expect(() => svc.getProvider('ok')).toThrow(/not registered/i);
+    });
+
+    it('calls close() on already-initialized providers when a later factory throws', async () => {
+      const okProvider = new MockProvider();
+      okProvider.initialize = vi.fn().mockResolvedValue(undefined);
+      okProvider.close = vi.fn().mockResolvedValue(undefined);
+
+      const { registry, svc } = buildFailingScenario(okProvider);
+
+      await expect(svc.initialize(registry)).rejects.toThrow('boom');
+
+      expect(okProvider.close).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -60,6 +60,20 @@ export interface Provenance {
 
 export type IngestInput = TextIngest | MessageIngest | VerbatimIngest;
 
+/**
+ * Sensitivity class for verbatim content, mirroring core's `content_class`:
+ * - `summary` — distilled, hosted-safe;
+ * - `redacted` — sensitive spans removed by the caller;
+ * - `raw` — verbatim prompt/response/diff/transcript.
+ *
+ * Honored by core ONLY on the verbatim path (`/ingest/quick` with
+ * `skip_extraction`). Under the default `RAW_CONTENT_POLICY=reject`, core
+ * rejects `raw` (and unclassified) content. The SDK never infers this — the
+ * caller must choose it — so omitting it (or choosing `raw`) fails closed
+ * rather than mislabeling raw content as safe.
+ */
+export type ContentClass = 'summary' | 'redacted' | 'raw';
+
 export interface IngestBase {
   scope: Scope;
   provenance?: Provenance;
@@ -93,6 +107,12 @@ export interface VerbatimIngest extends IngestBase {
   content: string;
   kind?: MemoryKind;
   metadata?: Record<string, unknown>;
+  /**
+   * Sensitivity class stamped on the stored content. Required to ingest
+   * against a core running the default `RAW_CONTENT_POLICY=reject`; omit it
+   * (or pass `raw`) and such a core fails the ingest closed.
+   */
+  contentClass?: ContentClass;
 }
 
 export interface Message {
@@ -135,11 +155,36 @@ export interface SearchResult {
   rankingScore?: number;
   /** Normalized injection relevance in [0, 1], suitable for threshold checks. */
   relevance?: number;
+  /**
+   * Version id of the retrieved memory at retrieval time, for replay pinning.
+   * `null` when the memory is unversioned. Part of the retrieval receipt.
+   */
+  versionId?: string | null;
+  /** When the memory was observed/recorded (ISO-8601). Part of the retrieval receipt. */
+  observedAt?: string;
+}
+
+/**
+ * Audit-grade retrieval receipt: pins the embedding model and the ranked
+ * candidate set so a search can be replayed bit-for-bit. Present when the
+ * provider emits one (AtomicMemory always does on search).
+ */
+export interface RetrievalReceipt {
+  embeddingProvider?: string;
+  embeddingModel: string;
+  embeddingModelVersion: string;
+  embeddingDimensions: number;
+  queryText: string;
+  /** Returned memory ids in ranked order. */
+  candidateIds: string[];
+  traceId: string;
 }
 
 export interface SearchResultPage {
   results: SearchResult[];
   cursor?: string;
+  /** Audit-grade retrieval receipt for this search, when the provider emits one. */
+  retrieval?: RetrievalReceipt;
 }
 
 // ---------------------------------------------------------------------------

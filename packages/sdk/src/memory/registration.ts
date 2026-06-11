@@ -17,5 +17,5 @@ export interface MemoryProviderRegistration {
 /** Registry entry template for provider factory functions. */
 export interface MemoryProviderEntry<Config> {
   name: string;
-  create(config: Config): MemoryProviderRegistration;
+  create(config: Config): MemoryProviderRegistration | Promise<MemoryProviderRegistration>;
 }

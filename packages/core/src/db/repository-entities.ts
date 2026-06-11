@@ -459,6 +459,21 @@ export class EntityRepository {
   }
 
   /**
+   * Find a single entity record by user ID and normalized name (case-insensitive).
+   * Returns the oldest match (stable canonical), or null if not found.
+   */
+  async findByUserAndName(userId: string, name: string): Promise<EntityRow | null> {
+    const result = await this.pool.query(
+      `SELECT * FROM entities
+       WHERE user_id = $1 AND lower(normalized_name) = lower($2)
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [userId, name],
+    );
+    return result.rows[0] ? normalizeEntityRow(result.rows[0]) : null;
+  }
+
+  /**
    * Delete all entities, relations, and memory_entities for a user or all users.
    */
   async deleteAll(userId?: string): Promise<void> {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Optional helper-to-core HTTP smoke for the metadata wire path.
-# **Not a CI gate** — runs only when `ATOMICMEMORY_CORE_URL` is
+# **Not a CI gate** — runs only when `ATOMICMEMORY_API_URL` is
 # set; intended for local-stack verification before posting a PR.
 #
 # Scope: helper smoke. Calls `am_ingest_verbatim` directly with
@@ -18,13 +18,13 @@
 # the row's metadata column matched."
 #
 # Required env (script exits cleanly if not set):
-#   ATOMICMEMORY_CORE_URL  — base URL of a running core, e.g.
+#   ATOMICMEMORY_API_URL  — base URL of a running core, e.g.
 #                            http://localhost:17350
 
 set -euo pipefail
 
-if [ -z "${ATOMICMEMORY_CORE_URL:-}" ]; then
-  printf '[smoke] ATOMICMEMORY_CORE_URL not set — skipping (this script is opt-in)\n'
+if [ -z "${ATOMICMEMORY_API_URL:-}" ]; then
+  printf '[smoke] ATOMICMEMORY_API_URL not set — skipping (this script is opt-in)\n'
   exit 0
 fi
 
@@ -35,7 +35,7 @@ LIB_PATH="$SCRIPT_DIR/../lib/atomicmemory.sh"
 TEST_USER="00000000-0000-0000-0000-$(openssl rand -hex 6 2>/dev/null || printf '000000000abc')"
 
 export AM_SCOPE_USER="$TEST_USER"
-export AM_API_URL="$ATOMICMEMORY_CORE_URL"
+export AM_API_URL="$ATOMICMEMORY_API_URL"
 export ATOMICMEMORY_PROVIDER="atomicmemory"
 export ATOMICMEMORY_CAPTURE_LEVEL="balanced"
 
@@ -49,7 +49,7 @@ INSERTED_IDS=()
 cleanup() {
   for id in "${INSERTED_IDS[@]}"; do
     curl -sS -X DELETE \
-      "$ATOMICMEMORY_CORE_URL/v1/memories/$id?user_id=$TEST_USER" >/dev/null 2>&1 || true
+      "$ATOMICMEMORY_API_URL/v1/memories/$id?user_id=$TEST_USER" >/dev/null 2>&1 || true
   done
 }
 trap cleanup EXIT
@@ -65,7 +65,7 @@ assert_roundtrip() {
   # most recent matching memory.
   local list_response
   list_response=$(curl -sS \
-    "$ATOMICMEMORY_CORE_URL/v1/memories/list?user_id=$TEST_USER&source_site=claude-code")
+    "$ATOMICMEMORY_API_URL/v1/memories/list?user_id=$TEST_USER&source_site=claude-code")
 
   local matched
   matched=$(printf '%s' "$list_response" \

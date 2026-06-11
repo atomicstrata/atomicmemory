@@ -1,0 +1,19 @@
+{
+  "name": "ingest-verbatim",
+  "operation": "ingest",
+  "description": "Verbatim ingest: one input = one memory record, deterministic (no LLM extraction). Capability-gated on Capabilities.ingestModes including 'verbatim'.",
+  "request_schema": "ingest-input.schema.json",
+  "request": {
+    "mode": "verbatim",
+    "content": "The deploy gate requires a green PR check.",
+    "kind": "fact",
+    "scope": { "user": "u1", "namespace": "team-alpha" },
+    "metadata": { "externalId": "atom-7", "source": "app" }
+  },
+  "response_schema": "provider-contract.schema.json#/$defs/IngestResult",
+  "expected_response": {
+    "created": ["mem_v1"],
+    "updated": [],
+    "unchanged": []
+  }
+}

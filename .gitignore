@@ -23,6 +23,12 @@ __pycache__/
 # `turbo prune --docker` scratch output (also produced inside Dockerfile stages)
 out/
 
+# Root-level docs scratch — superpowers (and similar agent tooling) write
+# plans/specs to `docs/superpowers/{plans,specs}/`. These are internal working
+# artifacts and must never reach the public mirror via `public:sync`. Anchored
+# to the repo root so package-level docs (packages/*/docs) stay tracked.
+/docs/
+
 # Logs
 *.log
 *.log.*

@@ -13,6 +13,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryClient, type MemoryClientConfig } from '@atomicmemory/sdk/browser';
+import { EntitiesClient } from '@atomicmemory/sdk';
 import type { ServerConfig } from './config.js';
 import {
   createHandlers,
@@ -74,7 +75,7 @@ const TOOL_DEFINITIONS = [
   {
     name: 'memory_ingest',
     description:
-      'Save durable memory. Use mode=text or mode=messages for extraction, and mode=verbatim for one-input-one-record deterministic lifecycle records.',
+      'Save durable memory. Use mode=text or mode=messages for extraction, and mode=verbatim for one-input-one-record deterministic lifecycle records. For mode=verbatim, set contentClass (summary|redacted|raw) describing what you are storing: a core with the default raw-content policy rejects unstamped or raw content, so distil to a summary or redact sensitive spans rather than sending a raw transcript.',
     inputSchema: {
       type: 'object',
       required: ['mode'],
@@ -104,6 +105,12 @@ const TOOL_DEFINITIONS = [
         kind: {
           type: 'string',
           enum: ['fact', 'episode', 'summary', 'procedure', 'document'],
+        },
+        contentClass: {
+          type: 'string',
+          enum: ['summary', 'redacted', 'raw'],
+          description:
+            "Only valid with mode='verbatim'. Supplying it on text/messages is rejected, since those run core-side extraction and do not carry a content class.",
         },
       },
     },
@@ -156,11 +163,45 @@ const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    name: 'entity_profile',
+    description:
+      'Get the synthesized profile for a user or agent — summary, preferences, instructions, ' +
+      'open commitments, and structured attribute triples. Call when you need a quick structured ' +
+      'overview of what AtomicMemory knows about a specific person.',
+    inputSchema: {
+      type: 'object',
+      required: ['entityId'],
+      additionalProperties: false,
+      properties: {
+        entityId: { type: 'string', minLength: 1, description: 'User or agent identifier.' },
+        entityType: { type: 'string', enum: ['user', 'agent', 'session'], description: 'Defaults to user.' },
+      },
+    },
+  },
+  {
+    name: 'entity_attributes',
+    description:
+      'Get structured (entity, attribute, value) triples extracted from memories. ' +
+      'Useful for precise factual lookups — "what is Alice\'s role?" — without running a full search.',
+    inputSchema: {
+      type: 'object',
+      required: ['entityId'],
+      additionalProperties: false,
+      properties: {
+        entityId: { type: 'string', minLength: 1, description: 'User or agent identifier.' },
+        entityType: { type: 'string', enum: ['user', 'agent', 'session'], description: 'Defaults to user.' },
+        attribute: { type: 'string', description: 'Filter by attribute key (e.g. "role", "timezone").' },
+        limit: { type: 'integer', minimum: 1, maximum: 200 },
+      },
+    },
+  },
 ] as const;
 
 export async function buildServer(config: ServerConfig): Promise<Server> {
   const client = await initClient(config);
   const handlers = createHandlers(client, config.scope);
+  const entities = initEntitiesClient(config);
 
   const server = new Server(
     { name: 'atomicmemory', version: '0.1.0' },
@@ -172,13 +213,18 @@ export async function buildServer(config: ServerConfig): Promise<Server> {
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const result = await dispatch(handlers, req.params.name, req.params.arguments);
+    const result = await dispatch(handlers, entities, req.params.name, req.params.arguments);
     return {
       content: [{ type: 'text', text: JSON.stringify(result) }],
     };
   });
 
   return server;
+}
+
+function initEntitiesClient(config: ServerConfig): EntitiesClient | null {
+  if (!config.apiKey) return null;
+  return new EntitiesClient({ apiUrl: config.apiUrl, apiKey: config.apiKey });
 }
 
 async function initClient(config: ServerConfig): Promise<MemoryClient> {
@@ -197,6 +243,7 @@ async function initClient(config: ServerConfig): Promise<MemoryClient> {
 
 async function dispatch(
   handlers: ReturnType<typeof createHandlers>,
+  entities: EntitiesClient | null,
   name: string,
   args: unknown,
 ): Promise<unknown> {
@@ -209,6 +256,22 @@ async function dispatch(
       return handlers.memory_package(PackageArgsSchema.parse(args));
     case 'memory_list':
       return handlers.memory_list(ListArgsSchema.parse(args));
+    case 'entity_profile': {
+      if (!entities) throw new Error('entity_profile requires ATOMICMEMORY_API_KEY');
+      const { entityId, entityType = 'user' } = args as { entityId: string; entityType?: 'user' | 'agent' | 'session' };
+      return entities.profile(entityId, entityType);
+    }
+    case 'entity_attributes': {
+      if (!entities) throw new Error('entity_attributes requires ATOMICMEMORY_API_KEY');
+      const { entityId, entityType = 'user', attribute, limit } = args as {
+        entityId: string;
+        entityType?: 'user' | 'agent' | 'session';
+        attribute?: string;
+        limit?: number;
+      };
+      const attrOpts = { ...(attribute !== undefined && { attribute }), ...(limit !== undefined && { limit }) };
+      return entities.attributes(entityId, attrOpts, entityType);
+    }
     default:
       throw new Error(`unknown tool: ${name}`);
   }

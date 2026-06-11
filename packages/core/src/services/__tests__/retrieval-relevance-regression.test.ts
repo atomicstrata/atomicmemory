@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createFavoriteColorNoisyRetrievalFixture,
   createSearchResult,
+  RECEIPT_EMBEDDING_CONFIG,
 } from './test-fixtures.js';
 
 const {
@@ -278,13 +279,18 @@ function createDeps(similarityThreshold: number) {
   const memory = { touchMemory: vi.fn().mockResolvedValue(undefined) };
   return {
     config: {
+      ...RECEIPT_EMBEDDING_CONFIG,
       auditLoggingEnabled: false,
       consensusMinMemories: 2,
       consensusValidationEnabled: false,
       lessonsEnabled: false,
       similarityThreshold,
     },
-    stores: { memory, search: {}, link: {}, claim: {}, entity: null, lesson: null, pool: {} },
+    stores: {
+      memory, search: {}, link: {},
+      claim: { getCurrentVersionIdsByMemoryIds: vi.fn().mockResolvedValue(new Map()) },
+      entity: null, lesson: null, pool: {},
+    },
     observationService: null,
     uriResolver: { resolve: vi.fn().mockResolvedValue(null), format: vi.fn() },
   } as any;

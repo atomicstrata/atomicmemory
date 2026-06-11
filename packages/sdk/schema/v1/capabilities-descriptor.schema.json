@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.atomicmemory.dev/provider-contract/v1/capabilities-descriptor.schema.json",
+  "title": "CoreCapabilities (v1)",
+  "version": 1,
+  "description": "Entry-point schema for the over-the-wire capabilities descriptor served at AtomicMemory core GET /v1/capabilities. Delegates to provider-contract.schema.json#/$defs/CoreCapabilities.",
+  "$ref": "https://schemas.atomicmemory.dev/provider-contract/v1/provider-contract.schema.json#/$defs/CoreCapabilities"
+}
