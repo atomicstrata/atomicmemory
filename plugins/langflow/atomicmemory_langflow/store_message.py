@@ -28,6 +28,19 @@ class AtomicMemoryStoreMessageComponent(AtomicMemoryComponentMixin, Component):
             options=["User", "Machine", "System", "Tool"],
             value="User",
         ),
+        DropdownInput(
+            name="content_class",
+            display_name="Content Class",
+            options=["raw", "summary", "redacted"],
+            value="raw",
+            info=(
+                "How the core treats the stored transcript under "
+                "RAW_CONTENT_POLICY=reject. 'raw' (default): the message is extracted "
+                "into searchable memories but the raw transcript is omitted from the "
+                "audit episode. Choose 'summary' or 'redacted' only when the message is "
+                "genuinely distilled or has had sensitive spans removed."
+            ),
+        ),
         *connection_inputs(),
         *scope_inputs(),
     ]
@@ -50,6 +63,7 @@ class AtomicMemoryStoreMessageComponent(AtomicMemoryComponentMixin, Component):
             scope=scope,
             messages=[{"role": role, "content": text}],
             metadata={"kind": "turn"},
+            content_class=self.content_class or None,
         )
         outcome = {
             "created": len(getattr(result, "created", []) or []),

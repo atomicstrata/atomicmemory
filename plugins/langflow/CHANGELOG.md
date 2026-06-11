@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+- **Stop blanket-stamping `content_class="summary"` on Store Message.** Extraction
+  persists the *raw* transcript in `episodes.content` (not a derived summary), so
+  labeling every message "summary" mislabeled raw content as safe. The bridge now
+  omits `content_class` by default, so a core running `RAW_CONTENT_POLICY=reject`
+  redacts the raw transcript from the audit episode while the message is still
+  extracted into searchable memories. Store Message gains a `Content Class`
+  dropdown (`raw` default; `summary`/`redacted` opt-in) so callers classify only
+  content that is genuinely distilled or redacted.
+
+- Store Message now stamps `content_class="summary"` on its `mode="messages"`
+  ingest. Extraction persists a derived summary, and a core running the default
+  `RAW_CONTENT_POLICY=reject` refuses raw/unstamped content — without the stamp,
+  stores failed with `422 raw_content_rejected`. Requires `atomicmemory>=1.1.0`
+  (the SDK now forwards `content_class` on every ingest mode, not just verbatim).
+
 ## 0.1.17
 - Version synchronized with the other atomicmemory-internal plugins (claude-code,
   codex, cursor, hermes, openclaw all at 0.1.17). Future versions track that

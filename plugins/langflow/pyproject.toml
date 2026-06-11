@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "Atomic Strata" }]
 dependencies = [
-    "atomicmemory>=1.0.1,<2.0.0",
+    "atomicmemory>=1.1.0,<2.0.0",
     # Wide range: Langflow's lfx pins langchain-core>=1.2.28; standalone use can be
     # on 0.3.x. Our code only touches stable APIs (BaseChatMessageHistory, messages).
     "langchain-core>=0.3,<2.0",

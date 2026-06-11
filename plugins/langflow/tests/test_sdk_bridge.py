@@ -35,6 +35,17 @@ class TestBridgeOps(unittest.TestCase):
         self.assertEqual(req["scope"], {"user": "u"})
         self.assertEqual(req["messages"], [{"role": "user", "content": "hi"}])
         self.assertEqual(req["provenance"], {"source": "langflow"})
+        # Never infer a class: unset -> omitted, so a reject-policy core redacts
+        # the raw transcript instead of the plugin mislabeling it as a summary.
+        self.assertNotIn("content_class", req)
+
+    def test_ingest_messages_forwards_explicit_content_class(self):
+        client = FakeClient()
+        _bridge(client).ingest_messages(
+            scope={"user": "u"}, messages=[{"role": "user", "content": "hi"}], content_class="summary"
+        )
+        _, req = client.calls[0]
+        self.assertEqual(req["content_class"], "summary")
 
     def test_list_memories_passes_scope_limit(self):
         client = FakeClient(list_pages=[SimpleNamespace(memories=[], cursor=None)])

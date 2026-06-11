@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_API_URL = "http://localhost:17350"
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
+# Sensitivity class for extraction-mode ingests is never inferred. `mode="messages"`
+# runs core-side LLM extraction, which persists the *raw* transcript in the audit
+# episode (not a derived summary), so the bridge omits content_class by default: a
+# core running the default RAW_CONTENT_POLICY=reject then redacts that raw transcript
+# while still extracting searchable memories. Callers stamp "summary"/"redacted"
+# explicitly only when the content is genuinely distilled or has sensitive spans removed.
+
 # Phase 1 supports only the atomicmemory provider end-to-end.
 SUPPORTED_PROVIDERS = frozenset({"atomicmemory"})
 
@@ -161,17 +168,28 @@ class AtomicMemoryBridge:
         with self._client() as client:
             return client.capabilities()
 
-    def ingest_messages(self, *, scope: dict, messages: list[dict], metadata: dict | None = None):
+    def ingest_messages(
+        self,
+        *,
+        scope: dict,
+        messages: list[dict],
+        metadata: dict | None = None,
+        content_class: str | None = None,
+    ):
+        # Never infer a class: when unset, omit it so a core running
+        # RAW_CONTENT_POLICY=reject redacts the raw transcript from the audit
+        # episode (extraction still runs) instead of the plugin mislabeling it.
+        body = {
+            "mode": "messages",
+            "scope": scope,
+            "messages": messages,
+            "provenance": {"source": "langflow"},
+            "metadata": metadata or {},
+        }
+        if content_class:
+            body["content_class"] = content_class
         with self._client() as client:
-            return client.ingest(
-                {
-                    "mode": "messages",
-                    "scope": scope,
-                    "messages": messages,
-                    "provenance": {"source": "langflow"},
-                    "metadata": metadata or {},
-                }
-            )
+            return client.ingest(body)
 
     def list_memories(self, *, scope: dict, limit: int):
         with self._client() as client:
