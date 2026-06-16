@@ -13,9 +13,18 @@ import {
   classifyUpstreamProviderFailure,
   routeErrorMessage,
 } from './upstream-provider-errors.js';
+import { NulByteParameterError } from '../db/nul-guard.js';
 
 /** Log the error and send the public JSON error response. */
 export function handleRouteError(res: Response, context: string, err: unknown): void {
+  // The pg query-layer backstop (`db/nul-guard.ts`) throws when a bound
+  // parameter carries a NUL byte. It is client input that Postgres cannot
+  // store, so it maps to a validated 400 rather than the default 500.
+  if (err instanceof NulByteParameterError) {
+    console.warn(`${context}: rejected a NUL byte in a bound query parameter`);
+    res.status(400).json({ error: 'request must not contain NUL bytes' });
+    return;
+  }
   const internalMessage = routeErrorMessage(err);
   const stack = err instanceof Error ? err.stack : undefined;
   const upstream = classifyUpstreamProviderFailure(err);

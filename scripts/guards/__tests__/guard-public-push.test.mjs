@@ -26,16 +26,16 @@ test("blocks https push to the public mirror", () => {
   );
 });
 
-test("allows push to the internal repo (origin)", () => {
+test("allows push to the canonical source repo (origin)", () => {
   assert.doesNotThrow(() =>
-    enforce({ remoteUrl: "git@github.com:atomicstrata/atomicmemory-internal.git", env: NO_OVERRIDE }),
+    enforce({ remoteUrl: "git@github.com:atomicstrata/atomicmemory-source.git", env: NO_OVERRIDE }),
   );
 });
 
-test("does not confuse atomicmemory-internal with the public slug", () => {
+test("does not confuse a source repo whose name extends the public slug", () => {
   assert.equal(
-    normalizeGithubSlug("git@github.com:atomicstrata/atomicmemory-internal.git"),
-    "atomicstrata/atomicmemory-internal",
+    normalizeGithubSlug("git@github.com:atomicstrata/atomicmemory-source.git"),
+    "atomicstrata/atomicmemory-source",
   );
 });
 

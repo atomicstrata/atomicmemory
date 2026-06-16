@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandlers } from './tools.js';
+import { createHandlers, assertEntityScopeAllowed } from './tools.js';
 import type { MemoryClient } from '@atomicmemory/sdk';
 
 interface AtomicCall {
@@ -215,6 +215,49 @@ test('memory_list — sourceSite without atomicmemory namespace throws PROVIDER_
   assert.equal(caught.code, 'PROVIDER_UNSUPPORTED');
 });
 
+test('memory_search — scopeLock rejects a caller overriding the server-default user', async () => {
+  const fake = makeFake();
+  const handlers = createHandlers(fake.client, { user: 'server-user' }, { scopeLock: true });
+
+  let caught: Error | undefined;
+  try {
+    await handlers.memory_search({ query: 'q', scope: { user: 'victim-user' } });
+  } catch (err) {
+    caught = err as Error;
+  }
+  assert.ok(caught, 'expected rejection when caller overrides locked scope');
+  assert.match(caught.message, /lock/i);
+  assert.equal(fake.genericCalls.length, 0);
+  assert.equal(fake.atomicCalls.length, 0);
+});
+
+test('memory_search — scopeLock falls back to the server default when caller omits scope', async () => {
+  const fake = makeFake();
+  const handlers = createHandlers(fake.client, { user: 'server-user' }, { scopeLock: true });
+
+  await handlers.memory_search({ query: 'q' });
+
+  assert.deepEqual(fake.genericCalls[0]!.args, { query: 'q', scope: { user: 'server-user' } });
+});
+
+test('memory_search — scopeLock allows a caller scope identical to the server default', async () => {
+  const fake = makeFake();
+  const handlers = createHandlers(fake.client, { user: 'server-user' }, { scopeLock: true });
+
+  await handlers.memory_search({ query: 'q', scope: { user: 'server-user' } });
+
+  assert.equal(fake.genericCalls.length, 1);
+});
+
+test('memory_search — without scopeLock a caller may still override scope (multi-user default)', async () => {
+  const fake = makeFake();
+  const handlers = createHandlers(fake.client, { user: 'server-user' });
+
+  await handlers.memory_search({ query: 'q', scope: { user: 'other-user' } });
+
+  assert.deepEqual(fake.genericCalls[0]!.args, { query: 'q', scope: { user: 'other-user' } });
+});
+
 test('memory_search — sourceSite without scope.user throws (sourceSite is user-scope only on AtomicMemory list/search)', async () => {
   const fake = makeFake();
   const handlers = createHandlers(fake.client, undefined);
@@ -231,4 +274,35 @@ test('memory_search — sourceSite without scope.user throws (sourceSite is user
   }
   assert.ok(caught, 'expected memory_search to reject when scope.user is missing');
   assert.match(caught.message, /scope\.user/);
+});
+
+// AGNT-002 follow-up: entity_profile / entity_attributes take an arbitrary
+// entityId and bypassed mergeScope, so scopeLock did not cover them. The guard
+// must reject a cross-scope entityId under lock and stay a no-op when off.
+test('assertEntityScopeAllowed — scopeLock rejects an entityId outside the default user scope', () => {
+  let caught: Error | undefined;
+  try {
+    assertEntityScopeAllowed({ user: 'server-user' }, 'user', 'victim-user', true);
+  } catch (err) {
+    caught = err as Error;
+  }
+  assert.ok(caught, 'expected rejection for a cross-scope entityId under lock');
+  assert.match(caught.message, /lock/i);
+});
+
+test('assertEntityScopeAllowed — scopeLock allows the entityId matching the default scope', () => {
+  assert.doesNotThrow(() => assertEntityScopeAllowed({ user: 'server-user' }, 'user', 'server-user', true));
+});
+
+test('assertEntityScopeAllowed — scopeLock fails closed when the dimension is unset', () => {
+  assert.throws(() => assertEntityScopeAllowed({ user: 'server-user' }, 'agent', 'any-agent', true), /lock/i);
+});
+
+test('assertEntityScopeAllowed — session maps to the thread dimension under lock', () => {
+  assert.doesNotThrow(() => assertEntityScopeAllowed({ thread: 't1' }, 'session', 't1', true));
+  assert.throws(() => assertEntityScopeAllowed({ thread: 't1' }, 'session', 't2', true), /lock/i);
+});
+
+test('assertEntityScopeAllowed — no-op when scopeLock is off (multi-user default)', () => {
+  assert.doesNotThrow(() => assertEntityScopeAllowed({ user: 'server-user' }, 'user', 'anyone', false));
 });

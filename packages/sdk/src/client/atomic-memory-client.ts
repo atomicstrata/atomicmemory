@@ -50,6 +50,14 @@ export interface AtomicMemoryClientConfig {
   userId: string;
   /** Optional fetch override — defaults to the Node global. */
   fetch?: typeof fetch;
+  /**
+   * Permit `apiUrl` to target loopback / private / reserved IP literals.
+   * Defaults to `true` — the SDK routinely connects to local/self-hosted
+   * cores. Set `false` to harden against SSRF; link-local / cloud-metadata
+   * addresses are blocked regardless. Forwarded to the default memory
+   * provider, storage, and entities sub-clients. See `validateApiUrl`.
+   */
+  allowPrivateNetworks?: boolean;
   /** Memory-provider registration. Defaults to a single AtomicMemory
    * provider pointing at `apiUrl`. */
   memory?: MemoryClientConfig;
@@ -83,7 +91,11 @@ export class AtomicMemoryClient {
     this.memory = new MemoryClient(
       config.memory ?? {
         providers: {
-          atomicmemory: { apiUrl: config.apiUrl, apiKey: config.apiKey },
+          atomicmemory: {
+            apiUrl: config.apiUrl,
+            apiKey: config.apiKey,
+            allowPrivateNetworks: config.allowPrivateNetworks,
+          },
         },
       },
     );
@@ -91,11 +103,13 @@ export class AtomicMemoryClient {
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
       userId: config.userId,
+      allowPrivateNetworks: config.allowPrivateNetworks,
       fetch: config.fetch,
     });
     this.entities = new EntitiesClient({
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
+      allowPrivateNetworks: config.allowPrivateNetworks,
       fetch: config.fetch,
     });
   }

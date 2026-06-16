@@ -19,6 +19,12 @@ export interface HindsightProviderConfig {
   apiKey?: string;
   /** Request timeout in milliseconds. Defaults to 30_000. */
   timeout?: number;
+  /**
+   * Permit `apiUrl` to target loopback / private / reserved IP literals.
+   * Defaults to `true`; set `false` to harden against SSRF. Link-local /
+   * cloud-metadata addresses are blocked regardless. See `validateApiUrl`.
+   */
+  allowPrivateNetworks?: boolean;
   /** API version path segment. Defaults to `v1`. */
   apiVersion?: string;
   /** Hindsight project path segment. Defaults to `default`. */

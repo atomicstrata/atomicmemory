@@ -52,6 +52,7 @@ import {
   type StorageService,
 } from '../services/storage-service.js';
 import { PutPointerBodySchema } from '../schemas/storage-schemas.js';
+import { containsNoNul } from '../nul-scan.js';
 
 /** Composition-time inputs for the storage router. */
 export interface StorageRouterOptions {
@@ -400,7 +401,17 @@ function readUserId(req: Request): string {
     throw new LegacyUserIdRejection();
   }
   const fromHeader = req.headers[USER_ID_HEADER];
-  if (typeof fromHeader === 'string' && fromHeader.length > 0) return fromHeader;
+  if (typeof fromHeader === 'string' && fromHeader.length > 0) {
+    // A NUL in the header value reaches `storage_artifacts.user_id` (text) and
+    // 500s at Postgres. The request-boundary guard never inspects headers, so
+    // reject it here as a 400 — consistent with the missing-header fault below.
+    if (!containsNoNul(fromHeader)) {
+      throw new InvalidArtifactMetadataError(
+        'X-AtomicMemory-User-Id header must not contain NUL bytes',
+      );
+    }
+    return fromHeader;
+  }
   throw new InvalidArtifactMetadataError(
     'X-AtomicMemory-User-Id header is required',
   );

@@ -33,6 +33,7 @@ import type {
   SearchResult,
 } from '../types';
 import type { AtomicMemoryProviderConfig } from './types';
+import { validateApiUrl } from '../../utils/validate-api-url.js';
 import {
   ATOMICMEMORY_DEFAULT_TIMEOUT as DEFAULT_TIMEOUT,
   ATOMICMEMORY_DEFAULT_API_VERSION as DEFAULT_API_VERSION,
@@ -75,7 +76,9 @@ export class AtomicMemoryProvider
   constructor(config: AtomicMemoryProviderConfig) {
     super();
     this.http = {
-      apiUrl: config.apiUrl.replace(/\/+$/, ''),
+      apiUrl: validateApiUrl(config.apiUrl, {
+        allowPrivateNetworks: config.allowPrivateNetworks,
+      }).replace(/\/+$/, ''),
       apiKey: config.apiKey,
       timeout: config.timeout ?? DEFAULT_TIMEOUT,
     };

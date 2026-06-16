@@ -46,6 +46,7 @@ import {
   UUID_REGEX,
   makeUuidPathParamSchema,
   requiredStringBody,
+  RequiredQueryString,
   type WorkspaceContext,
 } from './common.js';
 import { RESERVED_METADATA_KEYS } from '../db/repository-types.js';
@@ -573,8 +574,8 @@ export type LessonReportBody = z.infer<typeof LessonReportBodySchema>;
 // Queries
 // ---------------------------------------------------------------------------
 
-/** requireQueryString: truthy + typeof string. Matches memories.ts:580-583. */
-const RequiredQueryString = z.string().min(1);
+// `RequiredQueryString` (non-empty, NUL-free query field) is imported from
+// `./common.js` — it used to be redefined here and in documents.ts.
 
 export const UserIdQuerySchema = z
   .object({ user_id: RequiredQueryString })

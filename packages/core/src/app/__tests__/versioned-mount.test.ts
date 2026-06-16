@@ -90,6 +90,50 @@ describe('createApp /v1 mount coverage', () => {
     expect(agentRes.status).toBe(404);
   });
 
+  // Boundary NUL guards (rejectNulInRequestTarget / rejectNulInBody): a NUL byte
+  // in user-controlled input must 400 at the edge, never 500 at Postgres.
+  it('rejects a NUL byte in a query param with 400', async () => {
+    const res = await fetch(`${booted.baseUrl}/v1/memories/list?user_id=qa%00x`, {
+      headers: authHeader(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a NUL byte in a JSON body with 400', async () => {
+    const res = await fetch(`${booted.baseUrl}/v1/agents/trust`, {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: TEST_AGENT,
+        user_id: `qa${String.fromCharCode(0)}x`,
+        trust_level: 0.5,
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a percent-encoded NUL in a path segment with 400', async () => {
+    const res = await fetch(`${booted.baseUrl}/v1/entities/user/qa%00x/profile`, {
+      headers: authHeader(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a NUL byte in a /v1/documents JSON body with 400 (router owns its parsing)', async () => {
+    const res = await fetch(`${booted.baseUrl}/v1/documents`, {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: TEST_USER,
+        source_site: 'sdk',
+        provider: 'p',
+        external_id: 'e',
+        display_name: `doc${String.fromCharCode(0)}name`,
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('GET /v1/documents/limits is reachable and reports the runtime config snapshot', async () => {
     const res = await fetch(`${booted.baseUrl}/v1/documents/limits`, { headers: authHeader() });
     expect(res.status).toBe(200);

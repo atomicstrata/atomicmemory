@@ -1,8 +1,8 @@
 name: atomicmemory
-version: 0.1.17
+version: 0.1.18
 description: "AtomicMemory native Hermes memory provider — Python SDK-backed, cross-tool memory by default."
 pip_dependencies:
-  - "atomicmemory>=1.0.1,<2.0.0"
+  - "atomicmemory>=1.1.2,<2.0.0"
 hooks:
   - system_prompt_block
   - prefetch

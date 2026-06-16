@@ -18,7 +18,7 @@
  */
 
 import { z } from './zod-setup.js';
-import { makeUuidPathParamSchema, requiredStringBody, UUID_REGEX } from './common.js';
+import { makeUuidPathParamSchema, requiredStringBody, RequiredQueryString, UUID_REGEX } from './common.js';
 
 const MAX_METADATA_SERIALIZED_BYTES = 32 * 1024;
 const MAX_LIST_LIMIT = 100;
@@ -186,12 +186,9 @@ export type DocumentIdParam = z.infer<typeof DocumentIdParamSchema>;
 // Query schemas
 // ---------------------------------------------------------------------------
 
-/**
- * Exported (private-by-convention) so the cursor-list query-schema module
- * (`document-list-schemas.ts`) can reuse the same wire contract for
- * the cursor-paginated routes without re-defining the helper.
- */
-export const RequiredQueryString = z.string().min(1);
+// `RequiredQueryString` is the shared, NUL-rejecting query field from
+// `./common.js`. It was previously redefined here (unrefined), which let a
+// `%00` document user_id 500 at Postgres.
 
 export const DocumentByIdQuerySchema = z
   .object({ user_id: RequiredQueryString })

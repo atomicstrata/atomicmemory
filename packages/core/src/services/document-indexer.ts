@@ -72,6 +72,7 @@ import {
 } from '../db/raw-document-repository.js';
 import {
   buildLastError,
+  markExtractionStatus,
   markSemanticIndexStatus,
 } from '../db/raw-document-status-repository.js';
 import type {
@@ -262,6 +263,20 @@ async function runIndexFlow(
     // hash falls through to the conditional UPDATE below.
     const idempotent = await maybeIdempotentSkip(client, document, newHash);
     if (idempotent) {
+      // A matching hash + active chunks means the row is fully indexed, which
+      // proves extraction succeeded. Rows indexed before the success path
+      // advanced extraction can still read 'pending'; reconcile only that
+      // state here so a re-index heals it. Guard to 'pending' specifically:
+      // a 'failed'/'unsupported' extraction is a real recorded state and must
+      // not be silently overwritten just because stale chunks share the hash.
+      if (document.extractionStatus === 'pending') {
+        await markExtractionStatus({
+          q: client,
+          userId: document.userId,
+          documentId: document.id,
+          status: 'complete',
+        });
+      }
       await client.query('COMMIT');
       return idempotent;
     }
@@ -381,24 +396,41 @@ async function applyIndexInsideTx(
   await clearPriorGeneration(client, document.userId, document.id);
   if (prepared.chunks.length === 0) {
     await setRawDocumentIndexedHashWithClient(client, document.userId, document.id, newHash);
-    await markSemanticIndexStatus({
-      q: client,
-      userId: document.userId,
-      documentId: document.id,
-      status: 'complete',
-    });
+    await advanceExtractionAndSemanticIndexToComplete(client, document);
     return makeResult(document, newHash, /* chunksCreated */ 0, /* memoriesCreated */ 0, false);
   }
   const chunkRows = await insertChunkRows(client, document, prepared);
   const memoriesCreated = await materializeMemories(client, document, sourceSite, chunkRows);
   await setRawDocumentIndexedHashWithClient(client, document.userId, document.id, newHash);
+  await advanceExtractionAndSemanticIndexToComplete(client, document);
+  return makeResult(document, newHash, chunkRows.length, memoriesCreated, false);
+}
+
+/**
+ * Mark BOTH `extraction_status` and `semantic_index_status` complete in the
+ * caller's transaction. Reaching the indexer with text is itself proof that
+ * extraction succeeded — the caller produced the text and handed it in — so a
+ * fully-indexed row must never be left at `extraction_status='pending'`, where
+ * `GET /v1/documents?status=pending` would wrongly surface it as unextracted.
+ * Symmetric with `indexFailurePendingShortcut` (document-failure-markers.ts),
+ * which already advances extraction on the oversized-text failure branch.
+ */
+async function advanceExtractionAndSemanticIndexToComplete(
+  client: pg.PoolClient,
+  document: RawDocumentRow,
+): Promise<void> {
+  await markExtractionStatus({
+    q: client,
+    userId: document.userId,
+    documentId: document.id,
+    status: 'complete',
+  });
   await markSemanticIndexStatus({
     q: client,
     userId: document.userId,
     documentId: document.id,
     status: 'complete',
   });
-  return makeResult(document, newHash, chunkRows.length, memoriesCreated, false);
 }
 
 /**

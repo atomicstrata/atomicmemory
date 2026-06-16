@@ -14,14 +14,21 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryClient, type MemoryClientConfig } from '@atomicmemory/sdk/browser';
 import { EntitiesClient } from '@atomicmemory/sdk';
-import type { ServerConfig } from './config.js';
+import type { ServerConfig, Scope } from './config.js';
 import {
+  assertEntityScopeAllowed,
   createHandlers,
   IngestArgsSchema,
   ListArgsSchema,
   PackageArgsSchema,
   SearchArgsSchema,
 } from './tools.js';
+
+/** Scope-lock context threaded into entity-tool dispatch (which bypasses mergeScope). */
+interface DispatchScope {
+  defaultScope: Scope | undefined;
+  scopeLock: boolean;
+}
 
 const SCOPE_PROPS = {
   user: { type: 'string' },
@@ -200,7 +207,7 @@ const TOOL_DEFINITIONS = [
 
 export async function buildServer(config: ServerConfig): Promise<Server> {
   const client = await initClient(config);
-  const handlers = createHandlers(client, config.scope);
+  const handlers = createHandlers(client, config.scope, { scopeLock: config.scopeLock });
   const entities = initEntitiesClient(config);
 
   const server = new Server(
@@ -212,8 +219,9 @@ export async function buildServer(config: ServerConfig): Promise<Server> {
     tools: TOOL_DEFINITIONS,
   }));
 
+  const dispatchScope: DispatchScope = { defaultScope: config.scope, scopeLock: config.scopeLock };
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const result = await dispatch(handlers, entities, req.params.name, req.params.arguments);
+    const result = await dispatch(handlers, entities, req.params.name, req.params.arguments, dispatchScope);
     return {
       content: [{ type: 'text', text: JSON.stringify(result) }],
     };
@@ -241,11 +249,12 @@ async function initClient(config: ServerConfig): Promise<MemoryClient> {
   return client;
 }
 
-async function dispatch(
+export async function dispatch(
   handlers: ReturnType<typeof createHandlers>,
   entities: EntitiesClient | null,
   name: string,
   args: unknown,
+  scope: DispatchScope,
 ): Promise<unknown> {
   switch (name) {
     case 'memory_search':
@@ -259,6 +268,7 @@ async function dispatch(
     case 'entity_profile': {
       if (!entities) throw new Error('entity_profile requires ATOMICMEMORY_API_KEY');
       const { entityId, entityType = 'user' } = args as { entityId: string; entityType?: 'user' | 'agent' | 'session' };
+      assertEntityScopeAllowed(scope.defaultScope, entityType, entityId, scope.scopeLock);
       return entities.profile(entityId, entityType);
     }
     case 'entity_attributes': {
@@ -269,6 +279,7 @@ async function dispatch(
         attribute?: string;
         limit?: number;
       };
+      assertEntityScopeAllowed(scope.defaultScope, entityType, entityId, scope.scopeLock);
       const attrOpts = { ...(attribute !== undefined && { attribute }), ...(limit !== undefined && { limit }) };
       return entities.attributes(entityId, attrOpts, entityType);
     }

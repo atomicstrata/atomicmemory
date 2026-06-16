@@ -17,6 +17,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
+import { containsNoNul } from '../nul-scan.js';
 import {
   claimDeleteAttempt,
   claimPendingArtifact,
@@ -531,10 +532,20 @@ export function validateArtifactMetadata(value: unknown): ArtifactMetadata {
   }
   const record = value as Record<string, unknown>;
   for (const [key, v] of Object.entries(record)) {
+    // A NUL byte in a key or string value passes the type/size gates but 500s
+    // at Postgres (JSONB cannot encode `\x00`). Reject it here so BOTH the
+    // pointer-body and the managed `X-AtomicMemory-Metadata` header paths fail
+    // closed with a 400 — the header path bypasses the request-boundary guard.
+    if (!containsNoNul(key)) {
+      throw new InvalidArtifactMetadataError(`metadata key '${key}' must not contain NUL bytes`);
+    }
     if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
       throw new InvalidArtifactMetadataError(
         `metadata.${key} must be a string, number, or boolean`,
       );
+    }
+    if (typeof v === 'string' && !containsNoNul(v)) {
+      throw new InvalidArtifactMetadataError(`metadata.${key} must not contain NUL bytes`);
     }
   }
   const serialized = JSON.stringify(record);
