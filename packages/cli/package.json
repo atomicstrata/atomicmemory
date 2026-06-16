@@ -58,7 +58,7 @@
     "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs && node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
   },
   "dependencies": {
-    "@atomicmemory/llmwiki": "^1.0.0",
+    "@atomicmemory/llmwiki": "^1.1.0",
     "@atomicmemory/sdk": "^1.1.1",
     "commander": "^12.1.0",
     "ink": "npm:@jrichman/ink@6.6.9",
