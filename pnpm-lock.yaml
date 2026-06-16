@@ -129,7 +129,7 @@ importers:
   packages/cli:
     dependencies:
       '@atomicmemory/llmwiki':
-        specifier: ^1.0.0
+        specifier: ^1.1.0
         version: link:../llmwiki
       '@atomicmemory/sdk':
         specifier: ^1.1.1
