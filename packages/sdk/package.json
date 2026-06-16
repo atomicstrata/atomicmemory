@@ -133,7 +133,7 @@
     "tsup": "^8.5.0",
     "tsx": "^4.20.5",
     "typescript": "^5.8.3",
-    "vite": "^7.3.3",
+    "vite": "^7.3.5",
     "vitest": "^4.1.6"
   },
   "dependencies": {
