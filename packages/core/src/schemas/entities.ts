@@ -3,10 +3,25 @@
  */
 
 import { z } from './zod-setup.js';
+import { containsNoNul, NUL_REJECTION_MESSAGE } from './common.js';
+
+/**
+ * Opaque, trimmed, non-empty identifier reused for every entity_id / memory_id
+ * that reaches Postgres via a path param or the merge body. The NUL refine
+ * makes a `%00` path segment (e.g. `/v1/entities/user/qa%00x/profile`) 4xx at
+ * validation instead of 500ing at the driver — the body/query halves of the
+ * same defect class live in `common.ts`. See QA release-1.1.0
+ * `core-robustness:nul.*`.
+ */
+const OpaqueIdField = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(containsNoNul, { message: NUL_REJECTION_MESSAGE });
 
 export const EntityTypeParamSchema = z.object({
   entity_type: z.enum(['user', 'agent', 'session']),
-  entity_id: z.string().trim().min(1),
+  entity_id: OpaqueIdField,
 });
 
 export const EntityListQuerySchema = z.object({
@@ -29,8 +44,8 @@ export const AttributesQuerySchema = z.object({
 
 export const MemoryHistoryParamSchema = z.object({
   entity_type: z.enum(['user', 'agent', 'session']),
-  entity_id: z.string().trim().min(1),
-  memory_id: z.string().trim().min(1),
+  entity_id: OpaqueIdField,
+  memory_id: OpaqueIdField,
 });
 
 export const EntitySettingsPatchSchema = z
@@ -47,10 +62,10 @@ export const EntitySettingsPatchSchema = z
 export const MergeBodySchema = z.object({
   source: z.object({
     entity_type: z.enum(['user', 'agent', 'session']),
-    entity_id: z.string().trim().min(1),
+    entity_id: OpaqueIdField,
   }),
   target: z.object({
     entity_type: z.enum(['user', 'agent', 'session']),
-    entity_id: z.string().trim().min(1),
+    entity_id: OpaqueIdField,
   }),
 });

@@ -12,6 +12,7 @@
  */
 
 import { z } from './zod-setup.js';
+import { containsNoNul } from '../nul-scan.js';
 
 /**
  * Canonical RFC-4122 hyphenated UUID regex. Promoted to `common.ts`
@@ -187,7 +188,35 @@ export type RetrievalMode = z.infer<typeof RetrievalModeSchema>;
  * succeeds the current check. This schema preserves that exact
  * behavior — do not add `.trim()` or a whitespace-only rejection here.
  */
-export const NonEmptyString = z.string().min(1, 'must be a non-empty string');
+/**
+ * NUL-byte (U+0000) rejection. Postgres cannot store `\x00` in
+ * `text`/`varchar`/`jsonb`, so a client string carrying one would 500 at the
+ * driver instead of being validated. Detection lives in the shared
+ * `nul-scan.ts` leaf util (re-exported here because resource schema files
+ * import `containsNoNul` from `./common.js`); the per-field refines below keep
+ * the rejection at the validation layer with a precise message. See QA
+ * release-1.1.0 `core-robustness:nul.*`.
+ */
+export { containsNoNul };
+export const NUL_REJECTION_MESSAGE = 'must not contain NUL bytes';
+
+export const NonEmptyString = z
+  .string()
+  .min(1, 'must be a non-empty string')
+  .refine(containsNoNul, { message: NUL_REJECTION_MESSAGE });
+
+/**
+ * The canonical required (non-empty, NUL-free) query-string field. Lives here
+ * so resource schema files do NOT redefine it (memories.ts and documents.ts
+ * each had their own copy — the latter unrefined, which is the leak this
+ * consolidates). The global `rejectNulInRequestTarget` middleware is the
+ * boundary backstop; this keeps the rejection at the validation layer too, with
+ * a precise message.
+ */
+export const RequiredQueryString = z
+  .string()
+  .min(1)
+  .refine(containsNoNul, { message: NUL_REJECTION_MESSAGE });
 
 /**
  * Matches `optionalBodyString` (memories.ts:576): `typeof v === 'string'
@@ -220,6 +249,9 @@ export function requiredStringBody(label: string) {
       message,
     })
     .transform(v => v as string)
+    // A NUL byte passes the truthy/non-empty check above but 500s at Postgres;
+    // reject it after the transform so the message is accurate (not "required").
+    .refine(containsNoNul, { message: `${label} ${NUL_REJECTION_MESSAGE}` })
     .openapi({ type: 'string', minLength: 1, description: `Required. ${label}.` });
 }
 

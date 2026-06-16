@@ -78,8 +78,45 @@ describe('document-indexer — Phase B status transitions', () => {
     expect(result.idempotentSkip).toBe(false);
     const after = await readStatus(doc.id);
     expect(after.semantic_index_status).toBe('complete');
+    // A fully-indexed row must not be left at extraction_status='pending':
+    // reaching the indexer with text proves extraction succeeded.
+    expect(after.extraction_status).toBe('complete');
     expect(after.last_error).toBeNull();
     expect(after.indexed_content_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('re-index heals a stranded extraction_status=pending via the idempotent skip', async () => {
+    const doc = await seedDoc({ externalId: 'heal-1' });
+    await service.indexText({ userId: USER, documentId: doc.id, text: SAMPLE });
+    // Simulate a row indexed before the success path advanced extraction:
+    // force extraction back to 'pending' while the index stays complete.
+    await pool.query(
+      `UPDATE raw_documents SET extraction_status = 'pending' WHERE id = $1`,
+      [doc.id],
+    );
+    const result = await service.indexText({ userId: USER, documentId: doc.id, text: SAMPLE });
+    expect(result.idempotentSkip).toBe(true);
+    const after = await readStatus(doc.id);
+    expect(after.extraction_status).toBe('complete');
+    expect(after.semantic_index_status).toBe('complete');
+  });
+
+  it('re-index does NOT overwrite a recorded extraction_status=failed', async () => {
+    const doc = await seedDoc({ externalId: 'no-clobber-1' });
+    await service.indexText({ userId: USER, documentId: doc.id, text: SAMPLE });
+    // A genuinely failed extraction that still shares the indexed hash + chunks
+    // must stay 'failed' — the idempotent heal only reconciles 'pending'.
+    await pool.query(
+      `UPDATE raw_documents
+          SET extraction_status = 'failed',
+              last_error = '{"layer":"extraction","code":"unknown","message":"x"}'::jsonb
+        WHERE id = $1`,
+      [doc.id],
+    );
+    const result = await service.indexText({ userId: USER, documentId: doc.id, text: SAMPLE });
+    expect(result.idempotentSkip).toBe(true);
+    const after = await readStatus(doc.id);
+    expect(after.extraction_status).toBe('failed');
   });
 
   it('embedding failure → durable semantic_index_status=failed + last_error populated; raw row unchanged elsewhere', async () => {

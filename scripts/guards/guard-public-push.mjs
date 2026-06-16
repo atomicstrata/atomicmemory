@@ -3,19 +3,18 @@
  * Refuse a local `git push` whose destination is the public AtomicMemory
  * mirror (`atomicstrata/atomicmemory`).
  *
- * The public repo is a read-only release surface. It is updated only by the
- * internal `public:sync` tooling (which opens a sanitized public PR) and
- * realigned by the public repo's `sync-to-private.yml` workflow. Nobody
- * should push to it directly — not from a public mirror clone, and not via a
- * dev clone's `upstream` remote. This guard runs as the repo's `pre-push`
- * hook (installed by `scripts/git-hooks/install-hooks.mjs` on `pnpm install`)
- * and blocks exactly that.
+ * This is a read-only release surface, updated only by the release-sync
+ * tooling, which opens a sanitized pull request. Nobody should push to it
+ * directly — not from a mirror clone, and not via a clone's `upstream` remote.
+ * This guard runs as the repo's `pre-push` hook (installed by
+ * `scripts/git-hooks/install-hooks.mjs` on `pnpm install`) and blocks exactly
+ * that.
  *
  * It is an accidental-push guard, not a security boundary — the real boundary
- * is public branch protection. The publish tooling sets
+ * is public branch protection. The release-sync tooling sets
  * `ALLOW_PUBLIC_ATOMICMEMORY_PUSH=1` so its own push is not blocked.
  *
- * See the internal ops release-process documentation for the full flow.
+ * See the release-process documentation for the full flow.
  */
 
 const PUBLIC_SLUG = "atomicstrata/atomicmemory";
@@ -34,8 +33,8 @@ function main() {
     console.error(
       `  remote: ${remoteName || "<unknown>"} -> ${remoteUrl || "<unknown>"}`,
     );
-    console.error("  Develop in atomicmemory-internal; publish via the internal 'public:sync' tooling.");
-    console.error("  See the internal ops release-process documentation.");
+    console.error("  Update the release mirror via the release-sync tooling, not a direct push.");
+    console.error("  See the release-process documentation.");
     console.error(`  Override (rarely correct): ${OVERRIDE_ENV}=1 git push ...`);
     process.exit(1);
   }

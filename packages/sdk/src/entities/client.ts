@@ -11,6 +11,7 @@
  *   const attrs   = await client.entities.attributes('alice', { attribute: 'role' });
  */
 
+import { validateApiUrl } from '../utils/validate-api-url.js';
 import type {
   DeleteEntityResult,
   EntityDetail,
@@ -28,6 +29,12 @@ import type {
 export interface EntitiesClientConfig {
   apiUrl: string;
   apiKey: string;
+  /**
+   * Permit `apiUrl` to target loopback / private / reserved IP literals.
+   * Defaults to `true`; set `false` to harden against SSRF. Link-local /
+   * cloud-metadata addresses are blocked regardless. See `validateApiUrl`.
+   */
+  allowPrivateNetworks?: boolean;
   /** Optional fetch override — defaults to the Node global. */
   fetch?: typeof fetch;
 }
@@ -40,7 +47,9 @@ export class EntitiesClient {
   constructor(config: EntitiesClientConfig) {
     if (!config.apiUrl) throw new Error('EntitiesClient: apiUrl is required');
     if (!config.apiKey) throw new Error('EntitiesClient: apiKey is required');
-    this.apiUrl = config.apiUrl.replace(/\/+$/, '');
+    this.apiUrl = validateApiUrl(config.apiUrl, {
+      allowPrivateNetworks: config.allowPrivateNetworks,
+    }).replace(/\/+$/, '');
     this.apiKey = config.apiKey;
     this.fetchImpl = config.fetch ?? fetch;
   }

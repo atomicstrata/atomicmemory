@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/claude-code-plugin",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "AtomicMemory plugin for Claude Code — persistent semantic memory across sessions.",
   "private": false,
   "license": "Apache-2.0",
@@ -17,7 +17,7 @@
     "README.md"
   ],
   "scripts": {
-    "test": "bash scripts/__tests__/quick-ingest-body.sh && bash scripts/__tests__/load-env-defaults.sh && bash scripts/__tests__/auth-header.sh",
+    "test": "bash scripts/__tests__/quick-ingest-body.sh && bash scripts/__tests__/load-env-defaults.sh && bash scripts/__tests__/auth-header.sh && bash scripts/__tests__/prompt-context-sanitize.sh",
     "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs"
   },
   "bugs": {

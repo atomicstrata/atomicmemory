@@ -33,6 +33,7 @@ import {
   applyLegacySchema,
   useMigrationTestPool,
 } from './migration-test-helpers.js';
+import { listMigrationFilenames } from '../migration-schema.js';
 
 const pool = useMigrationTestPool({ beforeEach, afterAll });
 
@@ -42,7 +43,12 @@ describe('Phase 2 — baseline schema validator', () => {
 
     await expect(migrate({ pool })).resolves.toBeDefined();
 
-    expect(await pgmigrationsCount()).toBe(2); // baseline + 0002_entity_settings
+    // Every shipped migration is recorded in pgmigrations: the baseline is
+    // stamped on the pre-phase-2 cutover, then each post-baseline file runs.
+    // Asserting against the live count keeps this robust as migrations are
+    // added (it was hardcoded to 2 and went stale once 0002_…index / 0003 / 0004
+    // landed).
+    expect(await pgmigrationsCount()).toBe(listMigrationFilenames().length);
     expect(await schemaVersionCount()).toBe(1);
   });
 

@@ -7,6 +7,7 @@
  * memory contract plus standard package, reflect, and health extensions.
  */
 
+import { validateApiUrl } from '../../utils/validate-api-url.js';
 import { BaseMemoryProvider } from '../provider';
 import type { Health, Packager, Reflector } from '../provider';
 import { MemoryProviderError, UnsupportedOperationError } from '../errors';
@@ -76,7 +77,9 @@ export class HindsightProvider
     super();
     this.config = config;
     this.http = {
-      apiUrl: config.apiUrl.replace(/\/+$/, ''),
+      apiUrl: validateApiUrl(config.apiUrl, {
+        allowPrivateNetworks: config.allowPrivateNetworks,
+      }).replace(/\/+$/, ''),
       apiKey: config.apiKey,
       timeout: config.timeout ?? HINDSIGHT_DEFAULT_TIMEOUT,
     };

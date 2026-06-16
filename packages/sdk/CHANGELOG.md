@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-16
+
+### Security
+- Hardened client configuration validation. Upgrade recommended.
+
 ## [1.0.1] - 2026-05-14
 
 ### Changed

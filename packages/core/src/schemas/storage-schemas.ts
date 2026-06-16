@@ -26,6 +26,17 @@
  */
 
 import { z } from './zod-setup.js';
+import { NonEmptyString, containsNoNul, NUL_REJECTION_MESSAGE } from './common.js';
+
+/**
+ * A string that may be empty but must not contain a NUL byte. Metadata values
+ * are persisted to JSONB, which (unlike `json`) cannot store a NUL byte in a
+ * string and would 500 at insert. Empty values are legitimate, so this is
+ * distinct from `NonEmptyString`. `/v1/storage` is not under a `rejectNulInBody`
+ * mount (it owns mixed JSON/raw parsing and accepts metadata via the
+ * `X-AtomicMemory-Metadata` header too), so the guard lives at the schema layer.
+ */
+const NulFreeString = z.string().refine(containsNoNul, { message: NUL_REJECTION_MESSAGE });
 
 // ---------------------------------------------------------------------------
 // Closed enums — internal building blocks for the public schemas below.
@@ -105,7 +116,9 @@ export type StorageCapabilitiesResponse = z.infer<
 // ---------------------------------------------------------------------------
 
 const ArtifactMetadataSchema = z
-  .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+  // Keys and string values are NUL-free: the whole record is persisted to a
+  // JSONB column, which rejects a NUL byte in any string.
+  .record(NulFreeString, z.union([NulFreeString, z.number(), z.boolean()]))
   .openapi({
     description:
       'Caller-supplied metadata. Decoded JSON must be ≤4 KiB; encoded ' +
@@ -123,10 +136,12 @@ const ArtifactMetadataSchema = z
 export const PutPointerBodySchema = z
   .object({
     mode: z.literal('pointer'),
-    uri: z.string().min(1),
-    content_type: z.string().min(1),
+    // NonEmptyString rejects NUL bytes — these flow to storage_artifacts text
+    // columns; an un-rejected `\x00` would 500 at Postgres.
+    uri: NonEmptyString,
+    content_type: NonEmptyString,
     size_bytes: z.number().int().nonnegative().optional(),
-    content_hash: z.string().min(1).optional(),
+    content_hash: NonEmptyString.optional(),
     metadata: ArtifactMetadataSchema.optional(),
   })
   .strict()

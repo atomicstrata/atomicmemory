@@ -44,6 +44,17 @@ repository. Human-facing project context lives in `README.md`, `CONTRIBUTING.md`
 - No fallback modes. If something fails, fail closed with a clear error instead
   of running in a degraded or partially-supported mode.
 - Add comments only when they explain non-obvious intent or constraints.
+- Cross-cutting controls live at one chokepoint, enumerated and bypass-tested.
+  When a security/correctness rule must hold for *all* of a category — every
+  input reaching Postgres, every scoped MCP tool, every memory→model surface —
+  apply it where those surfaces converge (the query layer, one scope gate, one
+  shared sanitizer/validator), not replicated per surface. If it must be
+  replicated, add an enumeration test that fails when a new surface lacks it.
+  Tests must exercise the adversarial bypass (the encoding, the object key, the
+  header, the interleaving, the second language) — not just the canonical
+  example — and validate against the downstream consumer's interpretation (the
+  resolver, Postgres, the model's tag parser), not your own parser. Per-surface
+  defense is leaky by construction: one sibling always gets missed.
 
 ### Size Limits
 

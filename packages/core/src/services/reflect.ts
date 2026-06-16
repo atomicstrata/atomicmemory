@@ -78,7 +78,8 @@ export async function runReflectForConversation(
   const { system, user } = buildReflectMessages(memories);
   const out = await deps.llmCallTool(system, user, REFLECT_TOOL_SCHEMA);
 
-  const truncated = out.observations.slice(0, deps.maxObservations);
+  const verified = verifyEvidence(out.observations, memories);
+  const truncated = verified.slice(0, deps.maxObservations);
   const rows: NewReflection[] = [];
   for (const o of truncated) {
     const embedding = await deps.embed(o.text);
@@ -103,6 +104,33 @@ export async function runReflectForConversation(
   );
 
   return { count: rows.length, entityCardCount };
+}
+
+/**
+ * Drop observations whose evidence does not ground in the fetched memories:
+ * keep only observations that cite at least one id and whose every cited id is
+ * a real fetched memory. Never silent: logs the dropped count.
+ *
+ * Scope of protection: this stops *fabricated* citations — observations the
+ * Reflect LLM invents citing ids that were never retrieved. It is NOT a full
+ * self-propagation barrier: a poisoned memory is itself a fetched memory, so an
+ * observation citing that poisoned id still passes here. The fence + the
+ * untrusted-data system clause in reflect-prompts.ts are the primary defense
+ * against the LLM following injected instructions; this is the grounding layer.
+ */
+function verifyEvidence(
+  observations: ReflectToolOutput['observations'],
+  memories: readonly ReflectMemoryInput[],
+): ReflectToolOutput['observations'] {
+  const known = new Set(memories.map((m) => m.id));
+  const verified = observations.filter(
+    (o) => o.evidence_memory_ids.length > 0 && o.evidence_memory_ids.every((id) => known.has(id)),
+  );
+  const dropped = observations.length - verified.length;
+  if (dropped > 0) {
+    console.warn(`[reflect] dropped ${dropped} observation(s) citing unknown or no evidence memory ids`);
+  }
+  return verified;
 }
 
 /**

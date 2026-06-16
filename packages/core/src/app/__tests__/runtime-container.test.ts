@@ -35,6 +35,14 @@ describe('createCoreRuntime', () => {
     expect(runtime.services.memory).toBeDefined();
   });
 
+  it('installs the NUL parameter guard on explicit pool deps', async () => {
+    const pool = stubPool();
+    await createCoreRuntime({ pool });
+    await expect(pool.query('SELECT 1 WHERE user_id=$1', [`u${String.fromCharCode(0)}`])).rejects.toThrow(
+      /NUL bytes/,
+    );
+  });
+
   it('constructs domain-facing stores alongside repos', async () => {
     const pool = stubPool();
     const runtime = await createCoreRuntime({ pool });

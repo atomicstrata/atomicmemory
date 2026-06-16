@@ -34,6 +34,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { handleRouteError } from './route-errors.js';
 import { validateBody, validateQuery, validateParams } from '../middleware/validate.js';
 import { validateResponse } from '../middleware/validate-response.js';
+import { rejectNulInBody } from '../middleware/reject-nul-bytes.js';
 import { DOCUMENT_RESPONSE_SCHEMAS } from './response-schema-map.js';
 import {
   DocumentByIdQuerySchema,
@@ -200,8 +201,14 @@ export function createDocumentRouter(
   registerIndexRoute(router, service);
   registerUploadRoute(router, service, options.rawUploadMaxBytes);
 
-  // Step 4 — router-level JSON parser for the remaining JSON-body routes.
+  // Step 4 — router-level JSON parser for the remaining JSON-body routes,
+  // followed by the NUL-byte body guard. /v1/documents owns its parsing (it is
+  // mounted without `rejectNulInBody` in create-app), so the guard is wired here
+  // — once router-level for the register / failure-marker / delete JSON routes
+  // below, and per-route for the index route above (which parses earlier). The
+  // raw-upload route's Buffer body is skipped by the guard.
   router.use(express.json({ limit: ROUTER_JSON_BODY_LIMIT }));
+  router.use(rejectNulInBody);
 
   // Step 5 — JSON-body routes. The Phase C failure-marker routes
   // (`/:id/extraction-failure`, `/:id/index-failure`) live with the
@@ -375,6 +382,7 @@ function registerIndexRoute(router: Router, service: DocumentService): void {
   router.post(
     '/:id/index',
     indexJsonParser,
+    rejectNulInBody,
     validateParams(DocumentIdParamSchema),
     validateBody(IndexDocumentBodySchema),
     async (req: Request, res: Response) => {

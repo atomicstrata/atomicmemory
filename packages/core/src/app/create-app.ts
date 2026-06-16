@@ -20,6 +20,7 @@ import { createEntityRouter } from '../routes/entities.js';
 import { MAX_INDEX_TEXT_BYTES } from '../schemas/documents.js';
 import { requireBearer } from '../middleware/require-bearer.js';
 import { assertedUserGuard } from '../middleware/asserted-user.js';
+import { rejectNulInRequestTarget, rejectNulInBody } from '../middleware/reject-nul-bytes.js';
 import { CORS_ALLOWED_HEADERS_VALUE } from './cors-headers.js';
 import { openApiSpec } from './openapi-spec.js';
 import { CORE_CAPABILITIES } from './capabilities-descriptor.js';
@@ -66,6 +67,14 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
     next();
   });
 
+  // Reject NUL bytes (U+0000) in the query string / request target on every
+  // route. Postgres cannot store `\x00` in text, so an un-rejected `%00` in a
+  // user_id / identifier becomes a 500 instead of a validated 400. Safe to
+  // mount globally — the query string and request target are never binary. The
+  // per-router `rejectNulInBody` below covers JSON bodies; raw/binary bodies
+  // (storage uploads, document raw index) are intentionally never body-scanned.
+  app.use(rejectNulInRequestTarget);
+
   // `requireBearer` validates `Authorization: Bearer <CORE_API_KEY>`
   // on every SDK-facing `/v1/*` router. Built once and reused so the
   // expected-key buffer is captured a single time (timingSafeEqual
@@ -93,6 +102,7 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
     '/v1/memories',
     auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
+    rejectNulInBody,
     assertUser,
     memoryRouter,
   );
@@ -100,6 +110,7 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
     '/v1/agents',
     auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
+    rejectNulInBody,
     assertUser,
     createAgentRouter(runtime.repos.trust),
   );
@@ -172,6 +183,7 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
     '/v1/entities',
     auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
+    rejectNulInBody,
     createEntityRouter({
       pool: runtime.pool,
       memory: runtime.repos.memory,
@@ -188,6 +200,7 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
       '/v1/admin',
       requireBearer(runtime.config.coreAdminApiKey),
       express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
+      rejectNulInBody,
       createAdminRouter({
         memory: runtime.repos.memory,
         testScopeAllowPattern: runtime.config.coreTestScopeAllowPattern,

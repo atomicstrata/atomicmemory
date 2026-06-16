@@ -34,6 +34,20 @@ import {
 import type { EntityRelationRow } from '../db/repository-types.js';
 import type { EntityCard } from '../db/entity-cards-repository.js';
 
+/**
+ * Per-entity "last active" instant. Derived from `MAX(created_at)` over the
+ * user's live memories — the most recent WRITE — so the exposed `updated_at` /
+ * `last_active` fields track when memories were last written, not merely read.
+ * (`last_accessed_at` is bumped by access tracking on every read, so including
+ * it would churn the ordering on each search/get.) No physical
+ * `memories.updated_at` column is needed: a NOT NULL backfill would rewrite the
+ * whole table under lock, and a maintenance trigger would conflate reads with
+ * edits. See migration 0004. The list route inlines the GROUP BY variant of the
+ * same expression.
+ */
+const LAST_ACTIVE_SQL =
+  'SELECT MAX(created_at) AS max FROM memories WHERE user_id = $1 AND deleted_at IS NULL';
+
 export interface EntityRouterDeps {
   pool: pg.Pool;
   memory: Pick<MemoryRepository, 'countMemories' | 'deleteAll'>;
@@ -105,10 +119,7 @@ function registerProfileRoute(router: Router, deps: EntityRouterDeps): void {
           // where entity_name == entity_id (which would be empty for opaque IDs).
           deps.entityAttributes?.findByUser(entity_id, 20) ?? [],
           deps.memory.countMemories(entity_id),
-          deps.pool.query<{ max: Date | null }>(
-            'SELECT MAX(updated_at) AS max FROM memories WHERE user_id = $1 AND deleted_at IS NULL',
-            [entity_id],
-          ),
+          deps.pool.query<{ max: Date | null }>(LAST_ACTIVE_SQL, [entity_id]),
         ]);
         const lastActive = lastActiveResult.rows[0]?.max ?? null;
         res.json(formatProfile(profileRow, attributes, memoryCount, lastActive, entity_type, entity_id));
@@ -145,7 +156,7 @@ function registerListRoute(router: Router, deps: EntityRouterDeps): void {
          FROM (
            SELECT user_id,
                   COUNT(*)::int AS memory_count,
-                  MAX(updated_at) AS last_active
+                  MAX(created_at) AS last_active
            FROM memories WHERE deleted_at IS NULL
            GROUP BY user_id
          ) AS counted
@@ -186,10 +197,7 @@ function registerGetEntityRoute(router: Router, deps: EntityRouterDeps): void {
         const [memoryCount, attributes, lastActiveResult, { relations, cards }] = await Promise.all([
           deps.memory.countMemories(entity_id),
           deps.entityAttributes?.findByUser(entity_id, 50) ?? [],
-          deps.pool.query<{ max: Date | null }>(
-            'SELECT MAX(updated_at) AS max FROM memories WHERE user_id = $1 AND deleted_at IS NULL',
-            [entity_id],
-          ),
+          deps.pool.query<{ max: Date | null }>(LAST_ACTIVE_SQL, [entity_id]),
           resolveRelationsAndCards(deps, entity_id, entity_name),
         ]);
         const lastActive = lastActiveResult.rows[0]?.max ?? null;

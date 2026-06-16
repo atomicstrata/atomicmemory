@@ -22,6 +22,7 @@
  * client is the single seam that translates.
  */
 
+import { validateApiUrl } from '../utils/validate-api-url.js';
 import {
   ArtifactInUseError,
   ArtifactNotFoundError,
@@ -51,6 +52,12 @@ import type {
 export interface StorageClientConfig {
   apiUrl: string;
   apiKey: string;
+  /**
+   * Permit `apiUrl` to target loopback / private / reserved IP literals.
+   * Defaults to `true`; set `false` to harden against SSRF. Link-local /
+   * cloud-metadata addresses are blocked regardless. See `validateApiUrl`.
+   */
+  allowPrivateNetworks?: boolean;
   /** Optional fetch override — defaults to the Node global. */
   fetch?: typeof fetch;
   /** Owner scope for the caller. Sent as `X-AtomicMemory-User-Id`
@@ -81,7 +88,9 @@ export class ConcreteStorageClient implements StorageClient {
     if (!config.apiUrl) throw new Error('StorageClient: apiUrl is required');
     if (!config.apiKey) throw new Error('StorageClient: apiKey is required');
     if (!config.userId) throw new Error('StorageClient: userId is required');
-    this.apiUrl = config.apiUrl.replace(/\/+$/, '');
+    this.apiUrl = validateApiUrl(config.apiUrl, {
+      allowPrivateNetworks: config.allowPrivateNetworks,
+    }).replace(/\/+$/, '');
     this.apiKey = config.apiKey;
     this.userId = config.userId;
     this.fetchImpl = config.fetch ?? fetch;

@@ -132,7 +132,7 @@ importers:
         specifier: ^1.0.0
         version: link:../llmwiki
       '@atomicmemory/sdk':
-        specifier: ^1.0.2
+        specifier: ^1.1.1
         version: link:../sdk
       commander:
         specifier: ^12.1.0
@@ -289,7 +289,7 @@ importers:
   packages/mcp-server:
     dependencies:
       '@atomicmemory/sdk':
-        specifier: ^1.0.2
+        specifier: ^1.1.1
         version: link:../sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
@@ -370,7 +370,7 @@ importers:
   plugins/openclaw:
     dependencies:
       '@atomicmemory/mcp-server':
-        specifier: ^0.1.2
+        specifier: ^0.1.4
         version: link:../../packages/mcp-server
     devDependencies:
       '@types/node':

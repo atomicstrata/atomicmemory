@@ -15,6 +15,18 @@ test('loadConfigFromEnv defaults URL, provider, and user scope', () => {
   assert.equal(config.apiKey, 'local-dev-key');
   assert.equal(config.provider, 'atomicmemory');
   assert.deepEqual(config.scope, { user: 'machine-user' });
+  assert.equal(config.scopeLock, false);
+});
+
+test('loadConfigFromEnv enables scopeLock from ATOMICMEMORY_SCOPE_LOCK', () => {
+  const enabled = loadConfigFromEnv({ USER: 'u', ATOMICMEMORY_SCOPE_LOCK: 'true' } as NodeJS.ProcessEnv);
+  assert.equal(enabled.scopeLock, true);
+
+  const oneEnabled = loadConfigFromEnv({ USER: 'u', ATOMICMEMORY_SCOPE_LOCK: '1' } as NodeJS.ProcessEnv);
+  assert.equal(oneEnabled.scopeLock, true);
+
+  const other = loadConfigFromEnv({ USER: 'u', ATOMICMEMORY_SCOPE_LOCK: 'no' } as NodeJS.ProcessEnv);
+  assert.equal(other.scopeLock, false);
 });
 
 test('loadConfigFromEnv keeps explicit scope overrides', () => {

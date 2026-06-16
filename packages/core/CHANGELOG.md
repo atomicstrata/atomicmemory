@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-15
+
 ### Added
 - Phase 1 migration hardening now packages a deterministic
   `dist/db/schema-sha256.json` manifest for the shipped DB schema bytes.
@@ -20,7 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `pgmigrations`. The existing `status` enum (`up_to_date` / `older_db` /
   `newer_db` / `unstamped` / `no_schema`) is unchanged.
 
-### Changed
+### Fixed
+- Entities API routes (`/v1/entities` list / get / profile / merge / delete) no
+  longer return 500 errors.
+
+### Security
+- Hardened input validation and request handling. Upgrade recommended.
 - The published `atomicmemory-core migrate` command now calls the
   programmatic migration API directly, so npm installs can run the documented
   migration command without the command word being reparsed as a migration

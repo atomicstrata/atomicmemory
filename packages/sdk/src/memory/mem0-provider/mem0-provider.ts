@@ -21,6 +21,7 @@
  * in the immediate response.
  */
 
+import { validateApiUrl } from '../../utils/validate-api-url.js';
 import { BaseMemoryProvider } from '../provider';
 import { UnsupportedOperationError } from '../errors';
 import type {
@@ -60,7 +61,9 @@ export class Mem0Provider extends BaseMemoryProvider implements Health {
     super();
     this.config = config;
     this.http = {
-      apiUrl: config.apiUrl.replace(/\/+$/, ''),
+      apiUrl: validateApiUrl(config.apiUrl, {
+        allowPrivateNetworks: config.allowPrivateNetworks,
+      }).replace(/\/+$/, ''),
       apiKey: config.apiKey,
       timeout: config.timeout ?? DEFAULT_TIMEOUT,
     };

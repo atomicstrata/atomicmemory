@@ -18,6 +18,8 @@ import {
   ListQuerySchema,
   ResetSourceBodySchema,
   LessonReportBodySchema,
+  UserIdQuerySchema,
+  UserIdLimitQuerySchema,
 } from '../memories';
 import { firstIssueMessage } from './schema-test-helpers.js';
 
@@ -206,5 +208,44 @@ describe('ResetSourceBodySchema / LessonReportBodySchema — preserved messages'
   it('lessons/report missing pattern → "pattern (string) is required"', () => {
     const r = LessonReportBodySchema.safeParse({ user_id: 'u' });
     expect(firstIssueMessage(r)).toBe('pattern (string) is required');
+  });
+});
+
+describe('NUL-byte rejection on strings reaching Postgres (QA release-1.1.0 core-robustness:nul.*)', () => {
+  // A percent-encoded NUL (%00) decodes to a 1-char string that satisfies
+  // `.min(1)`, then 500s at Postgres (which cannot store \x00 in text). The
+  // shared validators must reject it so the request stays on the 4xx path.
+  // Built via fromCharCode so this source file carries no raw NUL byte.
+  const NUL = `qa${String.fromCharCode(0)}evil`;
+
+  describe('query params (RequiredQueryString)', () => {
+    it('UserIdQuerySchema rejects, and the message names the NUL byte', () => {
+      const r = UserIdQuerySchema.safeParse({ user_id: NUL });
+      expect(r.success).toBe(false);
+      expect(firstIssueMessage(r)).toMatch(/NUL/i);
+    });
+    it('UserIdLimitQuerySchema rejects a NUL user_id', () => {
+      expect(UserIdLimitQuerySchema.safeParse({ user_id: NUL }).success).toBe(false);
+    });
+    it('ListQuerySchema rejects a NUL user_id', () => {
+      expect(ListQuerySchema.safeParse({ user_id: NUL }).success).toBe(false);
+    });
+  });
+
+  describe('request bodies (requiredStringBody) — not only query params', () => {
+    it('IngestBodySchema rejects a NUL user_id with an accurate (not "required") message', () => {
+      const r = IngestBodySchema.safeParse({ user_id: NUL, conversation: 'x', source_site: 's' });
+      expect(r.success).toBe(false);
+      expect(firstIssueMessage(r)).toMatch(/user_id must not contain NUL/i);
+    });
+    it('IngestBodySchema rejects a NUL in free-text conversation too', () => {
+      const r = IngestBodySchema.safeParse({ user_id: 'u', conversation: NUL, source_site: 's' });
+      expect(r.success).toBe(false);
+      expect(firstIssueMessage(r)).toMatch(/NUL/i);
+    });
+  });
+
+  it('a normal user_id still passes (positive control)', () => {
+    expect(UserIdQuerySchema.safeParse({ user_id: 'qa-user-1' }).success).toBe(true);
   });
 });

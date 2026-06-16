@@ -109,13 +109,30 @@ export type IngestArgs = z.infer<typeof IngestArgsSchema>;
 export type PackageArgs = z.infer<typeof PackageArgsSchema>;
 type ListArgs = z.infer<typeof ListArgsSchema>;
 
+/** Handler-construction options independent of the client + default scope. */
+export interface HandlerOptions {
+  /**
+   * When true, reject any caller-supplied scope that differs from the
+   * server-configured default scope. Lets multi-tenant / shared MCP
+   * deployments fail closed instead of trusting an LLM-controlled
+   * `scope` argument to assert another user's identity. Default false
+   * preserves the documented single-server-many-users behavior.
+   */
+  scopeLock?: boolean;
+}
+
 /**
  * Build tool handlers bound to a specific MemoryClient + default scope.
  */
-export function createHandlers(client: MemoryClient, defaultScope: Scope | undefined) {
+export function createHandlers(
+  client: MemoryClient,
+  defaultScope: Scope | undefined,
+  options: HandlerOptions = {},
+) {
+  const scopeLock = options.scopeLock ?? false;
   return {
     memory_search: (args: SearchArgs) => {
-      const scope = mergeScope(defaultScope, args.scope);
+      const scope = mergeScope(defaultScope, args.scope, scopeLock);
       if (args.sourceSite) {
         return atomicmemoryNamespace(client).search(
           {
@@ -135,11 +152,11 @@ export function createHandlers(client: MemoryClient, defaultScope: Scope | undef
 
     memory_ingest: (args: IngestArgs) =>
       args.mode === 'verbatim'
-        ? ingestVerbatim(client, args, defaultScope)
-        : client.ingest(buildIngestInput(args, defaultScope)),
+        ? ingestVerbatim(client, args, defaultScope, scopeLock)
+        : client.ingest(buildIngestInput(args, defaultScope, scopeLock)),
 
     memory_package: (args: PackageArgs) => {
-      const scope = mergeScope(defaultScope, args.scope);
+      const scope = mergeScope(defaultScope, args.scope, scopeLock);
       if (args.sourceSite) {
         // AtomicMemory namespace's `search` with retrievalMode=tiered + tokenBudget
         // is the package-equivalent path that supports sourceSite — `client.atomicmemory`
@@ -166,7 +183,7 @@ export function createHandlers(client: MemoryClient, defaultScope: Scope | undef
     },
 
     memory_list: (args: ListArgs) => {
-      const scope = mergeScope(defaultScope, args.scope);
+      const scope = mergeScope(defaultScope, args.scope, scopeLock);
       if (args.sourceSite) {
         return atomicmemoryNamespace(client).list(
           toUserMemoryScope(scope, 'sourceSite'),
@@ -217,7 +234,20 @@ function toUserMemoryScope(scope: Scope, feature: string): { kind: 'user'; userI
   return { kind: 'user', userId: scope.user };
 }
 
-function mergeScope(base: Scope | undefined, override: Scope | undefined): Scope {
+function mergeScope(
+  base: Scope | undefined,
+  override: Scope | undefined,
+  scopeLock = false,
+): Scope {
+  if (scopeLock && override) {
+    for (const key of Object.keys(override) as (keyof Scope)[]) {
+      if (override[key] !== undefined && override[key] !== base?.[key]) {
+        throw new Error(
+          'scope is locked: the caller may not override the server-configured scope (set ATOMICMEMORY_SCOPE_LOCK=false to allow per-call scope)',
+        );
+      }
+    }
+  }
   const merged = { ...(base ?? {}), ...(override ?? {}) };
   if (!merged.user && !merged.agent && !merged.namespace && !merged.thread) {
     throw new Error(
@@ -227,11 +257,43 @@ function mergeScope(base: Scope | undefined, override: Scope | undefined): Scope
   return merged;
 }
 
+/** Maps an entity tool's `entityType` to the default-scope dimension it addresses. */
+const ENTITY_TYPE_SCOPE_KEY: Record<'user' | 'agent' | 'session', keyof Scope> = {
+  user: 'user',
+  agent: 'agent',
+  session: 'thread',
+};
+
+/**
+ * Enforce scope-lock for the entity tools (`entity_profile` / `entity_attributes`).
+ * Those address memory by an arbitrary `entityId` and do not flow through
+ * `mergeScope`, so without this a locked, shared MCP server would still let a
+ * caller read another user's profile/attributes by passing their id. Under lock
+ * the entityId must equal the server-default scope value for the requested
+ * entityType's dimension; it fails closed when that dimension is unset. No-op
+ * when scope-lock is off (per-call addressing is the documented multi-user default).
+ */
+export function assertEntityScopeAllowed(
+  defaultScope: Scope | undefined,
+  entityType: 'user' | 'agent' | 'session',
+  entityId: string,
+  scopeLock: boolean,
+): void {
+  if (!scopeLock) return;
+  const allowed = defaultScope?.[ENTITY_TYPE_SCOPE_KEY[entityType]];
+  if (allowed === undefined || allowed !== entityId) {
+    throw new Error(
+      'scope is locked: the caller may not address an entity outside the server-configured scope (set ATOMICMEMORY_SCOPE_LOCK=false to allow per-call entity access)',
+    );
+  }
+}
+
 function buildIngestInput(
   args: IngestArgs,
   defaultScope: Scope | undefined,
+  scopeLock = false,
 ): Parameters<MemoryClient['ingest']>[0] {
-  const scope = mergeScope(defaultScope, args.scope);
+  const scope = mergeScope(defaultScope, args.scope, scopeLock);
   if (args.mode === 'text') {
     if (!args.content) throw new Error('content required when mode=text');
     return {
@@ -259,8 +321,9 @@ async function ingestVerbatim(
   client: MemoryClient,
   args: IngestArgs,
   defaultScope: Scope | undefined,
+  scopeLock = false,
 ): Promise<unknown> {
-  const scope = mergeScope(defaultScope, args.scope);
+  const scope = mergeScope(defaultScope, args.scope, scopeLock);
   if (!args.content) throw new Error('content required when mode=verbatim');
 
   const callerMetadata: Record<string, unknown> = args.metadata ?? {};

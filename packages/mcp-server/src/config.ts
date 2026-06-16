@@ -28,6 +28,7 @@ const ConfigSchema = z
     apiKey: z.string().optional(),
     provider: z.enum(['atomicmemory', 'mem0']).default(DEFAULT_PROVIDER),
     scope: ScopeSchema.optional(),
+    scopeLock: z.boolean().default(false),
   })
   .strict();
 
@@ -45,8 +46,20 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ServerC
     apiKey: cleanOptional(env.ATOMICMEMORY_API_KEY),
     provider: cleanOptional(env.ATOMICMEMORY_PROVIDER),
     scope: parseScope(env),
+    scopeLock: parseScopeLock(env),
   };
   return normalizeConfig(raw, env);
+}
+
+/**
+ * Parse the opt-in scope-lock flag. Returns undefined when unset so the
+ * schema default (false) applies; `true`/`1` enable it. Any other value
+ * is treated as disabled.
+ */
+function parseScopeLock(env: NodeJS.ProcessEnv): boolean | undefined {
+  const raw = cleanOptional(env.ATOMICMEMORY_SCOPE_LOCK);
+  if (raw === undefined) return undefined;
+  return raw === 'true' || raw === '1';
 }
 
 /**

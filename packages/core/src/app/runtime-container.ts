@@ -34,6 +34,7 @@ import { EntityCardsRepository } from '../db/entity-cards-repository.js';
 import { EntitySettingsRepository } from '../db/entity-settings-repository.js';
 import { ContradictionsRepository } from '../db/contradictions-repository.js';
 import { EntityValuesRepository } from '../db/entity-values-repository.js';
+import { installNulGuard } from '../db/nul-guard.js';
 import { TllRepository } from '../db/repository-tll.js';
 import { FirstMentionRepository } from '../db/repository-first-mentions.js';
 import { DocumentService } from '../services/document-service.js';
@@ -271,7 +272,9 @@ export interface CoreRuntimeConfigRouteAdapter {
  * Explicit dependency bundle accepted by `createCoreRuntime`.
  *
  * `pool` is required — the composition root never reaches around to
- * import the singleton `pg.Pool` itself.
+ * import the singleton `pg.Pool` itself. The runtime installs the same
+ * query-parameter NUL guard on explicit pools that startup installs on the
+ * singleton pool.
  *
  * Optional `config` is a composition-time override for isolated harnesses
  * such as AtomicBench. It is not a per-request override and should not be
@@ -325,11 +328,11 @@ export interface CoreRuntime {
  * service from an explicit pool. Uses either the module-level config singleton
  * or an explicit composition-time config and passes that same object into leaf
  * module initializers and MemoryService so the composition root owns the seam.
- * No mutation.
+ * Mutates the supplied pool only to install idempotent query guards.
  */
 // fallow-ignore-next-line complexity
 export async function createCoreRuntime(deps: CoreRuntimeDeps): Promise<CoreRuntime> {
-  const { pool } = deps;
+  const pool = installNulGuard(deps.pool);
   const runtimeConfig = deps.config ?? defaultConfig;
 
   // Leaf-module config init. Embedding and LLM modules

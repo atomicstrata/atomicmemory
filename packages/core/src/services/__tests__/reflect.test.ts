@@ -53,6 +53,27 @@ describe('runReflectForConversation', () => {
     expect(deps.llmCallTool).not.toHaveBeenCalled();
   });
 
+  it('drops observations whose evidence cites unknown or no memory ids', async () => {
+    const insertMany = vi.fn().mockResolvedValue(undefined);
+    const out = { observations: [
+      { text: 'valid', type: 'event_summary' as const, evidence_memory_ids: ['m1', 'm2'] },
+      { text: 'fabricated', type: 'event_summary' as const, evidence_memory_ids: ['ghost'] },
+      { text: 'partial', type: 'preference' as const, evidence_memory_ids: ['m1', 'ghost'] },
+      { text: 'uncited', type: 'decision' as const, evidence_memory_ids: [] },
+    ] };
+    const deps: ReflectDeps = {
+      fetchMemories: vi.fn().mockResolvedValue(memories),
+      llmCallTool: vi.fn().mockResolvedValue(out),
+      embed: vi.fn().mockResolvedValue([0.1]),
+      reflections: { insertMany } as any,
+      maxObservations: 15,
+    };
+    const res = await runReflectForConversation(deps, 'u1', 'c1');
+    const inserted = insertMany.mock.calls[0][0];
+    expect(inserted.map((r: { observation: string }) => r.observation)).toEqual(['valid']);
+    expect(res.count).toBe(1);
+  });
+
   it('truncates observations to maxObservations', async () => {
     const insertMany = vi.fn().mockResolvedValue(undefined);
     const big = { observations: Array.from({ length: 20 }, (_, i) => ({

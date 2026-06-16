@@ -19,7 +19,8 @@
  */
 
 import { z } from './zod-setup.js';
-import { RequiredQueryString, clampInt } from './documents.js';
+import { clampInt } from './documents.js';
+import { RequiredQueryString } from './common.js';
 
 /**
  * Phase D shared cursor + limit defaults used by all the Phase D

@@ -12,6 +12,14 @@ export interface AtomicMemoryProviderConfig {
   /** Request timeout in milliseconds. Defaults to 30_000. */
   timeout?: number;
   /**
+   * Permit `apiUrl` to target loopback / private / reserved IP literals.
+   * Defaults to `true` — the SDK routinely connects to local/self-hosted
+   * cores. Set `false` to harden against SSRF in hosted multi-tenant
+   * deployments; link-local / cloud-metadata addresses are blocked
+   * regardless. See `validateApiUrl`.
+   */
+  allowPrivateNetworks?: boolean;
+  /**
    * API version segment prepended to every core-facing route path.
    *
    * Core mounts its routers under `/v1/memories` and `/v1/agents` (see

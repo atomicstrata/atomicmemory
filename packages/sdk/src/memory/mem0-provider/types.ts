@@ -10,6 +10,12 @@ export interface Mem0ProviderConfig {
   apiUrl: string;
   /** Request timeout in milliseconds */
   timeout?: number;
+  /**
+   * Permit `apiUrl` to target loopback / private / reserved IP literals.
+   * Defaults to `true`; set `false` to harden against SSRF. Link-local /
+   * cloud-metadata addresses are blocked regardless. See `validateApiUrl`.
+   */
+  allowPrivateNetworks?: boolean;
   /** API key for hosted Mem0 instances */
   apiKey?: string;
   /** Whether to enable LLM inference on ingest (default true) */

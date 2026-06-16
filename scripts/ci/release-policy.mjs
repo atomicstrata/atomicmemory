@@ -4,7 +4,7 @@
  *
  * Policy:
  * - Publish workflows are repository_dispatch only; workflow_dispatch is
- *   forbidden so the only way to trigger one is the audited ops orchestration.
+ *   forbidden so the only way to trigger one is the audited release workflow.
  * - Publish workflows do not reference NPM_TOKEN; they MUST use
  *   `permissions: id-token: write` for npm Trusted Publishing.
  * - Every npm-published package's prepublishOnly invokes

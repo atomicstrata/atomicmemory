@@ -271,3 +271,37 @@ describe('storage routes — legacy user_id rejection (X-AtomicMemory-User-Id co
     expect(((await res.json()) as { error_code: string }).error_code).toBe('invalid_metadata_header');
   });
 });
+
+describe('storage routes — NUL byte in the base64 X-AtomicMemory-Metadata header', () => {
+  // base64 hides the NUL from the HTTP/request-boundary layer; it only
+  // materialises after decode + JSON.parse, so `validateArtifactMetadata` is the
+  // only place that can reject it. It must 400 (not 500 at the JSONB column).
+  const NUL = String.fromCharCode(0);
+  const payload = Buffer.from('x');
+
+  async function postManagedMetadata(decoded: Record<string, string>): Promise<globalThis.Response> {
+    const encoded = Buffer.from(JSON.stringify(decoded)).toString('base64');
+    return fetch(`${localFsHandle.baseUrl}/v1/storage/artifacts?mode=managed`, {
+      method: 'POST',
+      headers: {
+        ...authHeaderWithUser(USER_A),
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': String(payload.length),
+        'X-AtomicMemory-Metadata': encoded,
+      },
+      body: new Uint8Array(payload),
+    });
+  }
+
+  it('rejects a NUL in a metadata VALUE with 400 invalid_metadata_header', async () => {
+    const res = await postManagedMetadata({ k: `v${NUL}` });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error_code: string }).error_code).toBe('invalid_metadata_header');
+  });
+
+  it('rejects a NUL in a metadata KEY with 400 invalid_metadata_header', async () => {
+    const res = await postManagedMetadata({ [`k${NUL}`]: 'v' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error_code: string }).error_code).toBe('invalid_metadata_header');
+  });
+});
