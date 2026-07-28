@@ -102,6 +102,17 @@ export async function getReconciliationStatus(
   return { pending, enabled: config.deferredAudnEnabled };
 }
 
+/** Tally a single resolved AUDN action into the running result. */
+function tallyReconcileAction(result: ReconciliationResult, action: string): void {
+  switch (action) {
+    case 'NOOP': result.noops++; break;
+    case 'UPDATE': result.updates++; break;
+    case 'SUPERSEDE': result.supersedes++; break;
+    case 'DELETE': result.deletes++; break;
+    case 'ADD': result.adds++; break;
+  }
+}
+
 async function processReconciliationBatch(
   pool: pg.Pool,
   repo: MemoryStore,
@@ -113,21 +124,24 @@ async function processReconciliationBatch(
     supersedes: 0, deletes: 0, adds: 0, errors: 0, durationMs: 0,
   };
 
-  for (const memory of deferred) {
-    result.processed++;
-    try {
-      const action = await reconcileSingleMemory(pool, repo, memory);
-      result.resolved++;
-      switch (action) {
-        case 'NOOP': result.noops++; break;
-        case 'UPDATE': result.updates++; break;
-        case 'SUPERSEDE': result.supersedes++; break;
-        case 'DELETE': result.deletes++; break;
-        case 'ADD': result.adds++; break;
+  // Each deferred memory re-fetches its own candidates and is independent, so the
+  // per-memory LLM AUDN decisions run concurrently (capped) instead of serially —
+  // the reconcile pass is LLM-bound, so this is a ~Nx wall-clock win.
+  const concurrency = Math.max(1, config.deferredAudnConcurrency);
+  for (let i = 0; i < deferred.length; i += concurrency) {
+    const chunk = deferred.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(
+      chunk.map((memory) => reconcileSingleMemory(pool, repo, memory)),
+    );
+    for (const outcome of settled) {
+      result.processed++;
+      if (outcome.status === 'fulfilled') {
+        result.resolved++;
+        tallyReconcileAction(result, outcome.value);
+      } else {
+        result.errors++;
+        console.error('[deferred-audn] Error reconciling memory:', outcome.reason);
       }
-    } catch (err) {
-      result.errors++;
-      console.error(`[deferred-audn] Error reconciling memory ${memory.id}:`, err);
     }
   }
 

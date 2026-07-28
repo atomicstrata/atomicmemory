@@ -24,6 +24,7 @@ import type {
   MemoryServiceDeps,
 } from './memory-service-types.js';
 import type { ReflectionJobsRepository } from '../db/reflection-jobs-repository.js';
+import { recordCloudTraceOperation } from './cloud-trace-sync.js';
 
 /** Enqueue a reflection job for (userId, conversationId) when the feature gate is on. */
 async function maybeEnqueueReflectionJob(
@@ -86,6 +87,8 @@ function buildIngestResult(episodeId: string, factsCount: number, acc: IngestAcc
 }
 
 function finalizeIngestResult(
+  deps: MemoryServiceDeps,
+  ingestStart: number,
   episodeId: string,
   factsCount: number,
   acc: IngestAccumulator,
@@ -94,10 +97,30 @@ function finalizeIngestResult(
   traceCollector: IngestTraceCollector,
   traceMetadata: Parameters<IngestTraceCollector['finalize']>[0],
 ): IngestResult {
-  return {
+  const result = {
     ...buildIngestResult(episodeId, factsCount, acc, linksCreated, compositesCreated),
     ingestTraceId: traceCollector.finalize(traceMetadata),
   };
+  recordCloudTraceOperation(
+    deps.stores.pool,
+    deps.config.cloudTraceSync,
+    deps.config.cloudTraceSync?.instanceId,
+    {
+      operation: 'memory.ingest',
+      durationMs: performance.now() - ingestStart,
+      userId: traceMetadata.userId,
+      summary: {
+        operation_detail: `${traceMetadata.mode} ingest (${factsCount} fact(s))`,
+        result_count: acc.counters.stored + acc.counters.updated,
+        episode_id: episodeId,
+        memories_stored: acc.counters.stored,
+        memories_updated: acc.counters.updated,
+        memories_deleted: acc.counters.deleted,
+      },
+      evidence: { mode: traceMetadata.mode, source_site: traceMetadata.sourceSite },
+    },
+  );
+  return result;
 }
 
 /** Full consensus-based ingest pipeline. */
@@ -186,6 +209,8 @@ export async function performIngest(
   await maybeEnqueueReflectionJob(deps.reflectionJobs, deps.reflectEnabled, userId, episodeId);
   console.log(`[timing] ingest.total: ${(performance.now() - ingestStart).toFixed(1)}ms (${facts.length} facts, ${postWrite.compositesCreated} composites, topic=${postWrite.topicAbstractionApplied})`);
   return finalizeIngestResult(
+    deps,
+    ingestStart,
     episodeId,
     facts.length,
     acc,
@@ -236,6 +261,8 @@ export async function performQuickIngest(
 
   console.log(`[timing] quick-ingest.total: ${(performance.now() - ingestStart).toFixed(1)}ms (${extractedFacts.length} facts, ${acc.counters.stored} stored, ${acc.counters.skipped} skipped)`);
   return finalizeIngestResult(
+    deps,
+    ingestStart,
     episodeId,
     extractedFacts.length,
     acc,
@@ -286,6 +313,7 @@ export async function performStoreVerbatim(
   metadata?: MemoryMetadata,
   sessionId?: string,
 ): Promise<IngestResult> {
+  const ingestStart = performance.now();
   const episodeId = await deps.stores.episode.storeEpisode({ userId, content, sourceSite, sourceUrl, sessionId });
   const embedding = await embedText(content);
   const writeSecurity = assessWriteSecurity(content, sourceSite, deps.config);
@@ -329,7 +357,7 @@ export async function performStoreVerbatim(
     memoryId,
   });
 
-  return {
+  const result: IngestResult = {
     episodeId,
     factsExtracted: 1,
     memoriesStored: isUpdate ? 0 : 1,
@@ -343,6 +371,23 @@ export async function performStoreVerbatim(
     compositesCreated: 0,
     ingestTraceId: traceCollector.finalize({ mode: 'verbatim', userId, sourceSite, sourceUrl, episodeId, factsExtracted: 1 }),
   };
+  recordCloudTraceOperation(
+    deps.stores.pool,
+    deps.config.cloudTraceSync,
+    deps.config.cloudTraceSync?.instanceId,
+    {
+      operation: isUpdate ? 'memory.update' : 'memory.ingest',
+      durationMs: performance.now() - ingestStart,
+      userId,
+      summary: {
+        content_len: content.length,
+        new_memory_id: memoryId,
+        previous_memory_id: isUpdate ? memoryId : undefined,
+      },
+      evidence: { mode: 'verbatim', source_site: sourceSite },
+    },
+  );
+  return result;
 }
 
 /**
@@ -462,6 +507,8 @@ export async function performWorkspaceIngest(
 
   console.log(`[timing] ws-ingest.total: ${(performance.now() - ingestStart).toFixed(1)}ms (${facts.length} facts, workspace=${workspace.workspaceId})`);
   return finalizeIngestResult(
+    deps,
+    ingestStart,
     episodeId,
     facts.length,
     acc,

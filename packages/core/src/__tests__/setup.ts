@@ -15,6 +15,11 @@ process.env.CORE_API_KEY ??= 'test-core-api-key';
 process.env.STORAGE_KEY_HMAC_SECRET ??= '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 process.env.DATABASE_URL ??= 'postgresql://atomicmem:atomicmem@localhost:5433/atomicmem_test';
 process.env.EMBEDDING_DIMENSIONS ??= '1536';
+// Contributor shells may export EMBEDDING_PROVIDER=stub for other packages;
+// core tests require a real provider name at config load time.
+if (!process.env.EMBEDDING_PROVIDER || process.env.EMBEDDING_PROVIDER === 'stub') {
+  process.env.EMBEDDING_PROVIDER = 'openai';
+}
 process.env.RAW_STORAGE_DEPLOYMENT_ENV ??= 'local';
 // Mirror .env.test.example for route seam tests when no local env file exists;
 // production config still defaults this flag to false in src/config.ts.

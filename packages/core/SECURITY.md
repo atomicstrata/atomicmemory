@@ -106,9 +106,52 @@ Non-boolean values for `TRUSTED_PROXY_MODE` are rejected at startup in all
 envs. To run a hosted deployment without the guard you must change the
 deployment env, not silently disable the guard.
 
+### Cloud JWT verification (optional, connected-local)
+
+When `CLOUD_JWKS_URL`, `CLOUD_JWT_ISSUER`, and `CLOUD_JWT_AUDIENCE` are all set,
+core accepts short-lived RS256 JWTs minted by Atomic Strata Cloud (instead of
+`CORE_API_KEY` unless fallback is explicitly enabled). Verified claims inject
+`X-AtomicMemory-Asserted-User` from `memory_user_id` (not `sub`) and workspace
+from `project_id`. When a request carries wire `user_id` (body, query, or
+`X-AtomicMemory-User-Id`), it must match the token's `memory_user_id` or the
+request fails closed with 403. Routers that parse JSON after auth (for example
+`/v1/documents`) re-check this binding once the body is available. JWT-scoped
+mutating routes without an explicit `user_id` default to the asserted identity
+(for example `POST /v1/memories/reconcile` never runs a global reconcile for a
+JWT caller). When `CLOUD_PROJECT_ID` is set, token `project_id` must match it;
+when omitted, Core trusts the token's own `project_id` claim (single-tenant
+local posture). The JWKS trio must be set together; partial configuration fails
+startup.
+
+`CLOUD_JWT_STATIC_KEY_FALLBACK=true` preserves the legacy `CORE_API_KEY`
+acceptance path for non-JWT bearer tokens on connected-local deployments. When
+false or unset, non-JWT bearer tokens are rejected once Cloud JWT verification
+is enabled.
+
+Core prefetches JWKS at startup; JWT auth remains degraded until keys load.
+
+### Connected-local local access key (Docker)
+
+For self-hosted Docker (`RAW_STORAGE_DEPLOYMENT_ENV=local`), the entrypoint
+generates a random `CORE_API_KEY` on first boot when the env var is unset,
+persists it at `/var/lib/atomicmemory/state/core-api-key` (mode `600`), and
+reuses it on restart when the state volume is mounted. Operators may override
+with `-e CORE_API_KEY=…` for pinned secrets. Treat the state file like a
+credential: restrict volume access, never log or commit it, and rotate by
+deleting the state file (or volume) and restarting Core.
+
 ### Deferred (not implemented)
 
 Per-user tokens / a multi-tenant auth layer in core (so a leaked credential
 compromises one user instead of all) are a larger future change and are
 **out of scope** here. The current contract assumes a trusted proxy in front
 of core for multi-user deployments.
+
+## Outbound Cloud Trace Sync
+
+When `CLOUD_TRACE_SYNC_ENABLED=true`, Core enqueues **redacted operation
+metadata** (counts, ids, durations) to a local Postgres outbox and uploads
+it to the configured Cloud observability endpoint. Envelopes **must not**
+carry verbatim memory text, search queries, or fact content — only
+allowlisted summary fields pass the outbound sanitizer. Treat the Cloud API
+key (`amc_*`) like any other deployment secret.

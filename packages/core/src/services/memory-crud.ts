@@ -21,6 +21,7 @@ import {
   markCleanupFailedAndSyncArtifact,
   markCleanupSuccessAndSyncArtifact,
 } from '../db/raw-doc-artifact-sync.js';
+import { recordCloudTraceOperation } from './cloud-trace-sync.js';
 
 export interface ClaimSlotBackfillResult {
   scanned: number;
@@ -77,12 +78,28 @@ export async function expandMemoriesInWorkspace(
 }
 
 export async function deleteMemory(deps: MemoryServiceDeps, id: string, userId: string) {
+  const existing = await deps.stores.memory.getMemory(id, userId);
+  if (!existing) return;
   const version = await deps.stores.claim.getClaimVersionByMemoryId(userId, id);
   const target = version ? { claimId: version.claim_id, versionId: version.id } : null;
   await deps.stores.memory.softDeleteMemory(userId, id);
   if (config.auditLoggingEnabled) {
     emitAuditEvent('memory:delete', userId, {}, { memoryId: id });
   }
+  recordCloudTraceOperation(
+    deps.stores.pool,
+    deps.config.cloudTraceSync,
+    deps.config.cloudTraceSync?.instanceId,
+    {
+      operation: 'memory.delete',
+      durationMs: 0,
+      userId,
+      summary: {
+        operation_detail: 'memory.delete',
+        previous_memory_id: id,
+      },
+    },
+  );
   if (!target) return;
   await deps.stores.claim.supersedeClaimVersion(userId, target.versionId, null);
   await deps.stores.claim.invalidateClaim(userId, target.claimId);

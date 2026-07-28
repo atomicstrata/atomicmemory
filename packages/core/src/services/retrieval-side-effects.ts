@@ -12,6 +12,7 @@
 import type { SearchResult } from '../db/repository-types.js';
 import type { MemoryServiceDeps } from './memory-service-types.js';
 import { emitAuditEvent } from './audit-events.js';
+import { recordCloudTraceOperation } from './cloud-trace-sync.js';
 
 /** Run post-search side effects. Swallows per-memory touch failures. */
 export function recordSearchSideEffects(
@@ -34,4 +35,19 @@ export function recordSearchSideEffects(
       topScore: outputMemories[0]?.score ?? 0,
     }, { sourceSite });
   }
+  recordCloudTraceOperation(
+    deps.stores.pool,
+    deps.config.cloudTraceSync,
+    deps.config.cloudTraceSync?.instanceId,
+    {
+      operation: 'memory.search',
+      durationMs: 0,
+      userId,
+      summary: {
+        query_len: query.length,
+        result_count: outputMemories.length,
+      },
+      evidence: { source_site: sourceSite },
+    },
+  );
 }

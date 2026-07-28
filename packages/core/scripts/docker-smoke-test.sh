@@ -26,6 +26,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+USER_SUPPLIED_CORE_API_KEY="${CORE_API_KEY:-}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-}"
 COMPOSE_BASE_FILE="${COMPOSE_BASE_FILE:-docker-compose.yml}"
 APP_PORT="${APP_PORT:-}"
@@ -34,6 +35,7 @@ SMOKE_ENV_FILE="$PROJECT_DIR/.env.docker-smoke-test"
 ENV_FILE_CREATED_BY_SCRIPT=0
 SMOKE_CORE_API_KEY="test-core-api-key-do-not-leak"
 SMOKE_STORAGE_KEY_HMAC_SECRET="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+CORE_STATE_KEY_PATH="/var/lib/atomicmemory/state/core-api-key"
 HEALTH_TIMEOUT=90
 HEALTH_INTERVAL=2
 
@@ -123,13 +125,21 @@ fi
 
 if [[ -z "${ENV_FILE:-}" && ! -f "$PROJECT_DIR/.env" ]]; then
   log "Creating stub smoke env file (compose env_file requires one)"
-  cat > "$SMOKE_ENV_FILE" <<EOF
-CORE_API_KEY=$SMOKE_CORE_API_KEY
+  if [[ -n "${CORE_API_KEY:-}" ]]; then
+    cat > "$SMOKE_ENV_FILE" <<EOF
+CORE_API_KEY=$CORE_API_KEY
+OPENAI_API_KEY=sk-smoke-test-dummy
 STORAGE_KEY_HMAC_SECRET=$SMOKE_STORAGE_KEY_HMAC_SECRET
 RAW_STORAGE_DEPLOYMENT_ENV=local
 EOF
+  else
+    cat > "$SMOKE_ENV_FILE" <<EOF
+OPENAI_API_KEY=sk-smoke-test-dummy
+STORAGE_KEY_HMAC_SECRET=$SMOKE_STORAGE_KEY_HMAC_SECRET
+RAW_STORAGE_DEPLOYMENT_ENV=local
+EOF
+  fi
   export ENV_FILE="$SMOKE_ENV_FILE"
-  export CORE_API_KEY="${CORE_API_KEY:-$SMOKE_CORE_API_KEY}"
   ENV_FILE_CREATED_BY_SCRIPT=1
 fi
 
@@ -173,13 +183,66 @@ CORE_API_KEY="${CORE_API_KEY:-}"
 if [[ -z "$CORE_API_KEY" ]]; then
   core_env_file="${ENV_FILE:-$PROJECT_DIR/.env}"
   if [[ -f "$core_env_file" ]]; then
-    CORE_API_KEY="$(grep -E '^CORE_API_KEY=' "$core_env_file" | tail -1 | cut -d= -f2-)"
+    CORE_API_KEY="$(grep -E '^CORE_API_KEY=' "$core_env_file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
   fi
+fi
+if [[ -z "$CORE_API_KEY" ]]; then
+  log "No CORE_API_KEY in env — reading entrypoint-generated key from container"
+  CORE_API_KEY="$(docker compose -p "$COMPOSE_PROJECT" exec -T app \
+    cat "$CORE_STATE_KEY_PATH" 2>/dev/null | tr -d '[:space:]')"
 fi
 if [[ -z "$CORE_API_KEY" ]]; then
   fail "CORE_API_KEY is required for authenticated /v1 smoke checks"
   exit 1
 fi
+AUTH_HEADER=("Authorization: Bearer ${CORE_API_KEY}")
+
+saved_core_api_key="$CORE_API_KEY"
+if [[ -n "${USER_SUPPLIED_CORE_API_KEY}" ]]; then
+  log "Test: explicit CORE_API_KEY override persisted to state volume"
+  state_key="$(docker compose -p "$COMPOSE_PROJECT" exec -T app \
+    cat "$CORE_STATE_KEY_PATH" 2>/dev/null | tr -d '[:space:]')"
+  assert_ok "Explicit CORE_API_KEY override written to state volume" \
+    '[ "$state_key" = "$saved_core_api_key" ]'
+
+  log "Test: explicit CORE_API_KEY override survives recreate without env"
+  if (( ENV_FILE_CREATED_BY_SCRIPT == 1 )); then
+    cat > "$SMOKE_ENV_FILE" <<EOF
+OPENAI_API_KEY=sk-smoke-test-dummy
+STORAGE_KEY_HMAC_SECRET=$SMOKE_STORAGE_KEY_HMAC_SECRET
+RAW_STORAGE_DEPLOYMENT_ENV=local
+EOF
+  fi
+else
+  log "Test: entrypoint-generated CORE_API_KEY persists across app recreate"
+fi
+
+docker compose -p "$COMPOSE_PROJECT" up -d --force-recreate app >/dev/null
+recreate_timeout=180
+elapsed=0
+while true; do
+  if curl -sf "http://localhost:${APP_PORT}/health" >/dev/null 2>&1; then
+    break
+  fi
+  if [[ $elapsed -ge $recreate_timeout ]]; then
+    fail "App did not become healthy after recreate within ${recreate_timeout}s"
+    warn "--- app container logs (recreate) ---"
+    docker compose -p "$COMPOSE_PROJECT" logs app 2>&1 | tail -40
+    exit 1
+  fi
+  sleep "$HEALTH_INTERVAL"
+  elapsed=$((elapsed + HEALTH_INTERVAL))
+done
+recreated_key="$(docker compose -p "$COMPOSE_PROJECT" exec -T app \
+  cat "$CORE_STATE_KEY_PATH" 2>/dev/null | tr -d '[:space:]')"
+if [[ -n "${USER_SUPPLIED_CORE_API_KEY}" ]]; then
+  assert_ok "Explicit CORE_API_KEY override unchanged after recreate without env" \
+    '[ "$recreated_key" = "$saved_core_api_key" ]'
+else
+  assert_ok "CORE_API_KEY unchanged after container recreate (state volume)" \
+    '[ "$recreated_key" = "$saved_core_api_key" ]'
+fi
+CORE_API_KEY="$recreated_key"
 AUTH_HEADER=("Authorization: Bearer ${CORE_API_KEY}")
 
 # --- Test 1: Root health ---

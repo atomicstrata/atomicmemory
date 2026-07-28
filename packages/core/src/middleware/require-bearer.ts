@@ -22,6 +22,19 @@ import type { Request, RequestHandler, Response, NextFunction } from 'express';
 
 const BEARER_PREFIX = 'Bearer ';
 
+/** Read the bearer token from `Authorization`, or null when missing/malformed. */
+export function readBearerToken(req: Request): string | null {
+  const raw = req.headers['authorization'];
+  if (typeof raw !== 'string' || !raw.startsWith(BEARER_PREFIX)) return null;
+  const token = raw.slice(BEARER_PREFIX.length).trim();
+  return token.length > 0 ? token : null;
+}
+
+/** Standard 401 envelope for bearer/JWT auth failures. */
+export function respondUnauthenticated(res: Response, reason: string): void {
+  res.status(401).json({ error_code: 'unauthenticated', error: reason });
+}
+
 /**
  * Build a middleware that admits a request only when its
  * `Authorization` header carries the configured shared key. The
@@ -35,7 +48,7 @@ export function requireBearer(expectedApiKey: string): RequestHandler {
   }
   const expectedBuffer = Buffer.from(expectedApiKey, 'utf8');
   return (req: Request, res: Response, next: NextFunction): void => {
-    const headerValue = readAuthorizationHeader(req);
+    const headerValue = readBearerToken(req);
     if (headerValue === null) {
       respondUnauthenticated(res, 'missing or malformed Authorization header');
       return;
@@ -51,15 +64,4 @@ export function requireBearer(expectedApiKey: string): RequestHandler {
     }
     next();
   };
-}
-
-function readAuthorizationHeader(req: Request): string | null {
-  const raw = req.headers['authorization'];
-  if (typeof raw !== 'string' || !raw.startsWith(BEARER_PREFIX)) return null;
-  const token = raw.slice(BEARER_PREFIX.length).trim();
-  return token.length > 0 ? token : null;
-}
-
-function respondUnauthenticated(res: Response, reason: string): void {
-  res.status(401).json({ error_code: 'unauthenticated', error: reason });
 }

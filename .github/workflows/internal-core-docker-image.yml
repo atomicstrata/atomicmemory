@@ -1,0 +1,275 @@
+name: Internal Core Docker Image
+
+# Internal-only convenience lane. Builds packages/core/Dockerfile from any ref
+# of atomicmemory-internal and pushes it to the PRIVATE package
+# ghcr.io/atomicstrata/atomicmemory-core-internal for internal testing.
+#
+# This is NOT the release pipeline. The official image
+# ghcr.io/atomicstrata/atomicmemory-core is published exclusively by
+# publish-core-docker.yml running on the public repo, anchored to the
+# published @atomicmemory/core npm package. Nothing here may ever push to the
+# official package name, and the tag guard below refuses ref-derived tags that
+# are release-shaped (semver with or without prerelease/build suffix) or that
+# collide with a reserved alias, so an internal build can never masquerade as
+# a release. Builds of main additionally publish the curated floating aliases
+# `internal-latest` and `latest`; both live only on the private internal
+# package and always point at the same digest.
+#
+# Naming contract with release-policy: scripts/ci/release-policy.mjs forbids
+# workflow_dispatch on every `.github/workflows/publish-*.yml` because those
+# are release lanes that must only be triggerable by the audited
+# repository_dispatch release flow. This workflow is deliberately named
+# OUTSIDE that prefix: it is operator-dispatchable by design and never touches
+# release artifacts or release tag namespaces. If this file is ever renamed to
+# publish-*.yml, release-policy will (correctly) fail it.
+#
+# Repo guard: like sync-to-private.yml, this file is mirrored into the public
+# repo by the public export, so the job runs ONLY on
+# atomicstrata/atomicmemory-internal. Keep this file free of anything
+# confidential; it is public.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA of atomicmemory-internal to build"
+        required: false
+        default: main
+        type: string
+      platforms:
+        description: "Comma-separated buildx platforms"
+        required: false
+        default: linux/amd64,linux/arm64
+        type: string
+  push:
+    branches:
+      - main
+    # Mirrors the core-image-affecting classification used by ci.yml's
+    # core-docker-smoke job (packages/core + root build-context inputs),
+    # plus this workflow itself.
+    paths:
+      - "packages/core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/internal-core-docker-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: internal-core-docker-image-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE_NAME: ghcr.io/atomicstrata/atomicmemory-core-internal
+  DEFAULT_PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  publish:
+    name: build and push internal core image
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      # The core image is several GB per platform and the verify step loads
+      # each platform's image into dockerd on top of the buildx cache; the
+      # standard runner's free disk is not enough (the first run died on
+      # ENOSPC six minutes in). Reclaim the runner's preinstalled bloat
+      # before building.
+      - name: Free runner disk space
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force >/dev/null
+          df -h /
+
+      - name: Compute image tags
+        id: tags
+        env:
+          RAW_REF: ${{ inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          sha="$(git rev-parse HEAD)"
+          short_sha="${sha:0:7}"
+          core_version="$(node -p "require('./packages/core/package.json').version")"
+
+          # Slugify the ref into a valid docker tag: lowercase, restricted
+          # charset, no leading separator, bounded length.
+          slug="$(tr '[:upper:]' '[:lower:]' <<<"${RAW_REF}" | sed -e 's![^a-z0-9._-]!-!g' -e 's!^[.-]*!!' | cut -c1-100)"
+
+          tags=("sha-${short_sha}")
+
+          # Both guards below apply to the REF-DERIVED slug only. The curated
+          # aliases added afterwards are hardcoded and intentional; the slug is
+          # whatever a branch happens to be named, so it is the only untrusted
+          # tag source and must fail closed.
+          #
+          # Skip the slug tag when the ref was itself a commit sha; sha-<short>
+          # already covers it.
+          if [[ -n "${slug}" && ! "${slug}" =~ ^[0-9a-f]{7,40}$ ]]; then
+            # Reserved namespaces: a branch named latest or internal-latest
+            # could hijack a floating main alias, and sha-*/verify-* could
+            # overwrite another commit's tag or a verify scratch tag.
+            if [[ "${slug}" == "latest" || "${slug}" == "internal-latest" || "${slug}" =~ ^(sha|verify)- ]]; then
+              echo "::error::Ref slug '${slug}' collides with a reserved tag namespace (latest, internal-latest, sha-*, verify-*). Rename the branch or dispatch with the commit sha instead."
+              exit 1
+            fi
+            # Release shapes: bare majors (1 / v2, the official floating-alias
+            # shape), bare semver (1.2 / 1.2.3 / v1.2.3), and semver with any
+            # prerelease or build suffix (1.2.3-rc.1, v1.2.3-beta.2, 1.2.3+abc).
+            if [[ "${slug}" =~ ^v?[0-9]+$ || "${slug}" =~ ^v?[0-9]+(\.[0-9]+){1,2}([-+.].*)?$ ]]; then
+              echo "::error::Ref slug '${slug}' looks like a release tag; internal builds must not publish semver-shaped tags. Rename the ref or dispatch with a different ref."
+              exit 1
+            fi
+            tags+=("${slug}")
+          fi
+
+          # Curated floating aliases for main. `latest` exists so a bare
+          # `docker pull ${IMAGE_NAME}` (which resolves to :latest) works; it
+          # is published only on this PRIVATE internal package and always
+          # points at the same digest as internal-latest. The official
+          # ghcr.io/atomicstrata/atomicmemory-core:latest is published solely
+          # by publish-core-docker.yml on the public repo and is untouched.
+          if [[ "${slug}" == "main" ]]; then
+            tags+=("internal-latest" "latest")
+          fi
+
+          tag_args=()
+          refs=()
+          for tag in "${tags[@]}"; do
+            tag_args+=("--tag" "${IMAGE_NAME}:${tag}")
+            refs+=("${IMAGE_NAME}:${tag}")
+          done
+
+          {
+            echo "sha=${sha}"
+            echo "short_sha=${short_sha}"
+            echo "core_version=${core_version}"
+            echo "tag_args=${tag_args[*]}"
+            echo "refs=${refs[*]}"
+          } >>"${GITHUB_OUTPUT}"
+
+          echo "Building @atomicmemory/core ${core_version} at ${sha}"
+          printf 'Will push:\n'
+          printf '  - %s\n' "${refs[@]}"
+
+      - name: Login to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      # Dynamic values reach the run scripts below ONLY via step env, never
+      # by interpolating ${{ ... }} into shell text: a dispatch input or a
+      # hostile branch's package.json version could otherwise inject shell.
+      # release-policy enforces this (no ${{ in run scripts of this file).
+      - name: Build and verify every requested platform
+        # Every platform that will be pushed is first built locally and
+        # verified (deployed package version readable via node). No platform
+        # selection can bypass verification; non-native platforms run under
+        # QEMU, and their build layers are reused by the push step via the
+        # shared buildx cache.
+        env:
+          PLATFORMS: ${{ inputs.platforms || env.DEFAULT_PLATFORMS }}
+          SHORT_SHA: ${{ steps.tags.outputs.short_sha }}
+          CORE_VERSION: ${{ steps.tags.outputs.core_version }}
+        run: |
+          set -euo pipefail
+
+          IFS=',' read -r -a platforms <<<"${PLATFORMS}"
+          for platform in "${platforms[@]}"; do
+            platform="$(tr -d '[:space:]' <<<"${platform}")"
+            verify_suffix="verify-${SHORT_SHA}-${platform//\//-}"
+
+            docker buildx build \
+              --platform "${platform}" \
+              --file packages/core/Dockerfile \
+              --load \
+              --tag "${IMAGE_NAME}:${verify_suffix}" \
+              .
+
+            image_version="$(docker run --rm --platform "${platform}" --entrypoint node "${IMAGE_NAME}:${verify_suffix}" -p "require('./package.json').version")"
+            if [[ "${image_version}" != "${CORE_VERSION}" ]]; then
+              echo "::error::${platform} image package version is ${image_version}, expected ${CORE_VERSION}"
+              exit 1
+            fi
+            echo "${platform}: verified @atomicmemory/core ${image_version}"
+
+            # Free dockerd storage before the next platform loads; the push
+            # step rebuilds from the (kept) buildx cache, not from dockerd.
+            docker image rm --force "${IMAGE_NAME}:${verify_suffix}" >/dev/null
+          done
+
+      - name: Build and push internal image
+        env:
+          PLATFORMS: ${{ inputs.platforms || env.DEFAULT_PLATFORMS }}
+          TAG_ARGS: ${{ steps.tags.outputs.tag_args }}
+          GIT_SHA: ${{ steps.tags.outputs.sha }}
+          CORE_VERSION: ${{ steps.tags.outputs.core_version }}
+        run: |
+          set -euo pipefail
+
+          read -r -a tag_args <<<"${TAG_ARGS}"
+
+          docker buildx build \
+            --platform "${PLATFORMS}" \
+            --file packages/core/Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GIT_SHA}" \
+            --label "org.opencontainers.image.version=${CORE_VERSION}" \
+            --label "org.opencontainers.image.title=@atomicmemory/core (internal test build)" \
+            "${tag_args[@]}" \
+            --push \
+            .
+
+      - name: Report published image
+        env:
+          GIT_SHA: ${{ steps.tags.outputs.sha }}
+          SHORT_SHA: ${{ steps.tags.outputs.short_sha }}
+          CORE_VERSION: ${{ steps.tags.outputs.core_version }}
+          REFS: ${{ steps.tags.outputs.refs }}
+        run: |
+          set -euo pipefail
+
+          digest="$(docker buildx imagetools inspect "${IMAGE_NAME}:sha-${SHORT_SHA}" --format '{{ json .Manifest }}' | jq -r '.digest')"
+
+          {
+            echo "## Internal core image published"
+            echo ""
+            echo "- revision: \`${GIT_SHA}\`"
+            echo "- package version: \`${CORE_VERSION}\`"
+            echo "- digest-pinned ref (immutable, prefer this for sharing): \`${IMAGE_NAME}@${digest}\`"
+            echo "- tags (mutable, a rebuild of the same ref moves them):"
+            for image_ref in ${REFS}; do
+              echo "  - \`${image_ref}\`"
+            done
+            echo ""
+            echo "Ops integration-smoke usage (from the smoke harness directory, after docker login ghcr.io):"
+            echo ""
+            echo '```'
+            echo "CORE_SOURCE_MODE=image \\"
+            echo "CORE_IMAGE_REF=${IMAGE_NAME}@${digest} \\"
+            echo "CORE_PACKAGE_VERSION=${CORE_VERSION} \\"
+            echo "  bash ci/run-required.sh"
+            echo '```'
+          } >>"${GITHUB_STEP_SUMMARY}"

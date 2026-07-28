@@ -65,6 +65,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      # release-policy.mjs parses workflow YAML with the root `yaml`
+      # devDependency, so this job needs an install (it previously ran on a
+      # bare checkout).
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run release-policy guardrails
         run: node scripts/ci/release-policy.mjs
       - name: Run release-policy unit tests
