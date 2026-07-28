@@ -10,6 +10,7 @@ import { type AUDNDecision } from './extraction.js';
 import { emitAuditEvent } from './audit-events.js';
 import { recordContradictionLesson } from './lesson-service.js';
 import { emitLineageEvent } from './memory-lineage.js';
+import { recordCloudTraceOperation } from './cloud-trace-sync.js';
 import { applyOpinionSignal, audnActionToOpinionSignal } from './memory-network.js';
 import { buildAtomicFactProjection, buildForesightProjections } from './memcell-projection.js';
 import {
@@ -241,6 +242,22 @@ async function updateCanonicalFact(
     throw new Error(`AUDN UPDATE failed: missing successor canonical object for "${target.memoryId}"`);
   }
   await deps.stores.memory.updateMemoryMetadata(userId, target.memoryId, { cmo_id: lineage.cmoId });
+  recordCloudTraceOperation(
+    deps.stores.pool,
+    deps.config.cloudTraceSync,
+    deps.config.cloudTraceSync?.instanceId,
+    {
+      operation: 'memory.update',
+      durationMs: 0,
+      userId,
+      summary: {
+        fact_len: fact.fact.length,
+        previous_memory_id: target.memoryId,
+        new_memory_id: target.memoryId,
+      },
+      evidence: { source: 'audn-update' },
+    },
+  );
   return { outcome: 'updated', memoryId: target.memoryId };
 }
 

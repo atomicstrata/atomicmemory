@@ -186,9 +186,29 @@ describe('deployment configuration', () => {
     it('entrypoint provides local Docker auth and storage defaults', () => {
       const entrypoint = readFileSync(resolve(ROOT, 'scripts/docker-entrypoint.sh'), 'utf-8');
 
-      expect(entrypoint).toContain('LOCAL_DOCKER_CORE_API_KEY="local-dev-key"');
+      expect(entrypoint).toContain('CORE_API_KEY_FILE');
+      expect(entrypoint).toContain('generate_core_api_key');
+      expect(entrypoint).toContain('persist_core_api_key');
+      expect(entrypoint).toContain('is_hosted_deployment_env');
+      expect(entrypoint).toContain('apply_connected_local_defaults');
+      expect(entrypoint).toContain('CLOUD_ENV');
       expect(entrypoint).toContain('LOCAL_DOCKER_STORAGE_KEY_HMAC_SECRET=');
-      expect(entrypoint).toContain('RAW_STORAGE_DEPLOYMENT_ENV=production');
+      expect(entrypoint).toContain('production|staging');
+      expect(entrypoint).toContain('CORE_API_KEY is required');
+      expect(entrypoint).toContain('CORE_API_KEY from environment and persisted to $CORE_API_KEY_FILE');
+      expect(entrypoint).toContain('CORE_API_KEY from environment (hosted — not persisted locally)');
+      expect(entrypoint).toContain('CORE_API_KEY loaded from $CORE_API_KEY_FILE');
+      expect(entrypoint).toContain('CORE_API_KEY generated and persisted');
+    });
+
+    it('show-local-core-key helper reads persisted state volume path', () => {
+      const helper = readFileSync(resolve(ROOT, 'scripts/show-local-core-key.sh'), 'utf-8');
+      expect(helper).toContain('/var/lib/atomicmemory/state/core-api-key');
+    });
+
+    it('compose mounts persistent Core state for generated local API keys', () => {
+      const compose = readFileSync(resolve(ROOT, 'docker-compose.yml'), 'utf-8');
+      expect(compose).toContain('corestate:/var/lib/atomicmemory/state');
     });
 
     it('creates non-root user', () => {

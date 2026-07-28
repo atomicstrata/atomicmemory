@@ -24,6 +24,9 @@ importers:
       turbo:
         specifier: 2.9.14
         version: 2.9.14
+      yaml:
+        specifier: ^2.8.3
+        version: 2.9.0
 
   adapters/langchain:
     dependencies:
@@ -189,6 +192,9 @@ importers:
       express:
         specifier: ^5.1.0
         version: 5.2.1
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       multiformats:
         specifier: ^13.4.1
         version: 13.4.2

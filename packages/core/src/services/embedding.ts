@@ -257,9 +257,13 @@ type TransformersPipeline = (texts: string | string[], options: Record<string, u
 
 async function initTransformersPipeline(model: string): Promise<TransformersPipeline> {
   const { pipeline } = await import('@huggingface/transformers');
-  console.log(`[embedding] Loading local WASM model: ${model}`);
+  // EMBEDDING_DTYPE lets larger local models (e.g. bge-base) load as quantized
+  // (q8) instead of fp32 — fp32 of a big model is a ~400MB download + slow WASM
+  // init that can hang. Small models (MiniLM) stay fine on the fp32 default.
+  const dtype = (process.env.EMBEDDING_DTYPE ?? 'fp32') as 'fp32' | 'fp16' | 'q8' | 'q4';
+  console.log(`[embedding] Loading local model: ${model} (dtype=${dtype})`);
   const start = performance.now();
-  const extractor = await pipeline('feature-extraction', model, { dtype: 'fp32' });
+  const extractor = await pipeline('feature-extraction', model, { dtype });
   console.log(`[embedding] Model loaded in ${(performance.now() - start).toFixed(0)}ms`);
   return extractor as unknown as TransformersPipeline;
 }

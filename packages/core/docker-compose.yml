@@ -33,6 +33,8 @@ services:
       - ${ENV_FILE:-.env}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - corestate:/var/lib/atomicmemory/state
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,3 +52,4 @@ services:
 
 volumes:
   pgdata:
+  corestate:

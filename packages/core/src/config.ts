@@ -22,6 +22,11 @@ import {
   parseFilecoinProviderConfig,
   type FilecoinProviderConfig,
 } from './storage/providers/filecoin/config.js';
+import { parseCloudJwtConfig } from './cloud/jwt-config.js';
+import { parseCloudTraceSyncConfig } from './cloud/trace-sync-config.js';
+import { optionalEnv, parsePositiveIntEnv, parseStrictBoolEnv } from './cloud/env.js';
+import type { CloudJwtConfig, CloudTraceSyncConfig } from './cloud/types.js';
+export type { CloudJwtConfig, CloudTraceSyncConfig } from './cloud/types.js';
 
 export type EmbeddingProviderName = 'openai' | 'ollama' | 'openai-compatible' | 'transformers' | 'voyage';
 export type LLMProviderName = EmbeddingProviderName | 'groq' | 'anthropic' | 'google-genai' | 'claude-code' | 'codex';
@@ -75,6 +80,12 @@ export interface RuntimeConfig {
    * restarting the server with a new value.
    */
   coreApiKey: string;
+  /**
+   * Optional Cloud-issued JWT verification (JWKS). When set, `/v1/*` accepts
+   * either `CORE_API_KEY` or a valid RS256 JWT with `aud` matching
+   * `CLOUD_JWT_AUDIENCE`. All three env vars must be set together.
+   */
+  cloudJwt: CloudJwtConfig | null;
   /**
    * Trusted-proxy identity guard. When `true`, every
    * user-scoped request carrying a `user_id` MUST also carry the same
@@ -168,6 +179,8 @@ export interface RuntimeConfig {
   retrievalTraceEnabled: boolean;
   ingestTraceDir: string;
   ingestTraceEnabled: boolean;
+  /** Opt-in OSS Core → Cloud trace upload profile. Null when disabled. */
+  cloudTraceSync: CloudTraceSyncConfig | null;
   extractionCacheEnabled: boolean;
   extractionCacheDir: string;
   embeddingCacheEnabled: boolean;
@@ -225,6 +238,9 @@ export interface RuntimeConfig {
   temporalQueryConstraintBoost: number;
   deferredAudnEnabled: boolean;
   deferredAudnBatchSize: number;
+  deferredAudnConcurrency: number;
+  deferredAudnAutoReconcile: boolean;
+  deferredAudnReconcileIntervalMs: number;
   compositeGroupingEnabled: boolean;
   compositeMinClusterSize: number;
   compositeMaxClusterSize: number;
@@ -720,10 +736,6 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function optionalEnv(name: string): string | undefined {
-  return process.env[name] || undefined;
-}
-
 function parseEmbeddingProvider(
   value: string | undefined,
   fallback: EmbeddingProviderName,
@@ -800,31 +812,6 @@ function parseRegexEnv(name: string): string | undefined {
   } catch {
     throw new Error(`${name} must be a valid JavaScript regular expression`);
   }
-}
-
-function parsePositiveIntEnv(name: string, fallback: number): number {
-  const raw = optionalEnv(name);
-  if (!raw) return fallback;
-  const parsed = parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  return parsed;
-}
-
-/**
- * Strict boolean env parser. Unlike the widespread `(env ?? 'false') ===
- * 'true'` idiom, this rejects any value other than the literal `'true'` /
- * `'false'` rather than silently treating a typo (e.g. `TRUSTED_PROXY_MODE=
- * ture`) as `false`. Used for security-relevant gates where a silent
- * mis-parse would disable a guard. Fails closed at startup.
- */
-function parseStrictBoolEnv(name: string, fallback: boolean): boolean {
-  const raw = optionalEnv(name);
-  if (raw === undefined) return fallback;
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  throw new Error(`${name} must be 'true' or 'false' (got '${raw}')`);
 }
 
 function parseVectorBackend(value: string | undefined): VectorBackendName {
@@ -1251,6 +1238,7 @@ const embeddingProvider = parseEmbeddingProvider(optionalEnv('EMBEDDING_PROVIDER
 const llmProvider = parseLlmProvider(optionalEnv('LLM_PROVIDER'), 'openai');
 const rawStorageDeploymentEnv = parseRawStorageDeploymentEnv(optionalEnv('RAW_STORAGE_DEPLOYMENT_ENV'));
 const trustedProxyMode = resolveTrustedProxyMode(rawStorageDeploymentEnv);
+const cloudJwt = parseCloudJwtConfig();
 const retrievalProfile = parseRetrievalProfile(optionalEnv('RETRIEVAL_PROFILE'));
 const retrievalProfileSettings = getRetrievalProfile(retrievalProfile);
 const DEFAULT_SIMILARITY_THRESHOLD = 0.3;
@@ -1300,6 +1288,7 @@ export const config: RuntimeConfig = {
   databaseUrl: requireEnv('DATABASE_URL'),
   openaiApiKey,
   coreApiKey: requireEnv('CORE_API_KEY'),
+  cloudJwt,
   trustedProxyMode,
   coreAdminApiKey: optionalEnv('CORE_ADMIN_API_KEY'),
   coreTestScopeAllowPattern: parseRegexEnv('CORE_TEST_SCOPE_ALLOW_PATTERN'),
@@ -1368,6 +1357,7 @@ export const config: RuntimeConfig = {
   retrievalTraceEnabled: (optionalEnv('RETRIEVAL_TRACE_ENABLED') ?? 'false') === 'true',
   ingestTraceDir: optionalEnv('INGEST_TRACE_DIR') ?? './.traces/ingest',
   ingestTraceEnabled: (optionalEnv('INGEST_TRACE_ENABLED') ?? 'false') === 'true',
+  cloudTraceSync: parseCloudTraceSyncConfig(),
   extractionCacheEnabled: (optionalEnv('EXTRACTION_CACHE_ENABLED') ?? 'false') === 'true',
   extractionCacheDir: optionalEnv('EXTRACTION_CACHE_DIR') ?? './.eval-cache',
   embeddingCacheEnabled: (optionalEnv('EMBEDDING_CACHE_ENABLED') ?? 'false') === 'true',
@@ -1425,6 +1415,9 @@ export const config: RuntimeConfig = {
   temporalQueryConstraintBoost: parseFloat(optionalEnv('TEMPORAL_QUERY_CONSTRAINT_BOOST') ?? '2'),
   deferredAudnEnabled: (optionalEnv('DEFERRED_AUDN_ENABLED') ?? 'false') === 'true',
   deferredAudnBatchSize: parseInt(optionalEnv('DEFERRED_AUDN_BATCH_SIZE') ?? '20', 10),
+  deferredAudnConcurrency: parseInt(optionalEnv('DEFERRED_AUDN_CONCURRENCY') ?? '8', 10),
+  deferredAudnAutoReconcile: (optionalEnv('DEFERRED_AUDN_AUTO_RECONCILE') ?? 'false') === 'true',
+  deferredAudnReconcileIntervalMs: parseInt(optionalEnv('DEFERRED_AUDN_RECONCILE_INTERVAL_MS') ?? '5000', 10),
   compositeGroupingEnabled: (optionalEnv('COMPOSITE_GROUPING_ENABLED') ?? 'true') === 'true',
   compositeMinClusterSize: parseInt(optionalEnv('COMPOSITE_MIN_CLUSTER_SIZE') ?? '2', 10),
   compositeMaxClusterSize: parseInt(optionalEnv('COMPOSITE_MAX_CLUSTER_SIZE') ?? '3', 10),
@@ -1665,6 +1658,8 @@ export const INTERNAL_POLICY_CONFIG_FIELDS = [
   'fastAudnEnabled', 'fastAudnDuplicateThreshold',
   // Observation / deferred
   'observationNetworkEnabled', 'deferredAudnEnabled', 'deferredAudnBatchSize',
+  'deferredAudnConcurrency',
+  'deferredAudnAutoReconcile', 'deferredAudnReconcileIntervalMs',
   // Composite grouping
   'compositeGroupingEnabled', 'compositeMinClusterSize',
   'compositeMaxClusterSize', 'compositeSimilarityThreshold',

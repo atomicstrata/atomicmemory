@@ -167,6 +167,8 @@ export interface CoreRuntimeConfig {
   eventChainPackagingEnabled: boolean;
   /** Reflect channel gate (BEAM-0.85 Phase 1, Task 1.9). */
   reflectEnabled: boolean;
+  /** Opt-in OSS Core → Cloud trace upload profile. Null when disabled. */
+  cloudTraceSync: import('../config.js').CloudTraceSyncConfig | null;
   /** Top-K reflections to fetch when reflect retrieval is enabled. */
   reflectRetrievalTopK: number;
   /** Anthropic model used by the reflect worker. */

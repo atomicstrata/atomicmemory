@@ -9,11 +9,120 @@ set -euo pipefail
 
 APP_PID=""
 POSTGRES_STARTED=false
-LOCAL_DOCKER_CORE_API_KEY="local-dev-key"
 LOCAL_DOCKER_STORAGE_KEY_HMAC_SECRET="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+CORE_STATE_DIR="${CORE_STATE_DIR:-/var/lib/atomicmemory/state}"
+CORE_API_KEY_FILE="$CORE_STATE_DIR/core-api-key"
 
 log() {
   printf '[entrypoint] %s\n' "$*"
+}
+
+is_hosted_deployment_env() {
+  case "${1:-local}" in
+    production|staging) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+generate_core_api_key() {
+  od -vN32 -An -tx1 /dev/urandom | tr -d ' \n'
+}
+
+persist_core_api_key() {
+  local key="$1"
+  mkdir -p "$CORE_STATE_DIR"
+  printf '%s\n' "$key" > "$CORE_API_KEY_FILE"
+  chmod 600 "$CORE_API_KEY_FILE"
+}
+
+resolve_core_api_key() {
+  if is_hosted_deployment_env "${RAW_STORAGE_DEPLOYMENT_ENV:-local}"; then
+    if [ -z "${CORE_API_KEY:-}" ]; then
+      log "CORE_API_KEY is required when RAW_STORAGE_DEPLOYMENT_ENV=${RAW_STORAGE_DEPLOYMENT_ENV:-local}"
+      exit 1
+    fi
+    export CORE_API_KEY
+    log "CORE_API_KEY from environment (hosted — not persisted locally)"
+    return
+  fi
+
+  if [ -n "${CORE_API_KEY:-}" ]; then
+    persist_core_api_key "$CORE_API_KEY"
+    export CORE_API_KEY
+    log "CORE_API_KEY from environment and persisted to $CORE_API_KEY_FILE"
+    return
+  fi
+
+  if [ -s "$CORE_API_KEY_FILE" ]; then
+    CORE_API_KEY="$(tr -d '[:space:]' < "$CORE_API_KEY_FILE")"
+    if [ -n "$CORE_API_KEY" ]; then
+      export CORE_API_KEY
+      log "CORE_API_KEY loaded from $CORE_API_KEY_FILE"
+      return
+    fi
+  fi
+
+  CORE_API_KEY="$(generate_core_api_key)"
+  persist_core_api_key "$CORE_API_KEY"
+  export CORE_API_KEY
+  log "CORE_API_KEY generated and persisted to $CORE_API_KEY_FILE"
+}
+
+cloud_tier_api_url() {
+  case "${1:-dev}" in
+    dev) printf '%s' 'https://api.dev.atomicstrata.ai' ;;
+    staging) printf '%s' 'https://api.staging.atomicstrata.ai' ;;
+    production|prod) printf '%s' 'https://api.atomicstrata.ai' ;;
+    *)
+      log "Unknown CLOUD_ENV: ${1}"
+      exit 1
+      ;;
+  esac
+}
+
+cloud_tier_memory_origin() {
+  case "${1:-dev}" in
+    dev) printf '%s' 'https://memory.dev.atomicstrata.ai' ;;
+    staging) printf '%s' 'https://memory.staging.atomicstrata.ai' ;;
+    production|prod) printf '%s' 'https://memory.atomicstrata.ai' ;;
+    *)
+      log "Unknown CLOUD_ENV: ${1}"
+      exit 1
+      ;;
+  esac
+}
+
+# When running self-hosted Core for connected-local, apply tier defaults so
+# operators only pass OPENAI_API_KEY + ATOMICMEMORY_API_KEY. The presence of
+# ATOMICMEMORY_API_KEY is the single switch that turns connected-local on;
+# CLOUD_PROJECT_ID is optional (Core trusts the token's project_id when unset).
+apply_connected_local_defaults() {
+  if is_hosted_deployment_env "${RAW_STORAGE_DEPLOYMENT_ENV:-local}"; then
+    return
+  fi
+
+  if [ -z "${ATOMICMEMORY_API_KEY:-}" ]; then
+    return
+  fi
+
+  local tier="${CLOUD_ENV:-dev}"
+  local api_url memory_origin
+
+  api_url="$(cloud_tier_api_url "$tier")"
+  memory_origin="$(cloud_tier_memory_origin "$tier")"
+
+  export CLOUD_TRACE_SYNC_ENABLED="${CLOUD_TRACE_SYNC_ENABLED:-true}"
+  export ATOMICMEMORY_API_URL="${ATOMICMEMORY_API_URL:-$api_url}"
+
+  export CLOUD_JWKS_URL="${CLOUD_JWKS_URL:-${api_url}/.well-known/atomic-core/jwks.json}"
+  export CLOUD_JWT_ISSUER="${CLOUD_JWT_ISSUER:-$api_url}"
+  export CLOUD_JWT_AUDIENCE="${CLOUD_JWT_AUDIENCE:-atomicmemory-core}"
+  export ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-$memory_origin}"
+  export CLOUD_JWT_STATIC_KEY_FALLBACK="${CLOUD_JWT_STATIC_KEY_FALLBACK:-true}"
+  if [ "$tier" = "dev" ]; then
+    export CLOUD_JWT_LEGACY_DEFAULT_MEMORY_USER_ID="${CLOUD_JWT_LEGACY_DEFAULT_MEMORY_USER_ID:-default}"
+  fi
+  log "Connected-local defaults applied (CLOUD_ENV=$tier, api=$ATOMICMEMORY_API_URL)"
 }
 
 stop_postgres() {
@@ -43,18 +152,12 @@ configure_local_defaults() {
   local deployment_env="${RAW_STORAGE_DEPLOYMENT_ENV:-local}"
   export RAW_STORAGE_DEPLOYMENT_ENV="$deployment_env"
 
-  if [ -z "${CORE_API_KEY:-}" ]; then
-    if [ "$deployment_env" = "production" ]; then
-      log "CORE_API_KEY is required when RAW_STORAGE_DEPLOYMENT_ENV=production"
-      exit 1
-    fi
-    export CORE_API_KEY="$LOCAL_DOCKER_CORE_API_KEY"
-    log "CORE_API_KEY not set; using local Docker default '$CORE_API_KEY'"
-  fi
+  apply_connected_local_defaults
+  resolve_core_api_key
 
   if [ -z "${STORAGE_KEY_HMAC_SECRET:-}" ]; then
-    if [ "$deployment_env" = "production" ]; then
-      log "STORAGE_KEY_HMAC_SECRET is required when RAW_STORAGE_DEPLOYMENT_ENV=production"
+    if is_hosted_deployment_env "$deployment_env"; then
+      log "STORAGE_KEY_HMAC_SECRET is required when RAW_STORAGE_DEPLOYMENT_ENV=$deployment_env"
       exit 1
     fi
     export STORAGE_KEY_HMAC_SECRET="$LOCAL_DOCKER_STORAGE_KEY_HMAC_SECRET"

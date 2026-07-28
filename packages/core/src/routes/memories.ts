@@ -48,6 +48,10 @@ import {
 import type { AgentScope, WorkspaceContext } from '../db/repository-types.js';
 import { handleRouteError } from './route-errors.js';
 import { validateBody, validateQuery, validateParams } from '../middleware/validate.js';
+import {
+  readAssertedUserId,
+  resolveReconcileUserId,
+} from '../middleware/cloud-jwt-user-binding.js';
 import { CORS_ALLOWED_HEADERS_VALUE } from '../app/cors-headers.js';
 import { validateResponse } from '../middleware/validate-response.js';
 import { MEMORY_RESPONSE_SCHEMAS } from './response-schema-map.js';
@@ -757,8 +761,9 @@ function registerReconcileRoute(router: Router, service: MemoryService): void {
   router.post('/reconcile', validateBody(ReconcileBodySchema), async (req: Request, res: Response) => {
     try {
       const { userId } = req.body as { userId: string | undefined };
-      const result = userId
-        ? await service.reconcileDeferred(userId)
+      const effectiveUserId = resolveReconcileUserId(userId, readAssertedUserId(req));
+      const result = effectiveUserId
+        ? await service.reconcileDeferred(effectiveUserId)
         : await service.reconcileDeferredAll();
       res.json(formatReconciliationResponse(result));
     } catch (err) {

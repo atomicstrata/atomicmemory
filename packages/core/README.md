@@ -112,6 +112,46 @@ EOF
 docker compose -f docker-compose.image.yml up
 ```
 
+### Connected to Atomic Memory Cloud
+
+Link a local Core instance to a Cloud **Local** project with a single `amc_…` API
+key (traces + heartbeat). Apps on localhost use **`CORE_API_KEY`** (Local access
+key) — never paste the Cloud key into SDK/CLI calls.
+
+1. In Cloud: create a Local project → create an API key (`amc_…`).
+2. Copy the console **Connect** `docker run` snippet (or use the template below).
+3. After Core starts, retrieve the auto-generated local key (or use your own override).
+4. SDK/CLI: `Authorization: Bearer $CORE_API_KEY` → `http://127.0.0.1:17350`.
+5. Console **Memories** use an automatic Cloud-minted JWT (no key paste).
+
+```bash
+export OPENAI_API_KEY=sk-...
+export ATOMICMEMORY_API_KEY=amc_...                 # Cloud connect only
+export ATOMICMEMORY_API_URL=https://api.atomicstrata.ai
+
+docker run -d --name atomic-memory \
+  --restart unless-stopped \
+  -p 127.0.0.1:17350:17350 \
+  -v atomic-memory-data:/var/lib/atomicmemory/postgres \
+  -v atomic-memory-state:/var/lib/atomicmemory/state \
+  -e OPENAI_API_KEY \
+  -e ATOMICMEMORY_API_KEY \
+  -e ATOMICMEMORY_API_URL \
+  ghcr.io/atomicstrata/atomicmemory-core:stable
+
+# Retrieve the generated local access key for SDK/CLI (after /health is ok):
+docker exec atomic-memory cat /var/lib/atomicmemory/state/core-api-key
+```
+
+**Optional:** pass `-e CORE_API_KEY=your-secret` to pin a user-defined local key
+instead of auto-generation. The state volume still persists whichever key is in use.
+
+When `ATOMICMEMORY_API_KEY` is set, Core enables outbound trace sync and
+periodic heartbeat to `POST /v1/runtimes/heartbeat`. Invalid or revoked Cloud
+credentials degrade observability only — local memory ingest/search keep working.
+
+Local-only (no Cloud): run with only `OPENAI_API_KEY` — same image, no Cloud env.
+
 ### Docker from source
 
 ```bash

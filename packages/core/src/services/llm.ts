@@ -348,12 +348,19 @@ class AnthropicLLM implements LLMProvider {
 
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
     const split = splitAnthropicMessages(messages);
+    // Anthropic has no response_format; enforce JSON via an assistant prefill ('{').
+    // Without this, jsonMode callers (extraction/AUDN) receive conversational prose
+    // and extract zero facts. The prefill character is prepended back to the result.
+    const prefillJson = options.jsonMode === true;
+    const reqMessages = prefillJson
+      ? [...split.messages, { role: 'assistant' as const, content: '{' }]
+      : split.messages;
     const request = () => this.client.messages.create({
       model: this.model,
       max_tokens: options.maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
       temperature: options.temperature ?? 0,
       ...(split.system !== undefined ? { system: split.system } : {}),
-      messages: split.messages,
+      messages: reqMessages,
     });
     const started = performance.now();
     const response = await retryOnRateLimit(request);
@@ -363,7 +370,8 @@ class AnthropicLLM implements LLMProvider {
       null,
     );
     recordChatCost(this.model, usage, started);
-    return extractAnthropicText(response);
+    const text = extractAnthropicText(response);
+    return prefillJson ? `{${text}` : text;
   }
 }
 

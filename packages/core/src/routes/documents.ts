@@ -35,6 +35,7 @@ import { handleRouteError } from './route-errors.js';
 import { validateBody, validateQuery, validateParams } from '../middleware/validate.js';
 import { validateResponse } from '../middleware/validate-response.js';
 import { rejectNulInBody } from '../middleware/reject-nul-bytes.js';
+import { cloudJwtUserBindingGuard } from '../middleware/cloud-jwt-user-binding.js';
 import { DOCUMENT_RESPONSE_SCHEMAS } from './response-schema-map.js';
 import {
   DocumentByIdQuerySchema,
@@ -209,6 +210,7 @@ export function createDocumentRouter(
   // raw-upload route's Buffer body is skipped by the guard.
   router.use(express.json({ limit: ROUTER_JSON_BODY_LIMIT }));
   router.use(rejectNulInBody);
+  router.use(cloudJwtUserBindingGuard());
 
   // Step 5 — JSON-body routes. The Phase C failure-marker routes
   // (`/:id/extraction-failure`, `/:id/index-failure`) live with the
@@ -383,6 +385,7 @@ function registerIndexRoute(router: Router, service: DocumentService): void {
     '/:id/index',
     indexJsonParser,
     rejectNulInBody,
+    cloudJwtUserBindingGuard(),
     validateParams(DocumentIdParamSchema),
     validateBody(IndexDocumentBodySchema),
     async (req: Request, res: Response) => {

@@ -18,6 +18,7 @@ import { embedText } from '../services/embedding.js';
 import { createStorageRouter } from '../routes/storage.js';
 import { createEntityRouter } from '../routes/entities.js';
 import { MAX_INDEX_TEXT_BYTES } from '../schemas/documents.js';
+import { createAuthMiddleware } from '../middleware/dual-auth.js';
 import { requireBearer } from '../middleware/require-bearer.js';
 import { assertedUserGuard } from '../middleware/asserted-user.js';
 import { rejectNulInRequestTarget, rejectNulInBody } from '../middleware/reject-nul-bytes.js';
@@ -27,6 +28,7 @@ import { CORE_CAPABILITIES } from './capabilities-descriptor.js';
 import { verifyCapabilitiesDescriptor } from './verify-capabilities.js';
 import { SearchBodySchema } from '../schemas/memories.js';
 import type { CoreRuntime } from './runtime-container.js';
+import { getCloudTraceHealthSnapshotAsync, toCloudTracePublicHealth } from '../services/cloud-trace-sync.js';
 
 /** Default JSON-body cap for non-document routers. */
 const DEFAULT_JSON_BODY_LIMIT = '1mb';
@@ -80,7 +82,14 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
   // expected-key buffer is captured a single time (timingSafeEqual
   // wants matching-length buffers; cheap but allocation-stable).
   // `/health` and `/openapi.json` stay outside this scope.
-  const auth = requireBearer(runtime.config.coreApiKey);
+  const authBundle = createAuthMiddleware({
+    coreApiKey: runtime.config.coreApiKey,
+    cloudJwt: runtime.config.cloudJwt,
+  });
+  const auth = authBundle.middleware;
+  if (authBundle.prefetchJwks) {
+    app.set('cloudJwtPrefetch', authBundle.prefetchJwks);
+  }
 
   // defense-in-depth: when TRUSTED_PROXY_MODE is on, the trusted
   // caller must restate the user it authenticated in the
@@ -100,17 +109,17 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
   verifyCapabilitiesDescriptor(CORE_CAPABILITIES, memoryRouter, SearchBodySchema);
   app.use(
     '/v1/memories',
-    auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
     rejectNulInBody,
+    auth,
     assertUser,
     memoryRouter,
   );
   app.use(
     '/v1/agents',
-    auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
     rejectNulInBody,
+    auth,
     assertUser,
     createAgentRouter(runtime.repos.trust),
   );
@@ -181,9 +190,9 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
 
   app.use(
     '/v1/entities',
-    auth,
     express.json({ limit: DEFAULT_JSON_BODY_LIMIT }),
     rejectNulInBody,
+    auth,
     createEntityRouter({
       pool: runtime.pool,
       memory: runtime.repos.memory,
@@ -260,8 +269,19 @@ export function createApp(runtime: CoreRuntime): ReturnType<typeof express> {
   // `/health` is intentionally unversioned — it is an infrastructure
   // liveness probe (load balancers, Docker, Railway), not part of the
   // versioned application API. Versioned endpoints live under `/v1/*`.
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' });
+  app.get('/health', async (_req, res) => {
+    const cloudTraceSync = runtime.config.cloudTraceSync?.enabled
+      ? toCloudTracePublicHealth(
+          await getCloudTraceHealthSnapshotAsync(runtime.pool, runtime.config.cloudTraceSync),
+        )
+      : undefined;
+    const status = cloudTraceSync?.status === 'degraded' || cloudTraceSync?.status === 'paused'
+      ? 'degraded'
+      : 'ok';
+    res.json({
+      status,
+      ...(cloudTraceSync ? { cloud_trace_sync: cloudTraceSync } : {}),
+    });
   });
 
   // `GET /openapi.json` serves the committed OpenAPI spec. Like

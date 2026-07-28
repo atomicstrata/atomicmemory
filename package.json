@@ -48,7 +48,8 @@
     "@typescript-eslint/parser": "^8.59.3",
     "eslint": "9.39.1",
     "fallow": "2.75.0",
-    "turbo": "2.9.14"
+    "turbo": "2.9.14",
+    "yaml": "^2.8.3"
   },
   "pnpm": {
     "overrides": {

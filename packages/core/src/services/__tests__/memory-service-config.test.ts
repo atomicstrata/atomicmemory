@@ -125,6 +125,7 @@ describe('MemoryService config seam', () => {
       '',
       undefined,
       undefined,
+      false,
     );
   });
 
@@ -152,6 +153,7 @@ describe('MemoryService config seam', () => {
       'https://example.test/thread',
       sessionTimestamp,
       'thread-1',
+      false,
     );
   });
 
@@ -193,6 +195,7 @@ describe('MemoryService config seam', () => {
       '',
       undefined,
       undefined,
+      false,
     );
   });
 
@@ -220,6 +223,7 @@ describe('MemoryService config seam', () => {
       'https://example.test/quick',
       sessionTimestamp,
       'thread-quick',
+      false,
     );
   });
 
@@ -300,6 +304,7 @@ describe('MemoryService config seam', () => {
       workspace,
       sessionTimestamp,
       'thread-workspace',
+      false,
     );
   });
 

@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-28
+
+### Added
+- Connected-local Cloud support with optional Cloud-issued RS256 JWT
+  verification, user/project claim binding, and static API-key fallback.
+- Durable, content-free memory trace synchronization through a PostgreSQL
+  outbox with bounded backlog, retry, dead-letter, and auth-recovery handling.
+- Automatic generation and persistence of local `CORE_API_KEY` values and a
+  stable Core instance ID, including connected-local Docker defaults.
+- `EMBEDDING_DTYPE` configuration for larger quantized local embedding models.
+- A background scheduler for deferred AUDN reconciliation.
+
+### Changed
+- Deferred AUDN reconciliation now runs with bounded parallelism.
+
+### Fixed
+- Anthropic extraction requests use an assistant prefill to enforce JSON
+  responses.
+- Idempotent re-indexing advances extraction status only through valid state
+  transitions.
+- Local API-key overrides persist across container restarts.
+
+### Security
+- Cloud JWT verification fails closed on issuer, audience, algorithm, user, and
+  project mismatches.
+- Outbound Cloud trace envelopes use allowlisted summary fields and exclude
+  verbatim memory and query content.
+
 ## [1.1.1] - 2026-06-15
 
 ### Added
