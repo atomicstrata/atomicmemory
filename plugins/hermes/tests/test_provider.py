@@ -130,7 +130,10 @@ class ConcludeUsesIngestVerbatim(unittest.TestCase):
         fake = FakeAtomicMemoryClient(ingest_response=IngestResult(created=["m1"]))
         provider, _ = _make_provider(fake=fake)
 
-        provider.handle_tool_call("atomicmemory_conclude", {"conclusion": "user prefers terse"})
+        provider.handle_tool_call(
+            "atomicmemory_conclude",
+            {"conclusion": "user prefers terse", "content_class": "summary"},
+        )
         provider.shutdown()
 
         call = fake.calls_to("ingest_verbatim")[0]
@@ -138,6 +141,47 @@ class ConcludeUsesIngestVerbatim(unittest.TestCase):
         self.assertEqual(call.kwargs["provenance"].source, "hermes")
         self.assertTrue(call.kwargs["provenance"].source_url.startswith("hermes://session/"))
         self.assertEqual(call.kwargs["metadata"], {"kind": "fact"})
+
+    def test_conclude_forwards_the_caller_chosen_content_class(self) -> None:
+        for chosen in ("summary", "redacted", "raw"):
+            with self.subTest(content_class=chosen):
+                fake = FakeAtomicMemoryClient(ingest_response=IngestResult(created=["m1"]))
+                provider, _ = _make_provider(fake=fake)
+
+                provider.handle_tool_call(
+                    "atomicmemory_conclude",
+                    {"conclusion": "a fact", "content_class": chosen},
+                )
+                provider.shutdown()
+
+                call = fake.calls_to("ingest_verbatim")[0]
+                self.assertEqual(call.kwargs["content_class"], chosen)
+
+    def test_conclude_rejects_a_missing_content_class_at_the_tool_boundary(self) -> None:
+        # Fails here with a message naming the parameter, rather than reaching
+        # core and returning 422 raw_content_rejected with no indication of
+        # which tool call caused it.
+        fake = FakeAtomicMemoryClient(ingest_response=IngestResult(created=["m1"]))
+        provider, _ = _make_provider(fake=fake)
+
+        raw = provider.handle_tool_call("atomicmemory_conclude", {"conclusion": "a fact"})
+        provider.shutdown()
+
+        self.assertIn("content_class", raw)
+        self.assertEqual(fake.calls_to("ingest_verbatim"), [])
+
+    def test_conclude_rejects_an_unknown_content_class(self) -> None:
+        fake = FakeAtomicMemoryClient(ingest_response=IngestResult(created=["m1"]))
+        provider, _ = _make_provider(fake=fake)
+
+        raw = provider.handle_tool_call(
+            "atomicmemory_conclude",
+            {"conclusion": "a fact", "content_class": "public"},
+        )
+        provider.shutdown()
+
+        self.assertIn("Invalid content_class", raw)
+        self.assertEqual(fake.calls_to("ingest_verbatim"), [])
 
 
 class SyncTurnUsesIngestMessages(unittest.TestCase):

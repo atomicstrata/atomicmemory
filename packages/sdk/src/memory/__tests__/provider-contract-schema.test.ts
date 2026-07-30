@@ -86,6 +86,31 @@ describe('provider-contract v1 schemas', () => {
     expect(ingest({ ...GOOD_INGEST, mode: 'binary' })).toBe(false);
   });
 
+  // The SDK forwards content_class to core on the verbatim path, and core
+  // refuses an unclassified verbatim write under RAW_CONTENT_POLICY=reject.
+  // VerbatimIngest is additionalProperties:false, so the schema has to carry
+  // the field or the very payload the SDK emits is contract-invalid.
+  // Verbatim only, deliberately: core also consults content_class on
+  // extraction paths for audit-transcript redaction, but exposing it there
+  // changes what is durably retained — tracked as tech debt, not done here.
+  it.each(['summary', 'redacted', 'raw'])('accepts content_class %s on verbatim', (contentClass) => {
+    const { ingest } = buildValidators();
+    expect(ingest({ ...GOOD_INGEST, content_class: contentClass })).toBe(true);
+  });
+
+  it('rejects an unknown content_class', () => {
+    const { ingest } = buildValidators();
+    expect(ingest({ ...GOOD_INGEST, content_class: 'public' })).toBe(false);
+  });
+
+  it('still rejects an unknown ingest field', () => {
+    // Guards the guard: proves additionalProperties:false is doing work, so
+    // the acceptance above means the field was added rather than the schema
+    // having stopped constraining anything.
+    const { ingest } = buildValidators();
+    expect(ingest({ ...GOOD_INGEST, not_a_real_field: 'x' })).toBe(false);
+  });
+
   it('rejects a retrieval receipt missing trace_id', () => {
     const { searchPage } = buildValidators();
     const receipt: Record<string, unknown> = { ...GOOD_SEARCH_PAGE.retrieval };

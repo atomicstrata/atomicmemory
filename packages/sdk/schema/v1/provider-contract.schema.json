@@ -33,6 +33,12 @@
       "type": "string",
       "enum": ["fact", "episode", "summary", "procedure", "document"]
     },
+    "ContentClass": {
+      "title": "ContentClass",
+      "description": "Sensitivity class of supplied content: 'summary' (distilled, hosted-safe), 'redacted' (sensitive spans removed by the caller), or 'raw' (verbatim prompt/response/diff/source). This contract exposes it on verbatim ingest only; core's HTTP API also consults it on extraction paths, where it decides whether the raw transcript is withheld from the durable audit episode. A core running RAW_CONTENT_POLICY=reject (the default) refuses a verbatim write of 'raw' or unclassified content. Never inferred by a provider — the caller chooses it, so omitting it fails closed rather than mislabeling raw content as safe.",
+      "type": "string",
+      "enum": ["summary", "redacted", "raw"]
+    },
     "Message": {
       "title": "Message",
       "type": "object",
@@ -104,6 +110,7 @@
         "mode": { "const": "verbatim" },
         "content": { "type": "string" },
         "kind": { "$ref": "#/$defs/MemoryKind" },
+        "content_class": { "$ref": "#/$defs/ContentClass" },
         "scope": { "$ref": "#/$defs/Scope" },
         "provenance": { "$ref": "#/$defs/Provenance" },
         "metadata": { "type": "object", "additionalProperties": true }

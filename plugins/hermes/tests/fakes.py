@@ -120,6 +120,7 @@ class FakeAtomicMemoryClient:
         scope: Scope,
         provenance: Provenance,
         metadata: dict[str, Any] | None = None,
+        content_class: str | None = None,
     ) -> IngestResult:
         self._record(
             "ingest_verbatim",
@@ -127,6 +128,7 @@ class FakeAtomicMemoryClient:
             scope=scope,
             provenance=provenance,
             metadata=metadata,
+            content_class=content_class,
         )
         self._maybe_raise("ingest_verbatim")
         return self.ingest_response
