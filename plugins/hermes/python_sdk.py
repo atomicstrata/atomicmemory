@@ -175,16 +175,21 @@ class PythonSdkAtomicMemoryClient:
         scope: Scope,
         provenance: Provenance,
         metadata: dict[str, Any] | None = None,
+        content_class: str | None = None,
     ) -> IngestResult:
-        raw = self._require_client().ingest(
-            {
-                "mode": "verbatim",
-                "content": content,
-                "scope": scope,
-                "provenance": _provenance_dict(provenance),
-                "metadata": metadata,
-            }
-        )
+        payload: dict[str, Any] = {
+            "mode": "verbatim",
+            "content": content,
+            "scope": scope,
+            "provenance": _provenance_dict(provenance),
+            "metadata": metadata,
+        }
+        # Only sent when the caller chose one. Never defaulted here: an
+        # unclassified write must fail closed at core rather than be relabeled
+        # safe by the bridge.
+        if content_class is not None:
+            payload["content_class"] = content_class
+        raw = self._require_client().ingest(payload)
         return _ingest_result(raw)
 
     def _require_client(self) -> Any:

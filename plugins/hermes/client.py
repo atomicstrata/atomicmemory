@@ -158,4 +158,5 @@ class AtomicMemoryClient(Protocol):
         scope: Scope,
         provenance: Provenance,
         metadata: dict[str, Any] | None = None,
+        content_class: str | None = None,
     ) -> IngestResult: ...

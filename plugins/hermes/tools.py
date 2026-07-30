@@ -64,8 +64,19 @@ CONCLUDE_SCHEMA = {
         "type": "object",
         "properties": {
             "conclusion": {"type": "string", "description": "The fact to store verbatim."},
+            "content_class": {
+                "type": "string",
+                "enum": ["summary", "redacted", "raw"],
+                "description": (
+                    "Sensitivity of the text you are storing: 'summary' if you distilled it "
+                    "yourself, 'redacted' if you removed sensitive spans, 'raw' if it is a "
+                    "verbatim prompt, response, diff, or source excerpt. Required: a core "
+                    "running the default raw-content policy refuses raw or unclassified "
+                    "writes, and this tool will not guess on your behalf."
+                ),
+            },
         },
-        "required": ["conclusion"],
+        "required": ["conclusion", "content_class"],
     },
 }
 
@@ -127,15 +138,33 @@ def _handle_context(provider: AtomicMemoryMemoryProvider, args: dict[str, Any]) 
     )
 
 
+# Mirrors the v1 ContentClass enum. Kept local so a malformed tool call is
+# rejected at this boundary rather than surfacing later as a core 422 with no
+# indication of which tool produced it.
+CONTENT_CLASSES = ("summary", "redacted", "raw")
+
+
 def _handle_conclude(provider: AtomicMemoryMemoryProvider, args: dict[str, Any]) -> str:
     conclusion = _clean_str(args.get("conclusion"))
     if not conclusion:
         return tool_error("Missing required parameter: conclusion")
+    content_class = _clean_str(args.get("content_class"))
+    if not content_class:
+        return tool_error(
+            "Missing required parameter: content_class (one of "
+            f"{', '.join(CONTENT_CLASSES)}). A core running the default raw-content "
+            "policy rejects unclassified writes; this tool does not choose for you."
+        )
+    if content_class not in CONTENT_CLASSES:
+        return tool_error(
+            f"Invalid content_class {content_class!r}; expected one of {', '.join(CONTENT_CLASSES)}."
+        )
     provider._require_client().ingest_verbatim(
         content=conclusion,
         scope=ingest_scope_dict(user_id=provider._user_id),
         provenance=provider._ingest_provenance(session_id=provider._session_id),
         metadata={"kind": "fact"},
+        content_class=content_class,
     )
     return json.dumps({"result": "Fact stored."})
 

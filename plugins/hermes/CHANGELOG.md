@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 - 2026-07-29
+
+### Changed
+
+- **Breaking (tool contract):** `atomicmemory_conclude` now requires a `content_class` parameter (`summary`, `redacted`, or `raw`) describing the sensitivity of the text being stored. A call that omits it, or passes an unrecognized value, is rejected at the tool boundary with a message naming the parameter.
+
+  This is required to store facts against AtomicMemory Core 1.2.0 and later. Core defaults to `RAW_CONTENT_POLICY=reject`, which refuses a verbatim write carrying no content class — previously `conclude` sent an unclassified write and received `422 raw_content_rejected`, with nothing indicating which tool call caused it. The class is never chosen on the caller's behalf: guessing it could label a raw transcript as hosted-safe.
+
+  Existing deployments need no configuration change, but a model that calls `conclude` without the new parameter will get a tool error instead of a stored fact until it adapts.
+
 ## 0.1.13 - 2026-05-15
 
 ### Fixed
