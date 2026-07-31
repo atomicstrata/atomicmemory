@@ -145,6 +145,14 @@ function schemaFor(name: (typeof TOOL_NAMES)[number]): Record<string, unknown> {
         mode: enumSchema(['text', 'messages', 'verbatim']),
         content: stringSchema(),
         messages: { type: 'array' },
+        // Required by a core running the default RAW_CONTENT_POLICY=reject for
+        // mode='verbatim': an unstamped verbatim ingest is refused with
+        // 422 raw_content_rejected. The skill instructions and README already
+        // tell the agent to set this, but objectSchema pins
+        // additionalProperties:false, so without the property declared here the
+        // call was rejected before it left the plugin and verbatim ingest was
+        // impossible. Forwarded to MCP as a top-level argument.
+        contentClass: enumSchema(['summary', 'redacted', 'raw']),
         scope: scopeSchema(),
         metadata: { type: 'object', additionalProperties: true },
         provenance: { type: 'object', additionalProperties: true },

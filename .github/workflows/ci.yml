@@ -78,6 +78,15 @@ jobs:
         run: node scripts/ci/release-policy.mjs
       - name: Run release-policy unit tests
         run: node --test scripts/ci/__tests__/release-policy.test.mjs
+      # Every surface that can write a verbatim memory must be able to stamp
+      # content_class. The 0.2.0 release fixed Hermes for Core's raw-content
+      # policy and missed OpenClaw, whose published plugin could not perform a
+      # verbatim ingest at all. Tests run first: a conformance check whose own
+      # logic is unverified is not evidence of anything.
+      - name: Run ingest contract conformance tests
+        run: node --test scripts/ci/__tests__/ingest-contract-conformance.test.mjs
+      - name: Check ingest contract conformance
+        run: node scripts/check-ingest-contract-conformance.mjs
       - name: Run guard unit tests
         run: node --test scripts/guards/__tests__/*.test.mjs
 
