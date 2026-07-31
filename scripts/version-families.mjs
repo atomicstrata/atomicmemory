@@ -10,6 +10,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,7 +25,10 @@ const knownFlags = new Set(["--check"]);
 const positional = args.filter((arg) => !arg.startsWith("--"));
 const unknownFlag = args.find((arg) => arg.startsWith("--") && !knownFlags.has(arg));
 
-const families = {
+// Exported so other checks can enumerate the release families instead of
+// restating them. A second hand-written copy of this list is exactly how a
+// family member gets missed.
+export const families = {
   plugin: [
     marketplacePluginTarget(".claude-plugin/marketplace.json", "claude-code"),
     jsonPathTarget("plugins/claude-code/.claude-plugin/plugin.json", ["version"]),
@@ -54,7 +58,11 @@ const families = {
   ],
 };
 
-main();
+// Only run the CLI when invoked directly, so importing this module for its
+// family definitions does not execute argument parsing and exit.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main();
+}
 
 function main() {
   if (!families[familyName]) usage();
@@ -94,6 +102,9 @@ function jsonPathTarget(file, path) {
 function marketplacePluginTarget(file, pluginName) {
   return {
     file,
+    // Identity of the plugin this target governs. Several plugins can share one
+    // marketplace file, so consumers cannot infer it from the path.
+    pluginId: pluginName,
     label: `plugins[${pluginName}].version`,
     read() {
       const plugin = findMarketplacePlugin(readJson(file), pluginName, file);

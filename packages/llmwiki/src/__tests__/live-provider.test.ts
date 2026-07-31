@@ -6,9 +6,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { LiveLLMWikiProvider } from "../live/provider.ts";
+
+// A real, private directory. These constructor tests previously hardcoded
+// TMP_ROOT, which is a shared path any process on the host can occupy. When it
+// exists as a FILE, createWiki() fails with "root exists but is not a
+// directory" and the positive cases fail, while the negative cases still pass
+// because scope validation throws before touching the filesystem. That made the
+// suite dependent on ambient host state rather than hermetic.
+const TMP_ROOT = mkdtempSync(path.join(tmpdir(), "llmwiki-provider-"));
 
 const scope = { user: "u1" };
 const mk = (root: string) => new LiveLLMWikiProvider({ root, scope, projectId: "proj-1" });
@@ -16,7 +25,7 @@ const mk = (root: string) => new LiveLLMWikiProvider({ root, scope, projectId: "
 describe("LiveLLMWikiProvider", () => {
   it("requires projectId", () => {
     assert.throws(
-      () => new (LiveLLMWikiProvider as any)({ root: "/tmp/x", scope }),
+      () => new (LiveLLMWikiProvider as any)({ root: TMP_ROOT, scope }),
       (e: any) => e?.code === "E_LLMWIKI_PROJECT_ID_REQUIRED",
     );
   });
@@ -64,7 +73,7 @@ describe("LiveLLMWikiProvider", () => {
   });
 
   it("capabilities advertises text/messages/verbatim + package", () => {
-    const c = mk("/tmp/whatever").capabilities();
+    const c = mk(TMP_ROOT).capabilities();
     assert.deepEqual(c.ingestModes, ["text", "messages", "verbatim"]);
     assert.equal(c.extensions.package, true);
   });
@@ -260,28 +269,28 @@ describe("LiveLLMWikiProvider scope is copied at the boundary (no reference leak
 describe("LiveLLMWikiProvider construction scope validation (FIX G)", () => {
   it("throws E_LLMWIKI_PROVIDER_SCOPE_MISMATCH when scope is empty {}", () => {
     assert.throws(
-      () => new LiveLLMWikiProvider({ root: "/tmp/x", scope: {}, projectId: "proj-1" }),
+      () => new LiveLLMWikiProvider({ root: TMP_ROOT, scope: {}, projectId: "proj-1" }),
       (e: any) => e?.code === "E_LLMWIKI_PROVIDER_SCOPE_MISMATCH",
     );
   });
 
   it("throws E_LLMWIKI_PROVIDER_SCOPE_MISMATCH when required field 'user' is missing", () => {
     assert.throws(
-      () => new LiveLLMWikiProvider({ root: "/tmp/x", scope: { namespace: "ns" }, projectId: "proj-1" }),
+      () => new LiveLLMWikiProvider({ root: TMP_ROOT, scope: { namespace: "ns" }, projectId: "proj-1" }),
       (e: any) => e?.code === "E_LLMWIKI_PROVIDER_SCOPE_MISMATCH",
     );
   });
 
   it("throws E_LLMWIKI_PROVIDER_SCOPE_MISMATCH when 'user' is empty string", () => {
     assert.throws(
-      () => new LiveLLMWikiProvider({ root: "/tmp/x", scope: { user: "" }, projectId: "proj-1" }),
+      () => new LiveLLMWikiProvider({ root: TMP_ROOT, scope: { user: "" }, projectId: "proj-1" }),
       (e: any) => e?.code === "E_LLMWIKI_PROVIDER_SCOPE_MISMATCH",
     );
   });
 
   it("valid scope { user: 'u1' } constructs without throwing", () => {
     assert.doesNotThrow(
-      () => new LiveLLMWikiProvider({ root: "/tmp/x", scope: { user: "u1" }, projectId: "proj-1" }),
+      () => new LiveLLMWikiProvider({ root: TMP_ROOT, scope: { user: "u1" }, projectId: "proj-1" }),
     );
   });
 });
