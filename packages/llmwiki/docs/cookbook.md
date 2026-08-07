@@ -41,6 +41,9 @@ the on-wire `projectId` is
 
 ## 3. Import into AtomicMemory
 
+The supported importer for wiki exports is still the npm CLI command (handles
+stable external IDs, provenance metadata, dry-run, and partial failures):
+
 ```bash
 atomicmemory import --type llmwiki dist/exports/wiki.json \
   --user "$USER" \
@@ -49,25 +52,19 @@ atomicmemory import --type llmwiki dist/exports/wiki.json \
 
 What happens:
 
-- The CLI loads, validates, and size-checks the JSON file. Caps:
-  100,000 pages, 1 MB per page body, 64 KB per other field, 256 MB
-  total file size.
-- The active provider is checked for `verbatim` capability; the bridge
-  refuses to operate against text-only providers.
-- Each page becomes one verbatim memory record with `metadata.llmwiki.*`
-  carrying every advisory field from the export.
-- Re-running this command on the same project will **refuse** until you
-  pass `--allow-append-only --accept-duplicates`. AtomicMemory's
-  verbatim ingest is not idempotent by external ID; without the opt-in
-  flags, re-imports would silently double every page.
+- Each wiki page becomes a verbatim memory with a stable `externalId`
+- Namespace is set to `knowledge` (or your chosen value)
+- Re-importing the same export is append-only (no duplicates)
 
-### Dry run
+Dry-run first:
 
 ```bash
 atomicmemory import --type llmwiki dist/exports/wiki.json --user "$USER" --dry-run
 ```
 
-Prints the page paths that would be imported. No memory writes occur.
+For SDK-only read access without import, see
+[`packages/llmwiki/README.md`](../README.md) and the snapshot provider section
+below. `am memory ingest` does not yet replace the llmwiki import command.
 
 ## 4. Query the runtime memory
 
@@ -76,11 +73,13 @@ data:
 
 ```bash
 atomicmemory search "chunking strategies" --user "$USER" --namespace knowledge
-atomicmemory package "what is retrieval" --user "$USER" --namespace knowledge
 ```
 
-`atomicmemory package` returns an injection-ready `ContextPackage` you
-can hand directly to an LLM prompt.
+Or with `am` after the same import:
+
+```bash
+am memory search "chunking strategies" --scope-user "$USER" --scope-namespace knowledge
+```
 
 ## Querying the export without import
 

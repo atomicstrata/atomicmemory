@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-07
+
+### Fixed
+
+- OpenAI chat parameter selection for reasoning and token-limit SKUs: send
+  `max_completion_tokens` (not `max_tokens`) for the GPT-5 family and o-series,
+  omit sampling controls only for models that actually run reasoning
+  (`reasoning_effort` `minimal`/`low`), normalize provider-prefixed model names
+  before capability checks, and fail closed on truncated or empty completions
+  instead of persisting them. Optional retrieval callers degrade instead of
+  failing the request. No public API change.
+
 ## [1.2.0] - 2026-07-28
 
 ### Added

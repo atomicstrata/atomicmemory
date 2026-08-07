@@ -270,5 +270,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: Run security compliance
-        run: node scripts/security/security-compliance.mjs
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Run security compliance contract tests
+        run: |
+          pnpm run test:security-compliance
+          pnpm run test:release-cli-version
+          pnpm run test:install-cli
+          pnpm run security-compliance

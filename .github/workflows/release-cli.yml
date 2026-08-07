@@ -1,0 +1,298 @@
+name: release-cli
+
+# Build prebuilt `am` binaries on a `cli-v*` tag, publish to GitHub Releases
+# (canonical trust root), attest artifacts, and dispatch an internal mirror job
+# for get.atomicstrata.ai. Runs only on the public product repository.
+
+on:
+  push:
+    tags: ["cli-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  preflight-mcp-pin:
+    name: preflight MCP server npm pin
+    if: github.repository == 'atomicstrata/atomicmemory'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # `am integrate` writes `MCP_SERVER_PACKAGE` into host MCP configs, so a
+      # release built with a pin that npm cannot yet resolve breaks `am integrate`
+      # for every user on that release until the npm publish lands. Fail closed
+      # here rather than shipping a binary that installs a 404.
+      - name: Verify MCP_SERVER_PACKAGE is published on npm
+        run: |
+          set -euo pipefail
+          spec="crates/cli/src/integrate/spec.rs"
+          pin="$(sed -n 's/^pub const MCP_SERVER_PACKAGE: &str = "\([^"]*\)";.*/\1/p' "$spec")"
+          if [ -z "$pin" ]; then
+            echo "::error::could not parse MCP_SERVER_PACKAGE from ${spec}"
+            exit 1
+          fi
+          name="${pin%@*}"
+          version="${pin##*@}"
+          if [ -z "$name" ] || [ -z "$version" ] || [ "$name" = "$version" ]; then
+            echo "::error::MCP_SERVER_PACKAGE '${pin}' is not a name@version pin"
+            exit 1
+          fi
+          echo "Checking npm registry for ${name}@${version}"
+          if ! resolved="$(npm view "${name}@${version}" version --json 2>/dev/null)"; then
+            echo "::error::${name}@${version} is not visible on the npm registry — publish @atomicmemory/mcp-server before cutting this release, or roll back the pin in ${spec}"
+            exit 1
+          fi
+          resolved="$(printf '%s' "${resolved}" | tr -d '"[:space:]')"
+          if [ "${resolved}" != "${version}" ]; then
+            echo "::error::npm view returned version=${resolved} for ${name}@${version}"
+            exit 1
+          fi
+          echo "ok: ${name}@${version} is published on npm"
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: preflight-mcp-pin
+    if: github.repository == 'atomicstrata/atomicmemory'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Resolve version
+        id: ver
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          v="${REF_NAME#cli-v}"
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::invalid version: ${v} (expected X.Y.Z)"
+            exit 1
+          fi
+          {
+            printf 'version=%s\n' "$v"
+            printf 'tag=cli-v%s\n' "$v"
+          } >>"$GITHUB_OUTPUT"
+          echo "Resolved version: ${v} (tag cli-v${v})"
+
+      - name: Assert workspace version matches tag
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          cargo_ver="$(awk '/^\[workspace\.package\]/{found=1; next} found && /^version = /{gsub(/[" ]/,"",$3); print $3; exit}' Cargo.toml)"
+          if [ "$VERSION" != "$cargo_ver" ]; then
+            echo "::error::Tag version ${VERSION} does not match [workspace.package] version ${cargo_ver} in Cargo.toml"
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: 1.88.0
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release -p atomicmemory --bin am --target ${{ matrix.target }} --locked
+
+      - name: Package
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          target="${{ matrix.target }}"
+          stage="stage"
+          mkdir -p "$stage" dist
+          cp "target/${target}/release/am" "$stage/am"
+          cp LICENSE "$stage/LICENSE"
+          cp crates/cli/README.md "$stage/README.md"
+          tar -C "$stage" -czf "dist/am-${ver}-${target}.tar.gz" am LICENSE README.md
+          members="$(tar -tzf "dist/am-${ver}-${target}.tar.gz" | sed 's|^\./||')"
+          printf '%s\n' "$members" | grep -qx am
+          printf '%s\n' "$members" | grep -qx LICENSE
+          printf '%s\n' "$members" | grep -qx README.md
+          ! printf '%s\n' "$members" | grep -qx atomicmemory
+          ls -l dist
+
+      - name: Native smoke
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          target="${{ matrix.target }}"
+          tarball="dist/am-${ver}-${target}.tar.gz"
+          work="${RUNNER_TEMP}/am-smoke"
+          mkdir -p "$work"
+          tar -xzf "$tarball" -C "$work"
+          chmod +x "$work/am"
+          got="$("$work/am" --version)"
+          expected="am ${ver}"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::version mismatch: expected '${expected}', got '${got}'"
+            exit 1
+          fi
+          "$work/am" --help | head -n1 | grep -qi atomicmemory
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish GitHub Release
+    if: github.repository == 'atomicstrata/atomicmemory'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      MIRROR_DISPATCH_TOKEN: ${{ secrets.CLI_MIRROR_DISPATCH_TOKEN }}
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+    steps:
+      - name: Resolve version
+        id: ver
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          v="${REF_NAME#cli-v}"
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::invalid version: ${v} (expected X.Y.Z)"
+            exit 1
+          fi
+          {
+            printf 'version=%s\n' "$v"
+            printf 'tag=cli-v%s\n' "$v"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Preflight mirror dispatch token
+        run: |
+          set -euo pipefail
+          if [ -z "${MIRROR_DISPATCH_TOKEN:-}" ]; then
+            echo "::error::CLI_MIRROR_DISPATCH_TOKEN is required before publishing a release"
+            exit 1
+          fi
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ver.outputs.tag }}
+          persist-credentials: false
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: tarball-*
+          merge-multiple: true
+
+      - name: Assemble release assets
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          mkdir -p dist
+          cp artifacts/*.tar.gz dist/
+          cp scripts/install-cli.sh dist/install.sh
+          ( cd dist && sha256sum *.tar.gz > SHA256SUMS )
+          echo "==== SHA256SUMS ===="
+          cat dist/SHA256SUMS
+
+      - name: Assert release does not already exist
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "::error::Release ${TAG} already exists; bump the patch version or re-mirror existing assets"
+            exit 1
+          fi
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/am-*.tar.gz
+            dist/SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* \
+            --repo "$GH_REPO" \
+            --title "am ${VERSION}" \
+            --generate-notes
+
+      - name: Dispatch R2 mirror (internal)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -n \
+            --arg ver "$VERSION" \
+            --arg tag "$TAG" \
+            '{event_type:"cli-release-published", client_payload:{version:$ver, tag:$tag}}')"
+          curl -fsSL -X POST \
+            -H "Authorization: token ${MIRROR_DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/atomicstrata/atomicmemory-internal/dispatches \
+            -d "$payload"

@@ -31,6 +31,12 @@
 /turbo.json                             @atomicstrata/atomicmemory-maintainers
 /pnpm-lock.yaml                         @atomicstrata/atomicmemory-maintainers
 
+# CLI and wire types.
+/crates/                                @atomicstrata/atomicmemory-maintainers
+/Cargo.toml                             @atomicstrata/atomicmemory-maintainers
+/Cargo.lock                             @atomicstrata/atomicmemory-maintainers
+/rust-toolchain.toml                    @atomicstrata/atomicmemory-maintainers
+
 # Packages, adapters, plugins.
 /packages/core/                         @atomicstrata/atomicmemory-core
 /packages/sdk/                          @atomicstrata/atomicmemory-sdk

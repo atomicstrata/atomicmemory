@@ -9,6 +9,8 @@ repository. Human-facing project context lives in `README.md`, `CONTRIBUTING.md`
 
 - `packages/` contains publishable libraries and runtimes: Core, SDK, CLI, and
   MCP server.
+- `crates/` contains the CLI (`am`) and its Cloud API client/types.
+  Rust is optional for contributors unless touching `crates/`.
 - `adapters/` contains framework integrations.
 - `plugins/` contains host integrations.
 - `tests/smoke/` contains public smoke contracts and contributor-safe release
@@ -56,9 +58,16 @@ repository. Human-facing project context lives in `README.md`, `CONTRIBUTING.md`
   resolver, Postgres, the model's tag parser), not your own parser. Per-surface
   defense is leaky by construction: one sibling always gets missed.
 
-### Size Limits
+The standards above are language-neutral. Sizing and idiom rules are not: they
+live in the per-language sections below. Follow the section matching the
+directory you are editing.
 
-These limits are acceptance criteria for code review:
+### Size Limits (TypeScript And JavaScript)
+
+These limits are acceptance criteria for code review in `packages/`,
+`adapters/`, `plugins/`, `tests/`, and root scripts. They do not apply to
+`crates/`, which uses the responsibility-based rule in
+[Rust Standards](#rust-standards-crates).
 
 - Code files must stay under 400 lines, excluding comments.
 - Test files must stay under 400 lines, excluding comments.
@@ -84,11 +93,52 @@ or focused tests before opening the PR.
   environment-variable reads through feature code.
 - Prefer deterministic control flow and explicit errors over implicit defaults.
 
+### Rust Standards (`crates/`)
+
+Rust follows the language-neutral standards above. It deliberately does **not**
+inherit the TypeScript line limits: derives, trait and `impl` blocks, exhaustive
+`match` arms, and colocated `#[cfg(test)]` modules make a raw line count a poor
+proxy for complexity. A long command module whose functions each do one thing is
+idiomatic Rust; a short module with deep nesting and implicit control flow is
+not.
+
+- Prefer shallow control flow and small functions. If a function becomes hard to
+  scan, split it by responsibility — not to reach a number.
+- Split a module when it carries unrelated responsibilities, or when adding a
+  feature means reading code in the same file that has nothing to do with it.
+- Colocated `#[cfg(test)]` modules are expected and do not count toward module
+  size.
+- Edition **2024**, `rust-version = 1.88` in the root `Cargo.toml`;
+  `rust-toolchain.toml` pins the exact toolchain CI uses. Raise the MSRV
+  deliberately, and only together with the `msrv-check` job.
+- Prefer explicit types, typed errors (`thiserror`), and clear ownership
+  boundaries. No `unwrap()` / `expect()` outside `#[cfg(test)]`.
+- Fail closed — no degraded fallback modes. Never log secrets or PII through
+  `tracing`; redact before a value can reach a log or a user-visible error.
+- Load configuration at process boundaries; do not read environment variables
+  deep inside library crates.
+- Keep dependencies conservative. Do not add a crate for a small utility.
+- Replace magic numbers with named constants, especially timeouts, retry
+  budgets, and other bounds.
+- Comment why a non-obvious choice exists. Do not comment obvious mechanics.
+- Validation for Rust changes (mirrors the `ci-rust` workflow):
+
+```bash
+pnpm run ci:rust
+```
+
+That script runs `cargo fmt --all -- --check`, `cargo clippy --workspace
+--all-targets --all-features --locked -- -D warnings`, `cargo test --workspace
+--locked`, and a release `am --help` smoke. CI additionally runs an MSRV
+`cargo check`, `cargo-deny`, and the suite on macOS and Windows. While
+iterating, prefer targeted checks such as `cargo test -p atomicmemory`.
+
 ### Comments And Documentation
 
-- Include a JSDoc comment at the top of each code file that explains the file's
-  purpose.
-- Document public APIs, exported functions, classes, and public types.
+- Start every code file with a comment explaining the file's purpose: JSDoc in
+  TypeScript and JavaScript, a `//!` module doc in Rust.
+- Document public APIs, exported functions, classes, and public types. In Rust
+  that means `///` doc comments on public items.
 - Write clear comments for complex logic, non-obvious constraints, or security
   boundaries.
 - Keep comments up to date with code changes.

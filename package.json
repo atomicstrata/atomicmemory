@@ -33,6 +33,11 @@
     "pack-dry-run": "node scripts/ci/pack-dry-run.mjs",
     "release-policy": "node scripts/ci/release-policy.mjs",
     "test:guards": "node --test scripts/guards/__tests__/*.test.mjs",
+    "test:install-cli": "bash scripts/__tests__/install-cli.test.sh",
+    "test:install-cli-internal": "bash scripts/__tests__/install-cli-internal.test.sh",
+    "test:reconcile-internal-release": "bash scripts/__tests__/reconcile-internal-release.test.sh",
+    "test:release-cli-version": "bash scripts/__tests__/release-cli-version.test.sh",
+    "test:security-compliance": "node --test scripts/ci/__tests__/security-compliance.test.mjs",
     "test:release-policy": "node --test scripts/ci/__tests__/release-policy.test.mjs",
     "check:plugin-versions": "node scripts/version-families.mjs plugin --check",
     "check:adapter-versions": "node scripts/version-families.mjs adapter --check",
@@ -43,7 +48,9 @@
     "ci:pack-dry-run": "turbo run build && node scripts/ci/pack-dry-run.mjs",
     "ci:docs-contract": "turbo run docs-contract",
     "ci:public-smoke": "turbo run public-integration-smoke",
-    "ci:contract-conformance": "node scripts/check-ingest-contract-conformance.mjs"
+    "ci:contract-conformance": "node scripts/check-ingest-contract-conformance.mjs",
+    "validate:cli": "pnpm --filter @atomicmemory/cli build && node packages/cli/dist/bin.js validate",
+    "ci:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo test --workspace --locked && cargo run -p atomicmemory --release --locked --bin am -- --help"
   },
   "devDependencies": {
     "@typescript-eslint/parser": "^8.59.3",

@@ -51,6 +51,8 @@ export function renderHelp(command?: string, version = CLI_SPEC.package_version)
   return [
     banner(version),
     '',
+    dim('Deprecated: prefer `am` for Cloud, memory, and hooks. Still supported for llmwiki import and legacy workflows until those ship in `am`.'),
+    '',
     box('getting started', columns([
       [bold('atomicmemory init'), 'configure profile, provider URL, and default scope'],
       [bold('atomicmemory doctor'), 'verify config, connection, package, and integration health'],

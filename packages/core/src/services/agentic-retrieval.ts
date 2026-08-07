@@ -69,13 +69,22 @@ async function checkSufficiencyAndDecompose(
 
   const userMessage = `Question: ${query}\n\nRetrieved memories:\n${memorySummary}`;
 
-  const response = await llm.chat(
-    [
-      { role: 'system', content: SUFFICIENCY_AND_DECOMPOSE_PROMPT },
-      { role: 'user', content: userMessage },
-    ],
-    { temperature: 0, maxTokens: 300 },
-  );
+  let response: string;
+  try {
+    response = await llm.chat(
+      [
+        { role: 'system', content: SUFFICIENCY_AND_DECOMPOSE_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
+      { temperature: 0, maxTokens: 300 },
+    );
+  } catch (error) {
+    // Sufficiency checking is an optional retrieval enhancement. A truncated
+    // or empty completion now throws; treat that like the parse-failure path
+    // below (sufficient, no decomposition) instead of failing the search.
+    console.error('[agentic-retrieval] sufficiency check failed, treating as sufficient:', error);
+    return { sufficient: true, reason: 'llm-error', subQueries: [] };
+  }
 
   try {
     const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

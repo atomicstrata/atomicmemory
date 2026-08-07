@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 lib/
+/target/
 *.tsbuildinfo
 
 # Test / coverage
@@ -27,7 +28,9 @@ out/
 # plans/specs to `docs/superpowers/{plans,specs}/`. These are internal working
 # artifacts and must never reach the public mirror via `public:sync`. Anchored
 # to the repo root so package-level docs (packages/*/docs) stay tracked.
-/docs/
+/docs/*
+!/docs/cli-distribution.md
+!/docs/cli-consolidation.md
 
 # Logs
 *.log

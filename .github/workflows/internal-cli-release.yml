@@ -1,0 +1,291 @@
+name: Internal CLI Release
+
+# Internal-only convenience lane. Builds prebuilt `am` binaries from
+# atomicmemory-internal and publishes them to PRIVATE GitHub Releases for eng
+# testing (tags cli-internal-*).
+#
+# This is NOT the public release pipeline. Official cli-v* Releases + R2
+# mirroring are owned exclusively by release-cli.yml / mirror-cli-r2.yml on
+# the public trust root. Nothing here may create cli-v* tags, attest public
+# provenance, or write to get.atomicstrata.ai.
+#
+# Naming contract with release-policy: publish-*.yml is reserved for audited
+# release lanes. This workflow is deliberately named OUTSIDE that prefix.
+#
+# Repo guard: like internal-core-docker-image.yml, this file is mirrored into
+# the public repo by export, so jobs run ONLY on
+# atomicstrata/atomicmemory-internal.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA of atomicmemory-internal to build"
+        required: false
+        default: main
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "scripts/install-cli.sh"
+      - "scripts/install-cli-internal.sh"
+      - ".github/workflows/internal-cli-release.yml"
+
+permissions:
+  contents: read
+
+# Serialize the whole lane so floating cli-internal-latest has a single writer.
+# Branch/SHA dispatches still publish immutable cli-internal-<sha> tags; only
+# main refreshes the floating alias (see publish job).
+concurrency:
+  group: internal-cli-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  resolve:
+    name: resolve source SHA
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      refresh_latest: ${{ steps.meta.outputs.refresh_latest }}
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Resolve immutable SHA and version
+        id: meta
+        env:
+          # Pass through env — never interpolate untrusted ref text into the script body.
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          ver="$(awk '/^\[workspace\.package\]/{found=1; next} found && /^version = /{gsub(/[" ]/,"",$3); print $3; exit}' Cargo.toml)"
+          if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::invalid workspace version: ${ver} (expected X.Y.Z)"
+            exit 1
+          fi
+          sha="$(git rev-parse HEAD)"
+          tag="cli-internal-${sha}"
+          case "$tag" in
+            cli-v*)
+              echo "::error::refusing public cli-v tag namespace"
+              exit 1
+              ;;
+          esac
+          # Floating alias is only rewritten from main so branch builds cannot
+          # race to become "latest". Compare quoted env values only.
+          refresh_latest=false
+          if [ "$EVENT_NAME" = "push" ]; then
+            refresh_latest=true
+          elif [ "${INPUT_REF:-main}" = "main" ]; then
+            refresh_latest=true
+          fi
+          {
+            printf 'version=%s\n' "$ver"
+            printf 'sha=%s\n' "$sha"
+            printf 'short_sha=%s\n' "${sha:0:7}"
+            printf 'tag=%s\n' "$tag"
+            printf 'refresh_latest=%s\n' "$refresh_latest"
+          } >>"$GITHUB_OUTPUT"
+          echo "Resolved internal version ${ver} @ ${sha} (refresh_latest=${refresh_latest})"
+
+  build:
+    name: build ${{ matrix.target }}
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout resolved SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: 1.88.0
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          key: internal-cli-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release -p atomicmemory --bin am --target ${{ matrix.target }} --locked
+
+      - name: Package
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          target="${{ matrix.target }}"
+          stage="stage"
+          mkdir -p "$stage" dist
+          cp "target/${target}/release/am" "$stage/am"
+          cp LICENSE "$stage/LICENSE"
+          cp crates/cli/README.md "$stage/README.md"
+          tar -C "$stage" -czf "dist/am-${ver}-${target}.tar.gz" am LICENSE README.md
+          members="$(tar -tzf "dist/am-${ver}-${target}.tar.gz" | sed 's|^\./||')"
+          printf '%s\n' "$members" | grep -qx am
+          printf '%s\n' "$members" | grep -qx LICENSE
+          printf '%s\n' "$members" | grep -qx README.md
+          ! printf '%s\n' "$members" | grep -qx atomicmemory
+          ls -l dist
+
+      - name: Native smoke
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          target="${{ matrix.target }}"
+          tarball="dist/am-${ver}-${target}.tar.gz"
+          work="${RUNNER_TEMP}/am-smoke"
+          mkdir -p "$work"
+          tar -xzf "$tarball" -C "$work"
+          chmod +x "$work/am"
+          got="$("$work/am" --version)"
+          expected="am ${ver}"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::version mismatch: expected '${expected}', got '${got}'"
+            exit 1
+          fi
+          "$work/am" --help | head -n1 | grep -qi atomicmemory
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish internal GitHub Release
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout resolved SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: tarball-*
+          merge-multiple: true
+
+      - name: Assemble release assets
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          mkdir -p dist
+          cp artifacts/*.tar.gz dist/
+          cp scripts/install-cli.sh dist/install-cli.sh
+          cp scripts/install-cli-internal.sh dist/install.sh
+          printf '{"version":"%s","tag":"%s","git_sha":"%s","channel":"internal"}\n' \
+            "$ver" "$TAG" "$SHA" >dist/version.json
+          ( cd dist && sha256sum *.tar.gz >SHA256SUMS )
+          echo "==== SHA256SUMS ===="
+          cat dist/SHA256SUMS
+          echo "==== version.json ===="
+          cat dist/version.json
+
+      - name: Reconcile immutable release
+        id: reconcile
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        # If a previous run created the immutable release but failed
+        # before refreshing the floating alias, re-running the same SHA
+        # must be able to complete the alias step without silently
+        # diverging bytes. scripts/ci/reconcile-internal-release.sh
+        # verifies target SHA + name manifest, then swaps dist/ for the
+        # immutable release's actual bytes (rebuilt tarballs are not
+        # byte-reproducible) so the floating alias upload can never
+        # publish content different from cli-internal-<sha>.
+        run: scripts/ci/reconcile-internal-release.sh
+
+      - name: Create immutable internal release
+        if: steps.reconcile.outputs.release_exists != 'true'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          SHORT_SHA: ${{ needs.resolve.outputs.short_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* \
+            --repo "$GH_REPO" \
+            --target "${SHA}" \
+            --title "am ${VERSION} (internal ${SHORT_SHA})" \
+            --notes "Internal eng-team build of am ${VERSION} at ${SHA}. Not a public release. Install: tmp=\"\$(mktemp -d)\" && gh release download cli-internal-latest --repo atomicstrata/atomicmemory-internal --pattern install.sh --dir \"\$tmp\" && sh \"\$tmp/install.sh\"" \
+            --latest=false
+
+      - name: Refresh floating cli-internal-latest
+        if: needs.resolve.outputs.refresh_latest == 'true'
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          SHORT_SHA: ${{ needs.resolve.outputs.short_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view cli-internal-latest --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release delete cli-internal-latest --repo "$GH_REPO" --yes --cleanup-tag
+          fi
+          gh release create cli-internal-latest dist/* \
+            --repo "$GH_REPO" \
+            --target "${SHA}" \
+            --title "am ${VERSION} (internal latest → ${SHORT_SHA})" \
+            --notes "Floating internal eng-team channel for am ${VERSION} @ ${SHA}. Not a public release." \
+            --latest=false

@@ -1,7 +1,7 @@
 /**
  * Public package-protocol smoke checks driven by the committed smoke contract.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -33,7 +33,7 @@ function main() {
     return;
   }
 
-  console.log(`PASS: public package smoke validated ${rows.length} package-protocol rows`);
+  console.log(`PASS: public smoke validated ${rows.length} required release rows`);
 }
 
 function isPackageProtocolRow(row) {
@@ -43,6 +43,13 @@ function isPackageProtocolRow(row) {
 }
 
 function validateRow(row) {
+  // Not every required row is an npm package: the canonical `am` CLI is a
+  // Rust binary distributed via GitHub Releases, so it has no package.json
+  // and the npm pack / self-import checks below do not apply to it.
+  if (row.kind === "binary") {
+    return validateBinaryRow(row);
+  }
+
   const packageDir = join(REPO_ROOT, row.monorepo_path);
   const manifestPath = join(packageDir, "package.json");
   const manifest = readJson(manifestPath);
@@ -56,6 +63,79 @@ function validateRow(row) {
     ...validatePack(row, manifest, packageDir),
     ...validateRuntimeSurface(row, manifest, packageDir),
   ];
+}
+
+/**
+ * Release-shape checks for a Rust binary row.
+ *
+ * Deliberately toolchain-free: the public smoke job installs Node and pnpm
+ * only, so this asserts the declared release surface exists rather than
+ * building the crate (the Rust build is covered by the fmt-clippy-test job).
+ */
+function validateBinaryRow(row) {
+  const failures = [];
+  const crateDir = join(REPO_ROOT, row.monorepo_path);
+  const cargoPath = join(crateDir, "Cargo.toml");
+
+  let cargo;
+  try {
+    cargo = readFileSync(cargoPath, "utf8");
+  } catch {
+    return [`${row.monorepo_path}: missing Cargo.toml for binary row ${row.name}`];
+  }
+
+  // The row name is the installed binary, which must be a real [[bin]] target.
+  // Comments are stripped first: a commented-out `# [[bin]] / # name = "am"`
+  // would otherwise satisfy the regex, so deleting the real declaration could
+  // leave the release gate green.
+  const binNames = [
+    ...stripTomlComments(cargo).matchAll(/\[\[bin\]\][^[]*?name\s*=\s*"([^"]+)"/gs),
+  ].map((match) => match[1]);
+  if (!binNames.includes(row.name)) {
+    failures.push(
+      `${row.monorepo_path}: Cargo.toml declares no [[bin]] named "${row.name}" (found: ${
+        binNames.join(", ") || "none"
+      })`,
+    );
+  }
+
+  if (!existsSync(join(crateDir, "README.md"))) {
+    failures.push(`${row.monorepo_path}: README.md is required for a public row`);
+  }
+
+  // A published row must ship an install path that actually exists in-repo,
+  // so the contract cannot advertise an installer that was renamed or removed.
+  if (row.publish_status === "published" && !existsSync(join(REPO_ROOT, "scripts/install-cli.sh"))) {
+    failures.push(
+      `${row.monorepo_path}: scripts/install-cli.sh is missing but the row advertises an installer`,
+    );
+  }
+
+  return failures;
+}
+
+/**
+ * Remove TOML `#` comments, honoring quotes so a `#` inside a string value
+ * (for example a URL fragment) is not treated as a comment start.
+ */
+function stripTomlComments(toml) {
+  return toml
+    .split("\n")
+    .map((line) => {
+      let quote = null;
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (quote) {
+          if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'") {
+          quote = ch;
+        } else if (ch === "#") {
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join("\n");
 }
 
 function validateManifest(row, manifest) {

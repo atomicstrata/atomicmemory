@@ -52,6 +52,7 @@ pnpm run ci:code-health      # fallow/code-health coverage
 pnpm run ci:pack-dry-run     # pack-dry-run, affected-only
 pnpm run ci:docs-contract    # docs-contract
 pnpm run ci:public-smoke     # public-integration-smoke
+pnpm run ci:rust             # fmt, clippy, test, release build, am --help (when crates/ changes)
 ```
 
 The `--affected` filter is only used on normal PR lanes. Release-green
@@ -93,9 +94,34 @@ Every pull request runs through:
   GitHub Actions policy, and public-boundary checks.
 - `code-health` — fallow and package-level code-health coverage for packages
   that carry that gate.
+- `ci-rust` (path-filtered) — MSRV `cargo check`, pinned-toolchain `cargo fmt`,
+  `clippy -D warnings`, and `cargo test` when `crates/` or root Cargo files change.
 
 Full release validation runs every required package and smoke row on release
 branches; affected filtering does not narrow that surface.
+
+### Rust contributors
+
+Install Rust via `rust-toolchain.toml` (1.88.0 + rustfmt + clippy). When
+changing `crates/`:
+
+```bash
+pnpm run ci:rust
+```
+
+The user-facing CLI is **`am`** (Rust, `crates/cli`). Consolidation of the npm
+`atomicmemory` binary into `am` is in progress — see
+[`crates/cli/README.md`](crates/cli/README.md) for the `atomicmemory` to `am`
+command map. Until the npm package is archived, both binaries may coexist;
+prefer `am` for new docs and host snippets.
+
+For non-production Cloud tiers, use a local profile or `--base-url` with
+explicit OAuth issuer/client — production OAuth is not applied to custom URLs.
+See [`crates/cli/README.md`](crates/cli/README.md) for install,
+`am integrate`, and distribution details.
+
+Docs PRs that change install commands or package status labels should run
+`git diff --check` and `pnpm run docs-contract` before opening a review.
 
 PRs need CODEOWNERS approval for the touched paths and all required checks
 must be green before merge.
@@ -107,6 +133,7 @@ must be green before merge.
 | `packages/` | Publishable libraries and runtimes with semver discipline. |
 | `adapters/` | Framework integrations. Directory names match the unscoped npm package name. |
 | `plugins/` | Host integrations. Directory uses the bare host name; package uses the `-plugin` suffix. |
+| `crates/` | CLI and Cloud/Core wire types. Requires `rustc` when changed. |
 | `examples/` | Reserved for phase 2+. Only land examples with owners and CI coverage. |
 | `tests/smoke/` | Public, contributor-safe smoke tests and docs contracts. |
 

@@ -195,29 +195,24 @@ Lifecycle writes are compact records, not raw prompt dumps. Hook scripts redact 
 
 ### Hook runtime choice
 
-The installed Claude Code plugin still ships the versioned shell hooks above. For manual hook configs, the AtomicMemory CLI can generate equivalent host snippets with a runtime choice:
+The installed Claude Code plugin still ships the versioned shell hooks above. For manual hook configs, use `am hooks` (three-event alternate — do not combine with plugin shell hooks on the same events):
 
 ```bash
-# Recommended: bundled Node CLI hook runner.
-atomicmemory hooks install --host claude-code --runtime node
-
-# Advanced: emit config for a compatible Python hook runner.
-atomicmemory hooks install --host claude-code --runtime python
+am hooks install --host claude-code
+am hooks doctor --host claude-code
 ```
 
-Node is the default because it shares the TypeScript SDK adapter and CLI packaging. Python is an advanced option for Python-first environments; set `ATOMICMEMORY_PYTHON_HOOK_BIN` to a compatible Python hook runner before using the generated Python snippet.
-
-When debugging CLI-generated Node hooks manually with `--json` or `--agent`, skipped runs include `meta.reason`: `prompt_too_short`, `no_content`, `no_hits`, or `low_signal`. Generated hook snippets keep skipped runs quiet so Claude Code receives no extra output unless memory context is available.
+When debugging with `-o json` or `--agent`, skipped runs include `meta.reason`: `prompt_too_short`, `no_content`, `no_hits`, or `low_signal`. Generated hook snippets keep skipped runs quiet so Claude Code receives no extra output unless memory context is available.
 
 #### PATH verification
 
-Claude Code hook environments are commonly spawned with a thinner PATH than the interactive shell that ran `atomicmemory hooks install`. Before relying on the generated snippet, confirm the bundled CLI resolves inside the hook environment:
+Claude Code hook environments are commonly spawned with a thinner PATH than the interactive shell that ran `am hooks install`. Before relying on the generated snippet, confirm `am` resolves inside the hook environment:
 
 ```bash
-command -v atomicmemory
+command -v am
 ```
 
-If the command is not found, install `@atomicmemory/cli` globally or invoke it through a wrapper that puts the resolved bin on PATH.
+If the command is not found, run `curl -fsSL https://get.atomicstrata.ai/install.sh | sh` and open a new terminal.
 
 ## License
 

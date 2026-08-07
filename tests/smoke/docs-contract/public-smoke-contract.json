@@ -40,11 +40,22 @@
       "name": "@atomicmemory/cli",
       "monorepo_path": "packages/cli",
       "registry_artifact": "npm:@atomicmemory/cli",
-      "required_for_public_release": true,
+      "required_for_public_release": false,
       "coverage_label": "package_protocol",
       "publish_status": "published",
       "install_type": "npm_cli",
       "public_install_command": "npm install -g @atomicmemory/cli"
+    },
+    {
+      "kind": "binary",
+      "name": "am",
+      "monorepo_path": "crates/cli",
+      "registry_artifact": "https://github.com/atomicstrata/atomicmemory/releases",
+      "required_for_public_release": true,
+      "coverage_label": "package_protocol",
+      "publish_status": "published",
+      "install_type": "rust_binary_installer",
+      "public_install_command": "curl -fsSL https://get.atomicstrata.ai/install.sh | sh"
     },
     {
       "kind": "package",
