@@ -11,6 +11,10 @@ auditable.
 
 ## Current Focus
 
+- **CLI consolidation in progress** — port blocking npm `@atomicmemory/cli`
+  surfaces into `am` and retire the dual-CLI story. See
+  [`crates/cli/README.md`](crates/cli/README.md) for the command map and what
+  is intentionally not ported.
 - Keep the SDK, Core, adapters, and plugins aligned around one memory protocol.
 - Make public install paths work from published packages without cloning source
   repositories.
@@ -47,9 +51,13 @@ auditable.
 
 - Keep the MCP server stable for memory capture, retrieval, search, and context
   packaging workflows.
-- Improve install and doctor-style diagnostics for supported hosts.
-- Validate marketplace manifest behavior before publishing or promoting host
-  plugins.
+- **Shipped:** `am integrate` installs the published `@atomicmemory/mcp-server`
+  into global host MCP config for Cursor, Claude Code, and Codex (`list`,
+  `detect`, `install`, `update`, `doctor`, `uninstall`). Global user config only
+  in v1.
+- **Next:** project-scoped host configs (for example repo-local `.cursor/mcp.json`),
+  further doctor polish, and marketplace manifest validation before publishing
+  or promoting host plugins.
 - Keep Codex and Cursor plugin packages unpublished until their host install
   paths are verified end to end.
 

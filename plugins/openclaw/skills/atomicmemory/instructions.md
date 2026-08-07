@@ -21,7 +21,7 @@ Use `memory_ingest` with:
 
 - `mode: "text"` for semantic learnings that should be extracted into durable memory.
 - `mode: "messages"` only when the conversational shape matters.
-- `mode: "verbatim"` for deterministic one-record snapshots such as session summaries or handoff state. Include `metadata.source: "openclaw"`, an `event` field such as `"session_summary"`, and `schema_version: 1`. Set `contentClass: "summary"` — a core with the default raw-content policy rejects unstamped (or raw) verbatim content.
+- `mode: "verbatim"` for deterministic one-record snapshots such as session summaries or handoff state. Set `contentClass: "summary"`. Use `provenance` for lineage (`source`, `sourceUrl`, `sourceId`) — for example `provenance: { source: "openclaw", sourceUrl: "openclaw://session/<id>" }`. The documented integration keys in `metadata` are `externalId` and `dedupe_key`; other non-reserved keys (for example an event name or schema version) are still accepted. Core reserves a set of internal keys (including `sourceSite`) and rejects those.
 
 ## Before losing context
 

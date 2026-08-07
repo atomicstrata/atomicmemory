@@ -1,0 +1,25 @@
+[package]
+name = "am-cloud-types"
+description = "Shared DTOs for the AtomicMemory Cloud API (CLI client surface)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+repository = "https://github.com/atomicstrata/atomicmemory"
+
+[dependencies]
+am-core-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+validator.workspace = true
+regex.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[lints]
+workspace = true

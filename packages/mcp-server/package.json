@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/mcp-server",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "MCP server exposing AtomicMemory's ingest / search / package tools to any MCP-compatible agent.",
   "type": "module",
   "main": "dist/index.js",

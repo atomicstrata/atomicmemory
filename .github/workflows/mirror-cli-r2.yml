@@ -1,0 +1,235 @@
+name: mirror-cli-r2
+
+# Mirror byte-identical CLI release assets from the public GitHub Release to the
+# get.atomicstrata.ai convenience channel. Runs only on atomicmemory-internal.
+
+on:
+  repository_dispatch:
+    types:
+      - cli-release-published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to mirror (X.Y.Z), e.g. 0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  mirror:
+    name: mirror to R2
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Resolve release tag
+        id: rel
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          PAYLOAD_VERSION: ${{ github.event.client_payload.version || '' }}
+          PAYLOAD_TAG: ${{ github.event.client_payload.tag || '' }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            tag="$PAYLOAD_TAG"
+            ver="$PAYLOAD_VERSION"
+          else
+            ver="$INPUT_VERSION"
+            ver="${ver#v}"
+            tag="cli-v${ver}"
+          fi
+          if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::invalid version: ${ver} (expected X.Y.Z)"
+            exit 1
+          fi
+          if [ "$tag" != "cli-v${ver}" ]; then
+            echo "::error::tag/version mismatch: tag=${tag} version=${ver}"
+            exit 1
+          fi
+          {
+            printf 'tag=%s\n' "$tag"
+            printf 'version=%s\n' "$ver"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Download public Release assets
+        env:
+          TAG: ${{ steps.rel.outputs.tag }}
+          VERSION: ${{ steps.rel.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          tag="$TAG"
+          mkdir -p dist
+          expected=(
+            "am-${ver}-aarch64-apple-darwin.tar.gz"
+            "am-${ver}-x86_64-apple-darwin.tar.gz"
+            "am-${ver}-x86_64-unknown-linux-gnu.tar.gz"
+            "am-${ver}-aarch64-unknown-linux-gnu.tar.gz"
+            SHA256SUMS
+            install.sh
+          )
+          for asset in "${expected[@]}"; do
+            gh release download "$tag" \
+              --repo atomicstrata/atomicmemory \
+              --pattern "$asset" \
+              --dir dist
+          done
+          found="$(find dist -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          if [ "$found" -ne "${#expected[@]}" ]; then
+            echo "::error::expected ${#expected[@]} release assets, found ${found}"
+            ls -la dist
+            exit 1
+          fi
+          ( cd dist && sha256sum -c SHA256SUMS )
+
+      - name: Render version.json
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+          TAG: ${{ steps.rel.outputs.tag }}
+        run: |
+          set -euo pipefail
+          printf '{"version":"%s","tag":"%s"}\n' "$VERSION" "$TAG" > version.json
+
+      - name: Upload versioned assets to Cloudflare R2
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          base="s3://${R2_BUCKET}"
+          relpath="cli/v${ver}"
+
+          upload_if_new_or_identical() {
+            src="$1"
+            name="$(basename "$src")"
+            key="${relpath}/${name}"
+            digest="$(sha256sum "$src" | awk '{print $1}')"
+            if aws s3api head-object \
+              --bucket "$R2_BUCKET" \
+              --key "$key" \
+              --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
+              tmp="$(mktemp)"
+              aws s3 cp "${base}/${key}" "$tmp" --endpoint-url "$R2_ENDPOINT"
+              existing="$(sha256sum "$tmp" | awk '{print $1}')"
+              rm -f "$tmp"
+              if [ "$existing" != "$digest" ]; then
+                echo "::error::${key} already exists with a different digest; bump the patch version"
+                exit 1
+              fi
+              echo "unchanged: ${key}"
+              return 0
+            fi
+            aws s3 cp "$src" "${base}/${key}" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --cache-control "public, max-age=31536000, immutable"
+          }
+
+          for tarball in dist/am-"${ver}"-*.tar.gz dist/SHA256SUMS; do
+            upload_if_new_or_identical "$tarball"
+          done
+
+      - name: Verify pinned install from versioned path
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          ver="$VERSION"
+          base="${R2_PUBLIC_BASE_URL:-https://get.atomicstrata.ai}"
+          base="${base%/}"
+          AM_BASE_URL="${base}" AM_VERSION="${ver}" \
+            dist/install.sh --bin-dir "$HOME/.am/bin" --no-modify-path
+          got="$("$HOME/.am/bin/am" --version)"
+          expected="am ${ver}"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::version mismatch: expected '${expected}', got '${got}'"
+            exit 1
+          fi
+          "$HOME/.am/bin/am" --help | head -n1 | grep -qi atomicmemory
+
+      - name: Promote install.sh and version.json
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ steps.rel.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="s3://${R2_BUCKET}"
+          ver="$VERSION"
+
+          semver_ge() {
+            local left="$1" right="$2"
+            local l_major l_minor l_patch r_major r_minor r_patch
+            IFS=. read -r l_major l_minor l_patch <<<"$left"
+            IFS=. read -r r_major r_minor r_patch <<<"$right"
+            if (( 10#$l_major > 10#$r_major )); then return 0; fi
+            if (( 10#$l_major < 10#$r_major )); then return 1; fi
+            if (( 10#$l_minor > 10#$r_minor )); then return 0; fi
+            if (( 10#$l_minor < 10#$r_minor )); then return 1; fi
+            (( 10#$l_patch >= 10#$r_patch ))
+          }
+
+          # Read the current published version.json, distinguishing "absent"
+          # (first release — nothing to compare) from a genuine read error. A
+          # read failure must NOT silently skip the monotonic guard: a transient
+          # error or a read-scoped-out token would otherwise let an older
+          # version overwrite the "latest" pointer (a downgrade). Fail closed on
+          # anything that is not a definitive 404.
+          head_err="$(mktemp)"
+          if aws s3api head-object \
+            --bucket "$R2_BUCKET" \
+            --key version.json \
+            --endpoint-url "$R2_ENDPOINT" >/dev/null 2>"$head_err"; then
+            current_json="$(aws s3 cp "${base}/version.json" - --endpoint-url "$R2_ENDPOINT")"
+            current_ver="$(printf '%s' "$current_json" \
+              | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+              | head -n1)"
+            if ! printf '%s' "$current_ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::current version.json exists but does not contain a valid X.Y.Z version"
+              exit 1
+            fi
+            if ! semver_ge "$ver" "$current_ver"; then
+              echo "::error::refusing to promote ${ver}: older than current ${current_ver}"
+              exit 1
+            fi
+          elif grep -qiE '404|not found|nosuchkey' "$head_err"; then
+            current_ver=""
+            echo "no current version.json — treating as first release"
+          else
+            echo "::error::failed to read current version.json (not a 404); refusing to promote"
+            cat "$head_err" >&2
+            rm -f "$head_err"
+            exit 1
+          fi
+          rm -f "$head_err"
+          echo "Promoting ${ver} over current ${current_ver:-<none>}"
+
+          aws s3 cp dist/install.sh "${base}/install.sh" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "text/x-shellscript" \
+            --cache-control "no-cache"
+          aws s3 cp version.json "${base}/version.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json" \
+            --cache-control "no-cache"
+          echo "Promoted install.sh and version.json after successful verification"

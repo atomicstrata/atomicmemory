@@ -1,0 +1,57 @@
+[package]
+name = "atomicmemory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "AtomicMemory CLI — browser login, projects, API keys, and memory operations"
+readme = "README.md"
+license.workspace = true
+publish = false
+repository = "https://github.com/atomicstrata/atomicmemory"
+homepage = "https://github.com/atomicstrata/atomicmemory"
+documentation = "https://github.com/atomicstrata/atomicmemory/tree/main/crates/cli"
+keywords = ["atomicmemory", "cli", "ai", "agents", "memory"]
+categories = ["command-line-utilities"]
+authors = ["Atomic Strata"]
+
+# `cargo install --path crates/cli` installs the `am` binary.
+[[bin]]
+name = "am"
+path = "src/main.rs"
+
+[dependencies]
+async-trait.workspace = true
+am-cloud-client.workspace = true
+am-cloud-types.workspace = true
+am-core-types.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+clap.workspace = true
+directories.workspace = true
+indicatif.workspace = true
+open.workspace = true
+rand.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+uuid.workspace = true
+rpassword = "7.4"
+fs4.workspace = true
+
+[dev-dependencies]
+tempfile = "3.20.0"
+
+[lints]
+workspace = true

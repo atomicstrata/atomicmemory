@@ -10,7 +10,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: AtomicMemory
-  version: "0.2.1"
+  version: "0.2.2"
   category: ai-memory
   tags: "memory, semantic-search, codex, pluggable"
 ---
@@ -33,7 +33,7 @@ Store key learnings using `memory_ingest`:
 
 - Use `mode: "text"` for semantic facts, decisions, preferences, conventions, and anti-patterns that should be extracted into durable memory.
 - Use `mode: "messages"` only when the exact conversational shape matters.
-- Use `mode: "verbatim"` for deterministic one-record records such as session summaries or handoff state. Include metadata such as `{ "source": "codex", "event": "session_summary", "schema_version": 1 }`. Set `contentClass: "summary"` for these distilled records — a core with the default raw-content policy rejects unstamped (or raw) verbatim content.
+- Use `mode: "verbatim"` for deterministic one-record records such as session summaries or handoff state. Set `contentClass: "summary"`. Use `provenance` for lineage (`source`, `sourceUrl`, `sourceId`) — for example `provenance: { source: "codex", sourceUrl: "codex://session/<id>" }`. The documented integration keys in `metadata` are `externalId` and `dedupe_key`; other non-reserved keys (for example an event name or schema version) are still accepted. Core reserves a set of internal keys (including `sourceSite`) and rejects those.
 
 | What to store | Suggested note |
 |---|---|

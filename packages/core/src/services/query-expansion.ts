@@ -49,13 +49,22 @@ export interface QueryExpansionResult {
 async function extractQueryTerms(
   query: string,
 ): Promise<{ entities: string[]; concepts: string[] }> {
-  const response = await llm.chat(
-    [
-      { role: 'system', content: ENTITY_EXTRACTION_PROMPT },
-      { role: 'user', content: query },
-    ],
-    { temperature: 0, maxTokens: 200 },
-  );
+  let response: string;
+  try {
+    response = await llm.chat(
+      [
+        { role: 'system', content: ENTITY_EXTRACTION_PROMPT },
+        { role: 'user', content: query },
+      ],
+      { temperature: 0, maxTokens: 200 },
+    );
+  } catch (error) {
+    // Query expansion is an optional enhancement. A truncated or empty
+    // completion now throws (fail-closed for persistence callers); here it
+    // must degrade to "no extra terms" rather than fail the whole search.
+    console.error('[query-expansion] entity extraction failed, continuing without expansion:', error);
+    return { entities: [], concepts: [] };
+  }
 
   return parseQueryTerms(response);
 }

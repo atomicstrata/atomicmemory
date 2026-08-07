@@ -19,9 +19,9 @@ jq -e '([.rows[].name] | length) == ([.rows[].name] | unique | length)' "${CONTR
 
 jq -e '
   all(.rows[];
-    (.kind | IN("package", "adapter", "plugin")) and
+    (.kind | IN("package", "adapter", "plugin", "binary")) and
     (.name | type == "string" and length > 0) and
-    (.monorepo_path | test("^(packages|adapters|plugins)/[a-z0-9-]+$")) and
+    (.monorepo_path | test("^(packages|adapters|plugins|crates)/[a-z0-9-]+$")) and
     (.required_for_public_release | type == "boolean") and
     (.coverage_label | IN("package_protocol", "host_install", "true_host_e2e", "skipped_host_missing", "skipped_missing_secret")) and
     (.publish_status | IN("published", "implemented_publish_pending", "coming_soon")) and
@@ -60,5 +60,41 @@ jq -e '
   all(.rows[] | select(.required_for_public_release == true);
     .coverage_label != "skipped_host_missing")
 ' "${CONTRACT}" >/dev/null
+
+# Policy invariants, not just shape. The checks above are all schema-internal,
+# so the contract could (and did) contradict the CLI consolidation while
+# passing: the deprecated npm CLI gated the release while the canonical `am`
+# binary was optional.
+
+# `am` is the canonical CLI: it must gate a public release.
+jq -e '
+  any(.rows[]; .name == "am"
+    and .kind == "binary"
+    and .required_for_public_release == true
+    and .publish_status == "published")
+' "${CONTRACT}" >/dev/null || {
+  echo "FAIL: row 'am' must exist and be required_for_public_release (it is the canonical CLI)" >&2
+  exit 1
+}
+
+# The superseded npm CLI must not gate a public release.
+jq -e '
+  all(.rows[] | select(.name == "@atomicmemory/cli");
+    .required_for_public_release == false)
+' "${CONTRACT}" >/dev/null || {
+  echo "FAIL: '@atomicmemory/cli' is deprecated and must not be required_for_public_release" >&2
+  exit 1
+}
+
+# A registry_artifact must name an immutable, verifiable artifact. The
+# get.atomicstrata.ai installer is a mutable convenience mirror; the canonical
+# channel is GitHub Releases (see crates/cli/README.md).
+jq -e '
+  all(.rows[] | select(.registry_artifact != null);
+    (.registry_artifact | test("get\\.atomicstrata\\.ai") | not))
+' "${CONTRACT}" >/dev/null || {
+  echo "FAIL: registry_artifact must be the canonical immutable artifact, not the get.atomicstrata.ai mirror" >&2
+  exit 1
+}
 
 echo "PASS: public smoke contract is valid"

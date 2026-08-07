@@ -17,7 +17,7 @@
   (the SDK now forwards `content_class` on every ingest mode, not just verbatim).
 
 ## 0.1.17
-- Version synchronized with the other atomicmemory-internal plugins (claude-code,
+- Version synchronized with the other AtomicMemory plugins (claude-code,
   codex, cursor, hermes, openclaw all at 0.1.17). Future versions track that
   shared plugin version rather than per-change bumps.
 - Fix Message-typed inputs being stringified as JSON. Search Context `query` and

@@ -69,7 +69,9 @@ The binary loads config from environment variables:
 - `mode: "messages"` with `messages`: runs extraction over structured chat messages.
 - `mode: "verbatim"` with `content`: asks the provider to store exactly one deterministic record. This is intended for lifecycle records such as compact summaries. Providers that cannot guarantee verbatim semantics may reject it. Supply `contentClass` (`summary` | `redacted` | `raw`) describing what you are storing: a core with the default `RAW_CONTENT_POLICY=reject` refuses unstamped or `raw` verbatim content.
 
-Optional `metadata`, `provenance`, and `kind` are accepted. Deterministic AtomicMemory records store the provided `content` directly; provenance is persisted through `sourceSite` / `sourceUrl`. Caller-supplied `metadata` is forwarded to core's `/v1/memories/ingest/quick` route and persisted to the memory's `metadata` JSONB column (atomicmemory-core PR #51 + atomicmemory-sdk PR #15). It also continues to carry integration behavior such as `dedupe_key`, which the MCP layer reads to synthesize a deterministic `sourceUrl` when the caller omits `provenance.sourceUrl`. Reserved keys (`cmo_id`, `headline`, `memberMemoryIds`, etc. — full list in core's `RESERVED_METADATA_KEYS`) are rejected by core with 400.
+Optional `metadata`, `provenance`, and `kind` are accepted. Deterministic AtomicMemory records store the provided `content` directly; provenance is persisted through `sourceSite` / `sourceUrl`.
+
+**Metadata guidance for agents:** `metadata` is only valid with `mode: "verbatim"` (Core rejects it on text/messages extraction). Use `provenance` (`source`, `sourceUrl`, `sourceId`) for tags and lineage. Safe integration keys in `metadata` are `externalId` and `dedupe_key` (the latter also synthesizes `sourceUrl` when omitted). Do **not** put core-internal keys in `metadata` — including `topic`, `headline`, `cmo_id`, `sourceSite`, and the full set in core's `RESERVED_METADATA_KEYS`. The MCP server rejects reserved keys and non-verbatim metadata before calling core.
 
 ## Embedding in a plugin runtime
 

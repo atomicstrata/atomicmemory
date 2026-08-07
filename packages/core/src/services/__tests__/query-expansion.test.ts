@@ -88,4 +88,31 @@ describe('expandQueryViaEntities runtime config', () => {
       'user-1', expect.any(Array), expect.any(Number), 0.88,
     );
   });
+
+  it('degrades to no expansion when the entity-extraction LLM call throws', async () => {
+    // Truncated/empty completions now throw (fail-closed for persistence).
+    // Query expansion is optional and must not fail the whole search.
+    (llm.chat as any).mockRejectedValue(
+      new Error('OpenAI model "o3-mini" returned truncated output (finish_reason=length)'),
+    );
+    const searchEntities = vi.fn().mockResolvedValue([]);
+    const entityRepo = { searchEntities } as any;
+    const repo = {} as any;
+
+    // Must resolve (search continues with no extra terms), not reject.
+    // Pre-wrap, the thrown truncation/empty error propagated and failed the
+    // whole search.
+    const result = await expandQueryViaEntities(
+      entityRepo, repo, 'user-1', 'Acme question', [0.1, 0.2], new Set(), 20,
+      {
+        queryExpansionMinSimilarity: 0.5,
+        queryAugmentationMaxEntities: 5,
+        queryAugmentationMinSimilarity: 0.4,
+      },
+    );
+
+    expect(result.expansion.extractedEntities).toEqual([]);
+    expect(result.expansion.extractedConcepts).toEqual([]);
+    expect(result.memories).toEqual([]);
+  });
 });

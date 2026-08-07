@@ -1,5 +1,21 @@
 # @atomicmemory/cli
 
+> **Deprecated.** Use the **`am`** CLI instead. See
+> [`crates/cli/README.md`](../../crates/cli/README.md) for the command map and
+> migration status. New features land in `am`.
+>
+> This package remains published and supported for
+> **`import --type llmwiki`**, which has no `am` or SDK equivalent yet (the
+> `@atomicmemory/llmwiki` provider is read-only), and for legacy workflows
+> during transition. The commands below still work; each one except the
+> llmwiki import has an `am` equivalent in the command map.
+>
+> There is deliberately **no runtime deprecation banner**: this CLI's output
+> contracts require `--output quiet` to emit nothing at all, `--agent`/`--json`
+> to keep stderr clean for machine consumers, and only `src/renderers/*` to
+> write to the streams. The deprecation is surfaced in `atomicmemory help`,
+> the changelog, and the smoke contract instead.
+
 Human- and agent-facing CLI for AtomicMemory memory workflows.
 
 This package is separate from `@atomicmemory/mcp-server`: `atomicmemory-mcp`
@@ -105,17 +121,25 @@ The visible v5 surface is driven by `cli-spec.json`:
 
 Use `atomicmemory help --json` for the machine-readable command tree.
 
+## Deprecated surfaces (not ported to `am`)
+
+| Surface | Fate |
+| --- | --- |
+| `atomicmemory ui` / Ink TUI | Hard-dropped — use host tools + `am` |
+| `--experimental` (`lifecycle`, `audit`, `lessons`, `agents`) | Hard-dropped |
+| `--provider mem0` | Hard-dropped — use SDK/MCP |
+| `atomicmemory validate` | Relocated — `pnpm run validate:cli` (maintainers) |
+| `atomicmemory hooks` | Ported — use `am hooks` |
+| `atomicmemory skill` | Relocated — host skill packages / docs |
+
 ## Hook runtime selection
 
-`atomicmemory hooks install` emits host-specific lifecycle hook config without
-mutating user config files. Node is the recommended default and is bundled as
-`atomicmemory hooks run ...`. Python is an advanced option for teams that set
-`ATOMICMEMORY_PYTHON_HOOK_BIN` to a compatible Python hook runner.
+Lifecycle hooks are implemented in **`am hooks`**. This npm package still ships
+the legacy Node hook runtime for transition only.
 
 ```bash
-atomicmemory hooks install --host codex --runtime node
-atomicmemory hooks install --host codex --runtime python
-atomicmemory hooks install --host claude-code --runtime node
+am hooks install --host codex
+am hooks install --host claude-code
 ```
 
 ## Agent output

@@ -1,0 +1,68 @@
+[workspace]
+members = [
+  "crates/cli",
+  "crates/cloud-client",
+  "crates/cloud-types",
+  "crates/core-types",
+]
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+async-trait = "0.1.89"
+axum = { version = "0.8.9", features = ["macros", "json", "tokio"] }
+tokio = { version = "1.52.3", features = ["full"] }
+reqwest = { version = "0.13.3", default-features = false, features = [
+  "rustls",
+  "json",
+  "query",
+  "form",
+] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.150", features = ["preserve_order"] }
+validator = { version = "0.20.0", features = ["derive"] }
+regex = "1.12.3"
+uuid = { version = "1.23.1", features = ["v7", "serde"] }
+chrono = { version = "0.4.44", features = ["serde"] }
+url = "2.5.8"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+utoipa = { version = "5.5.0", features = [
+  "axum_extras",
+  "chrono",
+  "uuid",
+  "openapi_extensions",
+  "preserve_path_order",
+] }
+base64 = "0.22.1"
+sha2 = "0.11.0"
+hex = "0.4.3"
+rand = "0.10.1"
+toml = "0.8.23"
+toml_edit = "0.22.27"
+directories = "6.0.0"
+open = "5.3.2"
+indicatif = "0.18"
+wiremock = "0.6.5"
+clap = { version = "4", features = ["derive", "env"] }
+fs4 = { version = "0.12.0", features = ["sync"] }
+am-core-types = { path = "crates/core-types", version = "0.2.0" }
+am-cloud-types = { path = "crates/cloud-types", version = "0.2.0" }
+am-cloud-client = { path = "crates/cloud-client", version = "0.2.0" }
+atomicmemory = { path = "crates/cli", version = "0.2.0" }

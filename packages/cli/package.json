@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "AtomicMemory CLI for memory operations, config, status, and agent-friendly JSON output.",
   "type": "module",
   "publishConfig": {

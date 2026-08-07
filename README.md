@@ -96,7 +96,7 @@ append-only recall.
 
 ## What This Is Not
 
-- Not the hosted AtomicMemory service infrastructure.
+- Not the hosted AtomicMemory service infrastructure. See [memory.atomicstrata.ai](https://memory.atomicstrata.ai).
 - Not the release orchestration or marketplace operations system.
 - Not the Python SDK; the Python package remains in its own repository and PyPI
   metadata for now.
@@ -150,16 +150,37 @@ affected lane):**
 For the full walkthrough, see the
 [AtomicMemory quickstart](https://docs.atomicstrata.ai/quickstart).
 
-These commands use currently-published packages. Host plugin surfaces that are
-not yet public are listed in the package matrix below and are not part of the
+### Cloud and agent hosts (recommended)
+
+Install the CLI **`am`**, sign in, and wire the published MCP server
+into Cursor, Claude Code, or Codex. `am integrate` updates **host MCP config**
+only — it does not install marketplace plugin packages. Codex and Cursor plugin
+packages remain **coming soon** in the package matrix below.
+
+```bash
+curl -fsSL https://get.atomicstrata.ai/install.sh | sh
+. "$HOME/.atomicmemory/env"                 # activate PATH in this shell
+am init
+am integrate --yes --host cursor            # or claude-code / codex
+```
+
+The installer writes `~/.atomicmemory/env` and adds it to your shell profile, so
+the activation line is only needed in the shell you installed from — new
+terminals pick `am` up automatically. `am integrate` installs into your user
+(global) config by default.
+
+See [`crates/cli/README.md`](crates/cli/README.md) for auth, Connected Local,
+`am integrate doctor`, and distribution details.
+
+### Library and framework adapters
+
+These commands use currently-published npm packages. Host plugin surfaces that
+are not yet public are listed in the package matrix below and are not part of the
 main install path.
 
 ```bash
 # direct SDK
 npm install @atomicmemory/sdk
-
-# CLI
-npm install -g @atomicmemory/cli
 
 # framework adapter (example: Vercel AI SDK)
 npm install @atomicmemory/vercel-ai @atomicmemory/sdk
@@ -205,6 +226,8 @@ Status labels follow the docs contract:
 - **coming soon** — public source is present, but the host install path is not
   supported yet. Do not use these in install commands until the row flips to
   `published`.
+- **deprecated** — still published and supported for the workflows named in
+  its row, but superseded; new work targets the replacement.
 - **unsupported** / **planned** — reserved for future entries.
 
 ### Packages
@@ -213,7 +236,7 @@ Status labels follow the docs contract:
 | --- | --- | --- |
 | `@atomicmemory/core` | `packages/core` | published |
 | `@atomicmemory/sdk` | `packages/sdk` | published |
-| `@atomicmemory/cli` | `packages/cli` | published |
+| `@atomicmemory/cli` | `packages/cli` | deprecated (published; use `am`, still required for llmwiki import) |
 | `@atomicmemory/mcp-server` | `packages/mcp-server` | published |
 | `@atomicmemory/llmwiki` | `packages/llmwiki` | implemented, publish pending |
 
@@ -244,6 +267,7 @@ coming soon until each host marketplace manifest format is validated end to end.
 
 | Surface | Location | Status |
 | --- | --- | --- |
+| CLI (`am`) | `crates/cli` | published; canonical artifacts on GitHub Releases (`get.atomicstrata.ai` mirrors them) |
 | Python SDK (`atomicmemory` on PyPI) | separate repository | published; not part of this monorepo |
 
 ## Local development
@@ -271,6 +295,32 @@ pnpm run public-integration-smoke
 pnpm run repo-hygiene
 pnpm run security-compliance
 ```
+
+### CLI (`crates/`)
+
+The CLI ships as the **`am`** binary (from `crates/cli`).
+
+```bash
+curl -fsSL https://get.atomicstrata.ai/install.sh | sh
+. "$HOME/.atomicmemory/env"
+am --help
+```
+
+Release artifacts are published on GitHub Releases; `get.atomicstrata.ai` mirrors
+the same binaries for the curl installer. See
+[`crates/cli/README.md`](crates/cli/README.md) for install and checksum
+verification.
+
+Contributors:
+
+```bash
+cargo install --path crates/cli --force
+am --help
+pnpm run ci:rust
+```
+
+NOTE: npm `@atomicmemory/cli` package is deprecated and installs a separate
+`atomicmemory` binary. If you have both, use `am`.
 
 Package versions are intentionally scoped by release family instead of one
 global monorepo version. `@atomicmemory/core` and `@atomicmemory/sdk` move
@@ -329,6 +379,7 @@ rollup changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 ```text
 packages/      core, sdk, cli, mcp-server
+crates/        CLI (am) and Cloud/Core wire types
 adapters/      framework integrations (Vercel AI, OpenAI Agents, LangChain,
                LangGraph, Mastra)
 plugins/       host integrations (Claude Code, OpenClaw, Hermes, Codex, Cursor)

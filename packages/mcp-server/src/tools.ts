@@ -19,6 +19,7 @@
 import type { MemoryClient } from '@atomicmemory/sdk';
 import { z } from 'zod';
 import type { Scope } from './config.js';
+import { assertNoReservedMetadataKeys } from './reserved-metadata.js';
 
 const ScopeArg = z
   .object({
@@ -83,6 +84,15 @@ export const IngestArgsSchema = z
         code: z.ZodIssueCode.custom,
         path: ['contentClass'],
         message: "contentClass is only valid with mode='verbatim'",
+      });
+    }
+    // Core honors caller metadata only on the verbatim+quick path. Forwarding
+    // it on text/messages produces a nested HTTP 400 after MCP validation.
+    if (args.metadata !== undefined && args.mode !== 'verbatim') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['metadata'],
+        message: "metadata is only valid with mode='verbatim'",
       });
     }
   });
@@ -150,10 +160,17 @@ export function createHandlers(
       } as Parameters<MemoryClient['search']>[0]);
     },
 
-    memory_ingest: (args: IngestArgs) =>
-      args.mode === 'verbatim'
+    memory_ingest: (args: IngestArgs) => {
+      // Schema is the public chokepoint; keep a handler guard so direct
+      // createHandlers callers cannot bypass the mode rule.
+      if (args.metadata !== undefined && args.mode !== 'verbatim') {
+        throw new Error("metadata is only valid with mode='verbatim'");
+      }
+      assertNoReservedMetadataKeys(args.metadata);
+      return args.mode === 'verbatim'
         ? ingestVerbatim(client, args, defaultScope, scopeLock)
-        : client.ingest(buildIngestInput(args, defaultScope, scopeLock)),
+        : client.ingest(buildIngestInput(args, defaultScope, scopeLock));
+    },
 
     memory_package: (args: PackageArgs) => {
       const scope = mergeScope(defaultScope, args.scope, scopeLock);
@@ -300,7 +317,6 @@ function buildIngestInput(
       mode: 'text',
       content: args.content,
       scope,
-      ...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
       ...(args.provenance !== undefined ? { provenance: args.provenance } : {}),
     } as Parameters<MemoryClient['ingest']>[0];
   }
@@ -310,7 +326,6 @@ function buildIngestInput(
       mode: 'messages',
       messages: args.messages,
       scope,
-      ...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
       ...(args.provenance !== undefined ? { provenance: args.provenance } : {}),
     } as Parameters<MemoryClient['ingest']>[0];
   }

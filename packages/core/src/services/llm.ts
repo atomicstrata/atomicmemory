@@ -6,6 +6,16 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import {
+  assertOpenAIChatCompletionsModel,
+  assertVisibleChatOutput,
+  OPENAI_CHAT_MAX_ATTEMPTS,
+  openAIChatTokenLimit,
+  openAIReasoningParams,
+  openAISamplingParams,
+  tryApplyOpenAIRetry,
+  type OpenAIRetryState,
+} from './openai-chat-params.js';
 import { Agent as UndiciAgent } from 'undici';
 import { retryOnRateLimit } from './api-retry.js';
 import { CodexLLM } from './codex-llm.js';
@@ -134,11 +144,6 @@ function sanitizeMessages(messages: ChatMessage[], aggressive: boolean = false):
   }));
 }
 
-function isJsonBodyParseError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return error.message.includes('parse the JSON body of your request');
-}
-
 /**
  * Emit a `chat` cost event for the configured provider. Shared by every
  * provider class so the `writeCostEvent` payload shape lives in one place
@@ -177,13 +182,25 @@ class OpenAICompatibleLLM implements LLMProvider {
     this.model = model;
   }
 
+  /**
+   * Compose the two recognized one-shot mitigations (aggressive sanitize,
+   * force `max_completion_tokens`) inside a bounded loop. Each transition
+   * fires at most once via {@link tryApplyOpenAIRetry}, so a parse→token
+   * or token→parse sequence terminates in exactly three requests instead
+   * of aborting after two with an unhandled companion error.
+   */
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
-    try {
-      return await this.executeOpenAIRequest(messages, options, false);
-    } catch (error) {
-      if (!isJsonBodyParseError(error)) throw error;
-      return this.executeOpenAIRequest(messages, options, true);
+    const state: OpenAIRetryState = { aggressiveSanitize: false, forceMaxCompletionTokens: false };
+    for (let attempt = 0; attempt < OPENAI_CHAT_MAX_ATTEMPTS; attempt++) {
+      try {
+        return await this.executeOpenAIRequest(
+          messages, options, state.aggressiveSanitize, state.forceMaxCompletionTokens,
+        );
+      } catch (error) {
+        if (!tryApplyOpenAIRetry(error, state)) throw error;
+      }
     }
+    throw new Error(`OpenAI chat retry budget exhausted after ${OPENAI_CHAT_MAX_ATTEMPTS} attempts`);
   }
 
   /** Execute a single OpenAI-compatible request with optional aggressive sanitization. */
@@ -191,21 +208,28 @@ class OpenAICompatibleLLM implements LLMProvider {
     messages: ChatMessage[],
     options: ChatOptions,
     aggressiveSanitize: boolean,
+    forceMaxCompletionTokens = false,
   ): Promise<string> {
     const effectiveSeed = options.seed ?? requireConfig().llmSeed;
     const request = () => this.client.chat.completions.create({
       model: this.model,
       messages: sanitizeMessages(messages, aggressiveSanitize),
-      temperature: options.temperature ?? 0,
-      max_tokens: options.maxTokens,
+      ...openAISamplingParams(this.model, options.temperature, effectiveSeed),
+      ...openAIChatTokenLimit(this.model, options.maxTokens, forceMaxCompletionTokens),
+      ...openAIReasoningParams(this.model, forceMaxCompletionTokens),
       ...(options.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
-      ...(effectiveSeed !== undefined ? { seed: effectiveSeed } : {}),
     });
 
     const started = performance.now();
     const response = await retryOnRateLimit(request);
     recordOpenAICost(this.model, response.usage, started);
-    return response.choices[0].message.content ?? '';
+    const choice = response.choices[0];
+    if (choice === undefined) {
+      throw new Error(
+        `OpenAI model "${this.model}" returned no choices in the response.`,
+      );
+    }
+    return assertVisibleChatOutput(this.model, choice);
   }
 }
 
@@ -380,6 +404,7 @@ export function createLLMProvider(): LLMProvider {
   const config = requireConfig();
   switch (config.llmProvider) {
     case 'openai':
+      assertOpenAIChatCompletionsModel(config.llmModel);
       return new OpenAICompatibleLLM(config.openaiApiKey, config.llmModel);
     case 'ollama':
       return new OllamaLLM(config.llmModel, config.ollamaBaseUrl);

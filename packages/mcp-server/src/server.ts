@@ -7,6 +7,7 @@
  *       a subprocess.
  */
 
+import { createRequire } from 'node:module';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -23,6 +24,10 @@ import {
   PackageArgsSchema,
   SearchArgsSchema,
 } from './tools.js';
+import { metadataSchemaDescription } from './reserved-metadata.js';
+
+const require = createRequire(import.meta.url);
+const PACKAGE_VERSION = (require('../package.json') as { version: string }).version;
 
 /** Scope-lock context threaded into entity-tool dispatch (which bypasses mergeScope). */
 interface DispatchScope {
@@ -40,6 +45,7 @@ const SCOPE_PROPS = {
 const METADATA_SCHEMA = {
   type: 'object',
   additionalProperties: true,
+  description: metadataSchemaDescription(),
 } as const;
 
 const PROVENANCE_SCHEMA = {
@@ -211,7 +217,7 @@ export async function buildServer(config: ServerConfig): Promise<Server> {
   const entities = initEntitiesClient(config);
 
   const server = new Server(
-    { name: 'atomicmemory', version: '0.1.0' },
+    { name: 'atomicmemory', version: PACKAGE_VERSION },
     { capabilities: { tools: {} } },
   );
 

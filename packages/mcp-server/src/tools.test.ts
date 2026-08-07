@@ -61,6 +61,23 @@ function makeFakeClient(options: FakeClientOptions = {}): FakeClient {
 
 const SCOPE = { user: '00000000-0000-0000-0000-000000000abc' };
 
+test('memory_ingest — rejects reserved metadata keys before calling client.ingest', async () => {
+  const fake = makeFakeClient();
+  const handlers = createHandlers(fake.client, undefined);
+
+  await assert.rejects(
+    async () =>
+      handlers.memory_ingest({
+        mode: 'verbatim',
+        content: 'payload',
+        scope: SCOPE,
+        metadata: { topic: 'am-integrate-ux' },
+      }),
+    /reserved key\(s\) \[topic\]/,
+  );
+  assert.equal(fake.ingestCalls.length, 0);
+});
+
 test('memory_ingest verbatim — forwards caller metadata to client.ingest unchanged', async () => {
   const fake = makeFakeClient();
   const handlers = createHandlers(fake.client, undefined);
@@ -136,26 +153,38 @@ test('memory_ingest verbatim — passes provenance.source / sourceUrl through', 
   assert.equal(call.provenance?.sourceUrl, 'https://example.com/x');
 });
 
-test('memory_ingest text — forwards caller metadata to client.ingest unchanged', async () => {
+test('memory_ingest text — rejects metadata before calling client.ingest', async () => {
   const fake = makeFakeClient();
   const handlers = createHandlers(fake.client, undefined);
 
-  await handlers.memory_ingest({
-    mode: 'text',
-    content: 'Decision: store clean content and separate metadata.',
-    scope: SCOPE,
-    metadata: {
-      event: 'decision',
-      source: 'codex',
-    },
-  });
+  await assert.rejects(
+    async () =>
+      handlers.memory_ingest({
+        mode: 'text',
+        content: 'Decision: store clean content and separate metadata.',
+        scope: SCOPE,
+        metadata: { externalId: 'x' },
+      }),
+    /metadata is only valid with mode='verbatim'/,
+  );
+  assert.equal(fake.ingestCalls.length, 0);
+});
 
-  const call = fake.ingestCalls[0]!;
-  assert.equal(call.mode, 'text');
-  assert.deepEqual(call.metadata, {
-    event: 'decision',
-    source: 'codex',
+test('IngestArgsSchema — rejects metadata on non-verbatim modes', () => {
+  const textResult = IngestArgsSchema.safeParse({
+    mode: 'text',
+    content: 'hi',
+    scope: SCOPE,
+    metadata: { externalId: 'x' },
   });
+  assert.equal(textResult.success, false);
+  const messagesResult = IngestArgsSchema.safeParse({
+    mode: 'messages',
+    messages: [{ role: 'user', content: 'hi' }],
+    scope: SCOPE,
+    metadata: { externalId: 'x' },
+  });
+  assert.equal(messagesResult.success, false);
 });
 
 test('memory_ingest verbatim — synthesizes sourceUrl from metadata.dedupe_key when caller omits provenance.sourceUrl', async () => {
