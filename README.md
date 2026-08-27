@@ -3,30 +3,21 @@
 [![CI](https://github.com/atomicstrata/atomicmemory/actions/workflows/ci.yml/badge.svg)](https://github.com/atomicstrata/atomicmemory/actions/workflows/ci.yml)
 [![Core npm](https://img.shields.io/npm/v/%40atomicmemory%2Fcore?label=core)](https://www.npmjs.com/package/@atomicmemory/core)
 [![SDK npm](https://img.shields.io/npm/v/%40atomicmemory%2Fsdk?label=sdk)](https://www.npmjs.com/package/@atomicmemory/sdk)
-[![CLI npm](https://img.shields.io/npm/v/%40atomicmemory%2Fcli?label=cli)](https://www.npmjs.com/package/@atomicmemory/cli)
 [![Docker](https://img.shields.io/badge/docker-GHCR-2496ED?logo=docker&logoColor=white)](packages/core/Dockerfile)
 [![Docs](https://img.shields.io/badge/docs-docs.atomicstrata.ai-blue)](https://docs.atomicstrata.ai)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**Inspectable, portable semantic memory for agents and applications.**
+**Inspectable, correction-aware memory for agents and AI applications.**
 
-AtomicMemory is a memory layer you embed where your AI code already runs. Capture
-context, ground generations in prior interactions, and carry knowledge across
-sessions — from a direct SDK call, a CLI, an MCP server, a framework adapter, or
-a host plugin. Local-first where supported, hosted where convenient, and
-designed so the choice can change later without rewriting your application.
+AtomicMemory gives agents durable context across sessions without coupling your
+application to one model, framework, or deployment. Start with managed Hosted
+Cloud, run the open-source Core locally, or integrate through the TypeScript SDK
+and MCP server.
 
-Most memory products ask you to trust a hosted black box with the layer that
-decides what an AI believes about your users. AtomicMemory takes the opposite
-position: the interface should be portable, the engine should be inspectable,
-and the memory system should be able to revise itself when facts change.
-
-This repository is the public source of truth for the AtomicMemory JavaScript /
-TypeScript packages, framework adapters, host plugins, and public smoke tests.
-
-**Docs:** [docs.atomicstrata.ai](https://docs.atomicstrata.ai)
-
-**Field note:** [The AI Memory Industry Has A Black Box Problem](https://www.atomicstrata.ai/blog/the-ai-memory-industry-has-a-black-box-problem)
+[Documentation](https://docs.atomicstrata.ai) ·
+[Hosted Cloud](https://memory.atomicstrata.ai) ·
+[Open-source quickstart](https://docs.atomicstrata.ai/open-source/quickstart) ·
+[Why inspectable memory matters](https://www.atomicstrata.ai/blog/the-ai-memory-industry-has-a-black-box-problem)
 
 ## Headline Results
 
@@ -47,153 +38,166 @@ reported category while preserving the lower-cost operating profile that
 matters for real applications. Reproducibility artifacts and harness details
 will be published with the benchmark materials.
 
-## Why AtomicMemory
-
-- **Portable**: a single memory protocol consumed by direct SDK calls, CLIs,
-  the MCP server, framework adapters, and host plugins. The same memory store
-  serves a LangGraph agent, a Claude Code session, and a custom Vercel AI
-  application without re-implementing capture or retrieval semantics.
-- **SDK-agnostic**: every adapter is built on the same SDK. Adapters are
-  conveniences, not gatekeepers. You can drop down to the SDK at any time and
-  keep the same data, indexes, and retrieval behavior.
-- **Inspectable**: Core is open source, self-hostable, and built around
-  explicit mutation decisions rather than an opaque hosted opinion.
-- **Correction-aware**: memory is not just append and recall. Real products
-  need supersession, clarification, deletion, no-op decisions, lineage, and
-  trust-sensitive revision when users change their mind.
-- **Model-surface portable**: the SDK lets applications swap memory backends;
-  Core separates embeddings, extraction, mutation, reranking, retrieval
-  packaging, and evaluation so the memory engine is not frozen to one model
-  vintage.
-- **Local or hosted, your choice**: the core engine runs locally for
-  privacy-sensitive workloads. The hosted profile is available where it makes
-  sense and is marked clearly in the package matrix below. There is no
-  capability cliff between the two.
-- **No lock-in**: package APIs are stable and semver-disciplined. Migrating
-  between direct SDK use, adapters, and host plugins is documented and does not
-  require re-ingesting your data. You own your memory store.
-
-## What This Repository Provides
-
-- **Core** — Docker-deployable memory backend with durable context, semantic
-  retrieval, memory mutation, and Postgres/pgvector storage.
-- **SDK** — backend-agnostic TypeScript client surface with provider interfaces,
-  storage helpers, local embeddings, and semantic search primitives.
-- **CLI and MCP** — command-line and MCP surfaces for setup, diagnostics,
-  capture, retrieval, and context packaging.
-- **Framework adapters** — integration packages for Vercel AI SDK, OpenAI
-  Agents SDK, LangChain, LangGraph, and Mastra.
-- **Host plugins** — package and manifest surfaces for agent hosts such as
-  Claude Code, OpenClaw, Hermes, Codex, and Cursor.
-- **Public validation** — package metadata checks, smoke contracts, and
-  contributor-safe CI gates that keep install paths, docs, and package status in
-  sync.
-
-The SDK is the portability contract: applications depend on a typed interface
-and provider boundary instead of one memory vendor. Core is the engine that can
-earn that slot: self-hosted, auditable, and designed around revision rather than
-append-only recall.
-
-## What This Is Not
-
-- Not the hosted AtomicMemory service infrastructure. See [memory.atomicstrata.ai](https://memory.atomicstrata.ai).
-- Not the release orchestration or marketplace operations system.
-- Not the Python SDK; the Python package remains in its own repository and PyPI
-  metadata for now.
-- Not the benchmark research repo. Reproducible benchmark suites and raw eval
-  harnesses live outside this public monorepo until they are ready to publish as
-  public artifacts.
-- Not a replacement for package-level READMEs. Package-specific setup still
-  lives under `packages/`, `adapters/`, and `plugins/`.
-
-## Performance posture
-
-We make supportable performance claims, not marketing ones. The headline
-results above are benchmark scores under matched methodology; latency,
-recall@k, and scale-envelope claims should only be quoted when paired with the
-linked benchmark, hardware, dataset, and date used to produce them.
-
-Until latency benchmarks are linked from the docs, treat the engine as
-"designed for single-digit-ms local retrieval on a developer laptop at typical
-agent corpus sizes" — a design target, not a guarantee.
-
-## Validation boundary
-
-This section documents what this repository's public CI proves on its own, so
-readers can see exactly what is verified here and do not assume this repository
-independently proves every product claim. For what this repository is not
-responsible for, see "What This Is Not" above.
-
-**Proven in this repository's public CI (every pull request):**
-
-- repo hygiene
-- package metadata checks
-- affected build, typecheck, lint, and self-contained package tests (Node 22
-  and 24)
-- code-health gates
-- package `pack` dry-run plus tarball-shape verification
-- docs contract (install commands, package status labels, and smoke rows stay
-  in sync)
-- public integration smoke
-- security compliance
-
-**Also in this repository, run in package or release contexts (not the per-PR
-affected lane):**
-
-- Core OpenAPI generation and drift check (`generate:openapi` / `check:openapi`)
-- Core API schema tests (Schemathesis)
-- Core Docker image smoke (runs in the Docker image publish workflow)
-- DB-backed Core tests, which require Postgres/pgvector provisioning
-
 ## Quickstart
 
-For the full walkthrough, see the
-[AtomicMemory quickstart](https://docs.atomicstrata.ai/quickstart).
-
-### Cloud and agent hosts (recommended)
-
-Install the CLI **`am`**, sign in, and wire the published MCP server
-into Cursor, Claude Code, or Codex. `am integrate` updates **host MCP config**
-only — it does not install marketplace plugin packages. Codex and Cursor plugin
-packages remain **coming soon** in the package matrix below.
+Install the `am` CLI and initialize Hosted Cloud in one guided command:
 
 ```bash
-curl -fsSL https://get.atomicstrata.ai/install.sh | sh
-. "$HOME/.atomicmemory/env"                 # activate PATH in this shell
-am init
-am integrate --yes --host cursor            # or claude-code / codex
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --init
 ```
 
-The installer writes `~/.atomicmemory/env` and adds it to your shell profile, so
-the activation line is only needed in the shell you installed from — new
-terminals pick `am` up automatically. `am integrate` installs into your user
-(global) config by default.
+Plain `am init` defaults to managed Cloud, selects your project, and saves its
+project-bound credential. Managed server keys use a per-installation name such
+as `am-cli-a1b2c3d4e5f6`, so another machine's credential is not rotated. No
+Docker or OpenAI key is required.
+Non-interactive Cloud automation uses `am init --yes --project <cloud-id>`;
+Local automation must opt in with `am init --local --yes`.
 
-See [`crates/cli/README.md`](crates/cli/README.md) for auth, Connected Local,
-`am integrate doctor`, and distribution details.
+The installer runs initialization through the verified binary directly. If it
+updates PATH, open a new terminal before the next commands or use the
+shell-specific activation command it prints.
 
-### Library and framework adapters
-
-These commands use currently-published npm packages. Host plugin surfaces that
-are not yet public are listed in the package matrix below and are not part of the
-main install path.
+Store a preference and retrieve it:
 
 ```bash
-# direct SDK
+am memory ingest "I prefer aisle seats when flying."
+am memory search "seat preference"
+```
+
+Connect the active profile to an agent host when you are ready:
+
+```bash
+am integrate --yes --host cursor # or claude-code / codex
+```
+
+`am integrate` writes the host's user-level MCP configuration. It does not
+install a marketplace plugin.
+
+## Choose your path
+
+| Path | Best for | Start here |
+| --- | --- | --- |
+| **Hosted Cloud** | Managed memory with the fastest setup | Guided installer above, or `am init` |
+| **Connected Local** | Running open-source Core on your machine | `am init --local` |
+| **TypeScript SDK** | Server-side application integration against Core | `npm install @atomicmemory/sdk` |
+
+Agent integration through MCP works with either an active Cloud or Local
+profile. See the [documentation](https://docs.atomicstrata.ai) for framework and
+host-specific guides.
+
+## Why AtomicMemory
+
+- **Correction-aware** — supersede, clarify, delete, or retain memories as facts
+  change instead of treating memory as append-only recall.
+- **Portable** — use one memory protocol through the CLI, MCP server, SDK,
+  framework adapters, and host plugins.
+- **Inspectable** — run the open-source Core and audit the mutation and retrieval
+  path rather than depending only on a hosted black box.
+- **Model-flexible** — keep extraction, embeddings, mutation, reranking, and
+  retrieval packaging behind explicit provider boundaries.
+- **Cloud or Local** — begin with managed Cloud or operate Core yourself without
+  rewriting the integration surface.
+
+## Use AtomicMemory
+
+### Hosted Cloud
+
+Interactive `am init` offers **Hosted Cloud** as option 1/default and
+**Connected Local** as option 2. Hosted Cloud needs no Docker or OpenAI key:
+
+- With one project, the CLI selects it automatically. With multiple projects,
+  it prompts for a selection.
+- With no project, it opens onboarding and waits for project creation in an
+  interactive terminal. Non-interactive runs print the URL and recovery command
+  instead of waiting.
+- Credentials are bound to the Cloud origin and project, stored with owner-only
+  permissions, and never printed.
+- A working stored project credential is reused. Otherwise the CLI rotates only
+  this installation's exact `am-cli-<12-hex>` key and creates it when absent.
+  Legacy unsuffixed keys and other installations' keys are left untouched.
+
+`--project` accepts a unique ID or case-insensitive slug and infers Cloud versus
+Local from the resolved project type. Explicit selectors assert the type:
+
+```bash
+am init --project <id-or-slug>          # infer Cloud or Local
+am init --cloud --project <cloud-id>    # require a Cloud project
+am init --local --project <local-id>    # require a Local project
+```
+
+Ambiguous slugs fail with a request for the unique project ID. At the API-key
+limit, initialization preserves the previous default profile and prints the
+dashboard URL plus exact commands to list or revoke a key and retry. It never
+rotates or revokes unrelated keys as quota recovery.
+
+### Connected Local
+
+Connected Local runs Core on your machine and can link it to Cloud for trace
+visibility. It requires:
+
+- Docker Desktop or Docker Engine running
+- An [OpenAI API key](https://platform.openai.com/api-keys); interactive setup
+  reads it with hidden input and stores it with owner-only permissions
+- macOS or glibc Linux on x86_64 or arm64
+
+Initialize and verify Local:
+
+```bash
+am init --local
+am doctor --smoke
+```
+
+The Local defaults remain profile `local` and Core URL
+`http://127.0.0.1:17350`. For headless automation, seed dashboard auth and the
+OpenAI key before selecting Local explicitly:
+
+```bash
+am auth login --token "$AM_DASHBOARD_JWT"
+export OPENAI_API_KEY=sk-... # inject through your secret manager
+am init --local --yes
+```
+
+For Core-only Docker without a Cloud account, use the
+[Core package guide](packages/core/README.md#docker-image-recommended). The
+[open-source quickstart](https://docs.atomicstrata.ai/open-source/quickstart)
+covers lifecycle, custom URLs, and troubleshooting; the
+[CLI README](crates/cli/README.md) documents every initialization flag.
+
+### Agent hosts and MCP
+
+Both initialization paths leave an active profile that the published MCP server
+can use. Configure a supported host with:
+
+```bash
+am integrate --yes --host cursor # or claude-code / codex
+```
+
+Codex and Cursor marketplace plugin packages remain **coming soon** in the
+matrix below; direct MCP configuration through `am integrate` is a separate
+supported path. Use `am integrate doctor` to diagnose host configuration.
+
+### TypeScript SDK
+
+The SDK is server-side only in v1. Start Core first, then reveal the Local client
+environment only in a trusted terminal:
+
+```bash
+am connect env --for clients --show-secrets
 npm install @atomicmemory/sdk
-
-# framework adapter (example: Vercel AI SDK)
-npm install @atomicmemory/vercel-ai @atomicmemory/sdk
 ```
 
-Minimal SDK shape:
+Copy `ATOMICMEMORY_CORE_URL` and `CORE_API_KEY` into the trusted server process;
+never expose `CORE_API_KEY` in a browser bundle. Then use the memory client:
 
 ```ts
 import { MemoryClient } from '@atomicmemory/sdk';
 
 const memory = new MemoryClient({
   providers: {
-    atomicmemory: { apiUrl: 'http://localhost:17350' },
+    atomicmemory: {
+      apiUrl: process.env.ATOMICMEMORY_CORE_URL!,
+      apiKey: process.env.CORE_API_KEY!,
+    },
   },
 });
 
@@ -210,25 +214,35 @@ const results = await memory.search({
 });
 ```
 
-The minimal example, environment setup, and the full list of supported hosts
-and frameworks live in the docs site linked below. Adapter and plugin install
-contracts (install type, local-core requirement, hosted-mode status) appear at
-the top of each integration page.
+Use `AtomicMemoryClient` when the application also needs the storage namespace.
+See the [SDK quickstart](https://docs.atomicstrata.ai/sdk/quickstart) and
+[`packages/sdk/README.md`](packages/sdk/README.md) for the full API.
+
+### Installer verification
+
+Every CLI download is checked against `SHA256SUMS`. If an authenticated GitHub
+CLI is available, the installer also verifies build provenance. Without GitHub
+authentication it warns, skips optional attestation, and continues only after
+checksum verification. To require attestation:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | AM_VERIFY_ATTESTATION=1 sh -s -- --init
+```
+
+Required verification fails before installation unless `gh auth login` or
+`GH_TOKEN` supplies working GitHub authentication.
 
 ## Package matrix
 
-Status labels follow the docs contract:
+Status labels are part of the public docs contract:
 
 - **published** — available on the npm registry and supported.
 - **implemented, publish pending** — code lives in this repo and works locally,
-  but the first monorepo-era release has not been cut yet. Do not put these in
-  install commands until the row flips to `published`.
-- **coming soon** — public source is present, but the host install path is not
-  supported yet. Do not use these in install commands until the row flips to
-  `published`.
+  but the monorepo-era package has not been released.
+- **coming soon** — source is present, but the public host install path is not
+  supported yet.
 - **deprecated** — still published and supported for the workflows named in
-  its row, but superseded; new work targets the replacement.
-- **unsupported** / **planned** — reserved for future entries.
+  its row, but superseded.
 
 ### Packages
 
@@ -270,110 +284,84 @@ coming soon until each host marketplace manifest format is validated end to end.
 | CLI (`am`) | `crates/cli` | published; canonical artifacts on GitHub Releases (`get.atomicstrata.ai` mirrors them) |
 | Python SDK (`atomicmemory` on PyPI) | separate repository | published; not part of this monorepo |
 
+## Repository and trust boundaries
+
+This repository is the public source of truth for AtomicMemory's JavaScript and
+TypeScript packages, Rust CLI, framework adapters, host plugins, and public smoke
+contracts. It contains:
+
+- **Core** — Docker-deployable memory backend with mutation, retrieval, and
+  Postgres/pgvector storage.
+- **SDK** — typed provider boundary, memory and storage clients, embeddings, and
+  search primitives.
+- **CLI and MCP server** — setup, diagnostics, capture, retrieval, and agent
+  integration surfaces.
+- **Adapters and plugins** — thin integrations for supported frameworks and
+  agent hosts.
+
+Hosted service infrastructure, release orchestration, marketplace operations,
+the Python SDK, and unpublished benchmark harnesses live outside this monorepo.
+Package-specific setup remains in each package README.
+
+### Performance posture
+
+The Headline Results above are benchmark scores under matched methodology.
+Latency, recall@k, and scale-envelope claims should only be quoted with the
+benchmark, hardware, dataset, and measurement date. Until linked latency
+benchmarks are available, single-digit-millisecond local retrieval remains a
+design target rather than a guarantee.
+
+### Public validation
+
+Pull requests verify repository hygiene, package metadata, affected build and
+type checks, lint, self-contained tests, package tarball shape, documentation
+contracts, public integration smoke, and security compliance. Package and
+release contexts additionally cover Core OpenAPI drift, schema tests, Docker
+image smoke, and DB-backed Core tests when their required services are present.
+
 ## Local development
 
-The skeleton uses pnpm workspaces with Turborepo as the task graph and cache
-layer. pnpm owns dependency resolution, workspace linking, and packing. Turbo
-owns task ordering, caching, and affected-task selection.
+The monorepo uses pnpm workspaces and Turborepo. Check `package.json` for the
+complete command surface.
 
 ```bash
-# install (uses the pinned pnpm@9.15.4 from packageManager)
 pnpm install
-
-# build / typecheck / test
 pnpm run build
 pnpm run typecheck
-pnpm run test       # self-contained packages
-pnpm run test:core  # requires core test services
+pnpm run test
 pnpm run lint
-
-# release / hygiene gates (not cached; always re-run)
-pnpm run pack-dry-run
-pnpm run package-metadata
-pnpm run docs-contract
-pnpm run public-integration-smoke
-pnpm run repo-hygiene
-pnpm run security-compliance
 ```
 
-### CLI (`crates/`)
-
-The CLI ships as the **`am`** binary (from `crates/cli`).
-
-```bash
-curl -fsSL https://get.atomicstrata.ai/install.sh | sh
-. "$HOME/.atomicmemory/env"
-am --help
-```
-
-Release artifacts are published on GitHub Releases; `get.atomicstrata.ai` mirrors
-the same binaries for the curl installer. See
-[`crates/cli/README.md`](crates/cli/README.md) for install and checksum
-verification.
-
-Contributors:
+Core DB-backed tests require Postgres/pgvector provisioning. Rust CLI changes
+use the pinned toolchain and the repository's CI-equivalent command:
 
 ```bash
-cargo install --path crates/cli --force
-am --help
 pnpm run ci:rust
 ```
 
-NOTE: npm `@atomicmemory/cli` package is deprecated and installs a separate
-`atomicmemory` binary. If you have both, use `am`.
-
-Package versions are intentionally scoped by release family instead of one
-global monorepo version. `@atomicmemory/core` and `@atomicmemory/sdk` move
-independently. Host plugins move together, framework adapters move together,
-and the CLI/MCP-server tool pair moves together:
-
-```bash
-pnpm check:version-families        # CI guard for drift
-```
-
-Release bumping, public sync, and registry publish preparation are owned by the
-ops repo. Keep this source repo focused on package metadata and version-family
-consistency checks.
-
-Build, test, lint, and docs-contract run through Turborepo's task graph.
-Typecheck declares no cache outputs because package scripts use `tsc --noEmit`.
-The side-effecting checks (`pack-dry-run`, `public-integration-smoke`,
-`repo-hygiene`, `code-health`, and `security-compliance`) always re-run through
-`cache: false` tasks or direct root node scripts. `package-metadata` is a
-direct root check so it always reads the current package manifests.
-
-CI lanes use thin aliases over the same Turbo tasks:
-
-```bash
-pnpm run ci:affected         # build / typecheck / lint for affected packages; tests for self-contained packages
-pnpm run ci:code-health      # fallow/code-health coverage
-pnpm run ci:pack-dry-run     # pack-dry-run, affected-only
-pnpm run ci:docs-contract    # docs-contract
-pnpm run ci:public-smoke     # public-integration-smoke
-```
-
-`ci:affected` and `ci:pack-dry-run` use Turbo's `--affected` filter for normal
-PRs; full release-green validation runs the unprefixed scripts so the required
-surface is never narrowed by affected detection. The core package's DB-backed
-test suite requires service provisioning and is intentionally outside the
-generic affected lane; build, typecheck, lint, metadata, and pack validation
-still cover `@atomicmemory/core` in public CI.
-
-Per-package commands (`pnpm --filter @atomicmemory/sdk run build`, etc.) work
-for packages in `packages/`, `adapters/`, and `plugins/`.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow, required checks,
+and package-level commands. The canonical CLI source and contributor setup are
+documented in [`crates/cli/README.md`](crates/cli/README.md).
 
 ## Companion: llmwiki
 
-[llmwiki](https://github.com/atomicstrata/llmwiki) is a separate knowledge compiler that turns raw sources into an interlinked markdown wiki. It is **valuable on its own** — useful as a notebook, RAG index, CI-checked knowledge base, or domain pack source — and remains so whether or not AtomicMemory is in the picture.
+[llmwiki](https://github.com/atomicstrata/llmwiki) compiles raw sources into an
+interlinked Markdown knowledge base. The `@atomicmemory/llmwiki` bridge imports
+its JSON export into AtomicMemory while preserving advisory metadata under
+`memory.metadata.llmwiki.*`.
 
-`@atomicmemory/llmwiki` (in this monorepo at `packages/llmwiki/`) is a one-way bridge: it imports an `llmwiki export --target json` envelope as one verbatim AtomicMemory record per wiki page, with all advisory metadata (kind, citations, confidence, provenance state, contradictions, aliases, freshness) preserved under `memory.metadata.llmwiki.*`. Either direction holds value standalone; the bridge just lets you choose runtime semantic recall on top of compiled knowledge.
+See [`packages/llmwiki/README.md`](packages/llmwiki/README.md) and
+[`packages/llmwiki/docs/cookbook.md`](packages/llmwiki/docs/cookbook.md) for the
+full workflow.
 
-See [`packages/llmwiki/README.md`](packages/llmwiki/README.md) and [`packages/llmwiki/docs/cookbook.md`](packages/llmwiki/docs/cookbook.md) for the full workflow.
+## Project information
 
-## Release Notes
-
-Per-package changelogs live next to each package. Cross-package and monorepo
-rollup changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+- **Release notes:** package changelogs and [`CHANGELOG.md`](CHANGELOG.md)
+- **Roadmap:** [`ROADMAP.md`](ROADMAP.md)
+- **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- **Security:** confidential reporting and supported versions in
+  [`SECURITY.md`](SECURITY.md)
+- **License:** Apache License 2.0 — see [`LICENSE`](LICENSE)
 
 ## Repository layout
 
@@ -389,21 +377,3 @@ tests/smoke/   public, contributor-safe smoke tests
 
 Release orchestration, marketplace operations, sensitive service configuration,
 and local machine paths are deliberately not part of this repository.
-
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow, branch protection
-rules, and the public CI lanes a pull request runs through.
-
-AI coding agents should also read [`AGENTS.md`](AGENTS.md). `CLAUDE.md` and
-`GEMINI.md` point their respective CLIs at the same public instructions.
-
-## Security
-
-Security policy, supported versions, and the confidential reporting channel are
-documented in [`SECURITY.md`](SECURITY.md). Please report suspected
-vulnerabilities confidentially rather than opening a public issue.
-
-## License
-
-Apache License 2.0 — see [`LICENSE`](LICENSE).

@@ -90,6 +90,11 @@ impl GlobalOptions {
     pub fn agent_output(&self) -> bool {
         self.agent || self.output == OutputFormat::Agent
     }
+
+    /// Whether stdin prompts are permitted for this invocation.
+    pub fn allow_prompts(&self, yes: bool) -> bool {
+        !self.quiet && !yes && self.output != OutputFormat::Json && !self.agent_output()
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -163,5 +168,29 @@ pub fn command_path(command: &Command) -> String {
         Command::Migrate(_) => "migrate".into(),
         Command::Integrate(_) => "integrate".into(),
         Command::Hooks(cmd) => format!("hooks {}", hooks::command_label(cmd)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allow_prompts_honors_quiet_yes_json_and_agent() {
+        let mut global = GlobalOptions::default();
+        assert!(global.allow_prompts(false));
+
+        global.quiet = true;
+        assert!(!global.allow_prompts(false));
+
+        global.quiet = false;
+        assert!(!global.allow_prompts(true));
+
+        global.output = OutputFormat::Json;
+        assert!(!global.allow_prompts(false));
+
+        global.output = OutputFormat::Table;
+        global.agent = true;
+        assert!(!global.allow_prompts(false));
     }
 }

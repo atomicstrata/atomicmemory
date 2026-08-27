@@ -212,7 +212,9 @@ Claude Code hook environments are commonly spawned with a thinner PATH than the 
 command -v am
 ```
 
-If the command is not found, run `curl -fsSL https://get.atomicstrata.ai/install.sh | sh` and open a new terminal.
+If the command is not found, run
+`curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh`
+and open a new terminal.
 
 ## License
 

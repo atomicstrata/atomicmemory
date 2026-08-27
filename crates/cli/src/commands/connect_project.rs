@@ -19,9 +19,11 @@ use crate::commands::cloud_api_key::ensure_connected_local_cloud_api_key_stored;
 use crate::commands::instance::{InstanceCommand, run_start_brief};
 use crate::config::{
     ProfileConfig, ProfileKind, ensure_config_initialized, jwks_url, require_api_key,
-    resolve_dashboard_context, resolve_openai_api_key, resolve_profile, update_config,
+    resolve_dashboard_context, resolve_profile, update_config,
 };
-use crate::instance::docker::{RealDockerRunner, ensure_docker_available};
+use crate::instance::docker::{
+    DockerRunner, RealDockerRunner, ensure_docker_available_with_preflight,
+};
 use crate::instance::managed_core_needs_env_sync;
 use crate::onboarding_runtime::{default_runtime_wait, wait_runtime_online_with_progress};
 use crate::output::message;
@@ -33,12 +35,26 @@ use crate::telemetry::{
 use crate::verification::receipt::{InitReceiptInput, build_init_receipt, print_init_receipt};
 use crate::verification::smoke::{SmokeOptions, SmokeTelemetry, run_memory_smoke};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ConnectProjectOptions {
     pub no_instance: bool,
     pub skip_verify: bool,
     pub replace: bool,
     pub instance_image: Option<String>,
+    /// When false, stdin prompts (Docker preflight retry, etc.) are skipped.
+    pub interactive: bool,
+}
+
+impl Default for ConnectProjectOptions {
+    fn default() -> Self {
+        Self {
+            no_instance: false,
+            skip_verify: false,
+            replace: false,
+            instance_image: None,
+            interactive: true,
+        }
+    }
 }
 
 /// Full `am connect --project` / dashboard-first onboarding from a project ref.
@@ -321,6 +337,66 @@ pub fn local_projects(projects: &[Project]) -> Vec<&Project> {
         .collect()
 }
 
+pub fn cloud_projects(projects: &[Project]) -> Vec<&Project> {
+    projects
+        .iter()
+        .filter(|p| p.kind == ProjectType::Cloud)
+        .collect()
+}
+
+pub fn ensure_local_project_for_connect(project: &Project) -> Result<()> {
+    if project.kind == ProjectType::Cloud {
+        bail!(
+            "project '{}' ({}) is Hosted Cloud — Connected Local needs a Local project.\n\
+             Run `am init --cloud --project <cloud-id>` for Hosted Cloud, or `am project list` to find a Local project.",
+            project.name,
+            project.slug
+        );
+    }
+    Ok(())
+}
+
+pub fn ensure_cloud_project_for_handoff(project: &Project) -> Result<()> {
+    if project.kind != ProjectType::Cloud {
+        bail!(
+            "project '{}' ({}) is a Local project — Hosted Cloud requires a Cloud project.\n\
+             Run `am init --project <local-id>` or `am init --local` for Connected Local, or choose a Cloud project ID.",
+            project.name,
+            project.slug
+        );
+    }
+    Ok(())
+}
+
+/// How Cloud-first init chooses a Hosted Cloud project when none is explicit.
+#[derive(Debug, Clone, Copy)]
+pub enum HostedCloudTarget<'a> {
+    Project(&'a Project),
+    Prompt,
+    /// No Hosted Cloud projects yet — open onboarding/create.
+    OnboardingDashboard,
+    /// Multiple projects and no explicit selection — open the projects list.
+    ProjectsDashboard,
+}
+
+pub fn hosted_cloud_target_policy<'a>(
+    clouds: &[&'a Project],
+    interactive: bool,
+    stdin_is_tty: bool,
+) -> HostedCloudTarget<'a> {
+    match clouds.len() {
+        0 => HostedCloudTarget::OnboardingDashboard,
+        1 => HostedCloudTarget::Project(clouds[0]),
+        _ if interactive && stdin_is_tty => HostedCloudTarget::Prompt,
+        _ => HostedCloudTarget::ProjectsDashboard,
+    }
+}
+
+/// Whether Docker preflight may block on stdin (respects `am init --yes`).
+pub fn docker_preflight_may_prompt(interactive: bool, stdin_is_tty: bool) -> bool {
+    interactive && stdin_is_tty
+}
+
 pub fn pick_local_project(projects: &[Project], interactive: bool) -> Result<Option<Project>> {
     let locals = local_projects(projects);
     match locals.len() {
@@ -522,7 +598,17 @@ async fn start_core_with_env_sync(
     progress.start_step("runtime", "Start local Core (Docker)");
     progress.tick("runtime", "checking Docker");
     let docker = RealDockerRunner::new();
-    if let Err(err) = ensure_docker_available(&docker).await {
+    let docker_unavailable = docker.version().await.is_err();
+    let may_prompt_docker = docker_unavailable
+        && docker_preflight_may_prompt(opts.interactive, io::stdin().is_terminal());
+    if may_prompt_docker {
+        progress.pause_for_input();
+    }
+    let docker_result = ensure_docker_available_with_preflight(&docker, opts.interactive).await;
+    if may_prompt_docker {
+        progress.resume_after_input();
+    }
+    if let Err(err) = docker_result {
         progress.fail("runtime", Some(&err.to_string()));
         capture_step_failure(InitStep::Docker, &err, Some(actx.props()), no_telemetry);
         return Err(err);
@@ -553,18 +639,6 @@ async fn start_core_with_env_sync(
         progress.tick("runtime", "starting container");
     }
 
-    // Pause for possible OpenAI stdin prompts (missing key or rejected key re-prompt).
-    let may_prompt_openai = !local_global.quiet && io::stdin().is_terminal();
-    let missing_openai = may_prompt_openai
-        && std::env::var("OPENAI_API_KEY").is_err()
-        && resolve_openai_api_key(profile_name).is_none();
-    if may_prompt_openai {
-        progress.pause_for_input();
-        if missing_openai {
-            progress.tick("runtime", "OpenAI API key required below");
-        }
-    }
-
     let start_result = run_start_brief(
         local_global,
         InstanceCommand::Start {
@@ -581,12 +655,11 @@ async fn start_core_with_env_sync(
         },
         // The internal requirement, kept out of `replace`.
         needs_env_sync || env_sync.cloud_key_changed,
+        Some(progress),
+        Some("runtime"),
+        opts.interactive,
     )
     .await;
-
-    if may_prompt_openai {
-        progress.resume_after_input();
-    }
 
     match start_result {
         Ok(started) => {
@@ -939,5 +1012,12 @@ mod tests {
         let canonical = sample_project("org_a", CANONICAL_DEFAULT_PROJECT_SLUG);
         let locals = vec![&legacy, &canonical];
         assert_eq!(default_local_project_index(&locals), 1);
+    }
+
+    #[test]
+    fn docker_preflight_may_prompt_respects_noninteractive() {
+        assert!(!docker_preflight_may_prompt(false, true));
+        assert!(docker_preflight_may_prompt(true, true));
+        assert!(!docker_preflight_may_prompt(true, false));
     }
 }

@@ -48,6 +48,22 @@ pub trait ProgressReporter: Send {
     fn finish(&mut self);
 }
 
+/// Pause animated progress around an interactive stdin boundary; always resume.
+pub fn with_progress_paused_for_input<T>(
+    progress: &mut dyn ProgressReporter,
+    should_pause: bool,
+    op: impl FnOnce() -> T,
+) -> T {
+    if should_pause {
+        progress.pause_for_input();
+    }
+    let result = op();
+    if should_pause {
+        progress.resume_after_input();
+    }
+    result
+}
+
 struct Silent;
 
 impl ProgressReporter for Silent {
@@ -353,5 +369,34 @@ mod tests {
         p.resume_after_input();
         assert!(!p.input_paused(), "double-resume must remain unpaused");
         p.succeed("runtime", Some("healthy"));
+    }
+
+    struct RecordingReporter {
+        input_events: Vec<&'static str>,
+    }
+
+    impl ProgressReporter for RecordingReporter {
+        fn start_step(&mut self, _id: &str, _label: &str) {}
+        fn succeed(&mut self, _id: &str, _detail: Option<&str>) {}
+        fn warn(&mut self, _id: &str, _detail: Option<&str>) {}
+        fn fail(&mut self, _id: &str, _detail: Option<&str>) {}
+        fn finish(&mut self) {}
+        fn pause_for_input(&mut self) {
+            self.input_events.push("pause");
+        }
+        fn resume_after_input(&mut self) {
+            self.input_events.push("resume");
+        }
+    }
+
+    #[test]
+    fn with_progress_paused_for_input_resumes_on_error() {
+        let mut reporter = RecordingReporter {
+            input_events: Vec::new(),
+        };
+        let result: Result<(), &str> =
+            with_progress_paused_for_input(&mut reporter, true, || Err("prompt failed"));
+        assert!(result.is_err());
+        assert_eq!(reporter.input_events, vec!["pause", "resume"]);
     }
 }

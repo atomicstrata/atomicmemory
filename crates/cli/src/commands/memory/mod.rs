@@ -205,17 +205,17 @@ async fn run_ingest(
         stdin,
     )
     .await?;
-    let (_profile, client) = memory_client(global).await?;
+    let (profile, client) = memory_client(global).await?;
     let resp = if is_verbatim {
         client
             .ingest_quick(&req)
             .await
-            .map_err(|e| with_operation_recovery(e.into(), "Memory ingest"))?
+            .map_err(|e| with_operation_recovery(e.into(), "Memory ingest", profile.kind))?
     } else {
         client
             .ingest(&req)
             .await
-            .map_err(|e| with_operation_recovery(e.into(), "Memory ingest"))?
+            .map_err(|e| with_operation_recovery(e.into(), "Memory ingest", profile.kind))?
     };
     if let Ok(profile) = resolve_profile(
         global.profile.as_deref(),

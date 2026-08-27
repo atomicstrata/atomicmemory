@@ -97,6 +97,7 @@ pub async fn run(opts: ConnectOptions, global: &GlobalOptions) -> Result<()> {
             skip_verify: opts.skip_verify,
             replace: opts.replace,
             instance_image: None,
+            interactive: !global.quiet,
         };
         return run_connect_project(&project, opts.device, &connect_opts, global).await;
     }

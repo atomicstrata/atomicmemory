@@ -16,7 +16,7 @@ lto = "thin"
 codegen-units = 1
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -25,7 +25,7 @@ publish = false
 [workspace.dependencies]
 async-trait = "0.1.89"
 axum = { version = "0.8.9", features = ["macros", "json", "tokio"] }
-tokio = { version = "1.52.3", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full", "test-util"] }
 reqwest = { version = "0.13.3", default-features = false, features = [
   "rustls",
   "json",

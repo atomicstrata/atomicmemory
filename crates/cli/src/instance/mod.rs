@@ -35,7 +35,7 @@ pub const HEALTH_POLL_INTERVAL_SECS: u64 = 2;
 /// Max stderr/log lines surfaced on failure.
 pub const MAX_FAILURE_LOG_LINES: usize = 20;
 
-/// Default API key name when auto-provisioning.
+/// Base API key name when auto-provisioning a per-installation credential.
 pub const AUTO_KEY_NAME: &str = "connected-local-runtime";
 
 /// Path inside Core containers where the entrypoint persists `CORE_API_KEY`.
@@ -78,6 +78,11 @@ pub fn managed_core_profile_mismatch(inspect: &ContainerInspect, profile_name: &
     inspect.managed_by_cli && inspect.profile_label.as_deref() != Some(profile_name)
 }
 
+/// Normalize Cloud API / JWKS endpoint strings the same way container env is written.
+fn canonical_cloud_endpoint_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
 /// True when the running container still points Core at a different Cloud tier than the profile.
 pub fn managed_core_cloud_env_mismatch(
     inspect: &ContainerInspect,
@@ -87,12 +92,15 @@ pub fn managed_core_cloud_env_mismatch(
     if !inspect.managed_by_cli {
         return false;
     }
+    let expected_api = canonical_cloud_endpoint_url(expected_api_url);
+    let expected_jwks = canonical_cloud_endpoint_url(expected_jwks_url);
     match (
         inspect.atomicmemory_api_url.as_deref(),
         inspect.cloud_jwks_url.as_deref(),
     ) {
         (Some(api_url), Some(jwks_url)) => {
-            api_url != expected_api_url || jwks_url != expected_jwks_url
+            canonical_cloud_endpoint_url(api_url) != expected_api
+                || canonical_cloud_endpoint_url(jwks_url) != expected_jwks
         }
         _ => true,
     }
@@ -214,6 +222,16 @@ mod tests {
             &inspect,
             "https://api.staging.example.com",
             "https://api.staging.example.com/.well-known/atomic-core/jwks.json",
+        ));
+    }
+
+    #[test]
+    fn cloud_env_matches_when_only_trailing_slash_differs() {
+        let inspect = inspect_with_profile(Some("default"));
+        assert!(!managed_core_cloud_env_mismatch(
+            &inspect,
+            "https://api.dev.example.com/",
+            "https://api.dev.example.com/.well-known/atomic-core/jwks.json/",
         ));
     }
 

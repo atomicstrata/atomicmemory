@@ -26,7 +26,8 @@ jq -e '
     (.coverage_label | IN("package_protocol", "host_install", "true_host_e2e", "skipped_host_missing", "skipped_missing_secret")) and
     (.publish_status | IN("published", "implemented_publish_pending", "coming_soon")) and
     (.install_type | type == "string" and length > 0) and
-    ((.public_install_command == null) or (.public_install_command | type == "string" and length > 0))
+    ((.public_install_command == null) or (.public_install_command | type == "string" and length > 0)) and
+    ((.public_onboarding_command == null) or (.public_onboarding_command | type == "string" and length > 0))
   )
 ' "${CONTRACT}" >/dev/null
 
@@ -71,9 +72,10 @@ jq -e '
   any(.rows[]; .name == "am"
     and .kind == "binary"
     and .required_for_public_release == true
-    and .publish_status == "published")
+    and .publish_status == "published"
+    and .public_onboarding_command == "curl --proto '\''=https'\'' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --init")
 ' "${CONTRACT}" >/dev/null || {
-  echo "FAIL: row 'am' must exist and be required_for_public_release (it is the canonical CLI)" >&2
+  echo "FAIL: row 'am' must be release-required and carry the hardened Cloud-first onboarding command" >&2
   exit 1
 }
 

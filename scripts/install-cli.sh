@@ -5,7 +5,7 @@
 # (checksums + build provenance attestations). Default downloads use the
 # mirrored convenience channel at get.atomicstrata.ai (same digests).
 #
-#   curl -fsSL https://get.atomicstrata.ai/install.sh | sh
+#   curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh
 set -eu
 
 # --- configuration (override via env for testing) ---------------------------
@@ -114,6 +114,22 @@ validate_version_string() {
   fi
 }
 
+# Env files are sourced as shell code, so only interpolate a conservative
+# absolute-path character set. Do not echo the rejected value: it may contain
+# control characters intended to forge installer output.
+validate_install_dir() {
+  dir="$1"
+  case "$dir" in
+    /*) ;;
+    *) err "invalid install directory: expected a safe absolute path using only letters, digits, '.', '_', '-', and '/'" ;;
+  esac
+  case "$dir" in
+    *[!A-Za-z0-9._/-]*)
+      err "invalid install directory: expected a safe absolute path using only letters, digits, '.', '_', '-', and '/'"
+      ;;
+  esac
+}
+
 # Fail closed on musl Linux until a dedicated musl artifact exists.
 reject_musl_linux() {
   [ "$(uname -s)" = "Linux" ] || return 0
@@ -139,7 +155,7 @@ validate_install_target() {
     return 0
   fi
   err "refusing to overwrite ${target} (${label}). Install elsewhere, e.g.:
-  curl -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --bin-dir \"\$HOME/.local/bin\"
+  curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --bin-dir \"\$HOME/.local/bin\"
 Or set AM_FORCE=1 to overwrite (breaks the other tool's \`am\` command)."
 }
 
@@ -158,7 +174,7 @@ Options:
   --env <prod|staging|dev>
                       Seed CLI environment preset after install (default: built-in prod)
   --core-image <ref>  Seed Core Docker image override after install
-  --init              Run am init after install (uses ~/.atomicmemory/env in this subshell)
+  --init              Run am init after install (requires an interactive terminal)
   --uninstall, -r     Remove am (and legacy atomicmemory binary if present)
   -h, --help          Show this help
 
@@ -172,7 +188,7 @@ Environment:
   AM_FORCE            Set to 1 to overwrite an existing foreign `am` binary (e.g. AppMan)
   AM_VERIFY_ATTESTATION
                      auto|1|0 (default: auto). auto verifies public mirror downloads
-                     when gh is available; 1 requires gh attestation verification.
+                     when gh is authenticated; 1 requires authenticated gh verification.
 
 Trust: release artifacts are built from github.com/atomicstrata/atomicmemory.
 SHA256SUMS verifies integrity against the mirror; it does not authenticate the publisher.
@@ -263,6 +279,7 @@ run_uninstall() {
   mb="# >>> atomicmemory >>>"
   me="# <<< atomicmemory <<<"
   any=0
+  fish_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 
   for f in am atomicmemory; do
     if remove_binary_if_allowed "$dir/$f"; then
@@ -272,7 +289,13 @@ run_uninstall() {
   done
 
   # strip the PATH block from common shell startup files
-  for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.config/fish/config.fish"; do
+  for rc in \
+    "${ZDOTDIR:-$HOME}/.zshrc" \
+    "$HOME/.bashrc" \
+    "$HOME/.bash_profile" \
+    "$HOME/.bash_login" \
+    "$HOME/.profile" \
+    "$fish_config_home/fish/config.fish"; do
     [ -f "$rc" ] || continue
     if grep -qF "$mb" "$rc" 2>/dev/null && command -v awk >/dev/null 2>&1; then
       tmp="${rc}.atomicmemory.tmp"
@@ -288,6 +311,13 @@ run_uninstall() {
       fi
     fi
   done
+
+  fish_conf="$fish_config_home/fish/conf.d/atomicmemory.fish"
+  if [ -f "$fish_conf" ] && grep -qF "$mb" "$fish_conf" 2>/dev/null; then
+    rm -f "$fish_conf"
+    info "  removed PATH entry from $fish_conf"
+    any=1
+  fi
 
   if [ -d "$AM_ENV_DIR" ]; then
     rm -f "${AM_ENV_DIR}/env" "${AM_ENV_DIR}/env.fish"
@@ -338,27 +368,35 @@ fi
 
 have tar || err "need tar on PATH"
 
-should_verify_attestation() {
+gh_is_authenticated() {
+  gh auth token >/dev/null 2>&1
+}
+
+verify_release_attestation() {
   case "$AM_VERIFY_ATTESTATION" in
     1 | true | TRUE | yes | YES | on | ON)
-      return 0
+      have gh || err "gh is required for attestation verification (install GitHub CLI or set AM_VERIFY_ATTESTATION=0)"
+      gh_is_authenticated \
+        || err "GitHub CLI authentication is required for attestation verification (run gh auth login or provide GH_TOKEN)"
       ;;
     0 | false | FALSE | no | NO | off | OFF)
-      return 1
+      return 0
       ;;
     auto | AUTO | "")
-      [ "$AM_BASE_URL" = "$AM_DIST_DEFAULT_BASE_URL" ] && have gh
-      return
+      [ "$AM_BASE_URL" = "$AM_DIST_DEFAULT_BASE_URL" ] || return 0
+      if ! have gh; then
+        warn "GitHub CLI is unavailable; continuing with checksum verification only (set AM_VERIFY_ATTESTATION=1 to require provenance)"
+        return 0
+      fi
+      if ! gh_is_authenticated; then
+        warn "GitHub CLI is not authenticated; continuing with checksum verification only (run gh auth login or set AM_VERIFY_ATTESTATION=1 to require provenance)"
+        return 0
+      fi
       ;;
     *)
       err "invalid AM_VERIFY_ATTESTATION: ${AM_VERIFY_ATTESTATION} (expected auto, 1, or 0)"
       ;;
   esac
-}
-
-verify_release_attestation() {
-  should_verify_attestation || return 0
-  have gh || err "gh is required for attestation verification (install GitHub CLI or set AM_VERIFY_ATTESTATION=0)"
   info "info: verifying GitHub artifact attestation"
   gh attestation verify "${TMP}/${TARBALL}" \
     --repo atomicstrata/atomicmemory \
@@ -430,10 +468,8 @@ prefer_install_dir() {
 # --- PATH persistence --------------------------------------------------------
 AM_MARKER_BEGIN="# >>> atomicmemory >>>"
 AM_MARKER_END="# <<< atomicmemory <<<"
-PATH_RC_FILE=""
-PATH_RC_ACTION=""
+PATH_RC_FILES=""
 PATH_ENV_FILE=""
-SHELL_RC_CONFIGURED=0
 
 write_env_files() {
   bindir="$1"
@@ -442,82 +478,132 @@ write_env_files() {
   posix="${AM_ENV_DIR}/env"
   {
     printf '%s\n' "# atomicmemory shell environment (managed by install-cli.sh; safe to delete)"
-    printf 'case ":$PATH:" in\n'
-    printf '  *":%s:"*) ;;\n' "$bindir"
-    printf '  *) export PATH="%s:$PATH" ;;\n' "$bindir"
-    printf 'esac\n'
+    printf 'atomicmemory_bindir="%s"\n' "$bindir"
+    printf 'atomicmemory_path=":$PATH:"\n'
+    printf 'while :; do\n'
+    printf '  case "$atomicmemory_path" in\n'
+    printf '    *":$atomicmemory_bindir:"*)\n'
+    printf '      atomicmemory_before=${atomicmemory_path%%%%":$atomicmemory_bindir:"*}\n'
+    printf '      atomicmemory_after=${atomicmemory_path#*":$atomicmemory_bindir:"}\n'
+    printf '      atomicmemory_path="${atomicmemory_before}:${atomicmemory_after}"\n'
+    printf '      ;;\n'
+    printf '    *) break ;;\n'
+    printf '  esac\n'
+    printf 'done\n'
+    printf 'PATH=${atomicmemory_path#:}\n'
+    printf 'PATH=${PATH%%:}\n'
+    printf 'export PATH="$atomicmemory_bindir${PATH:+:$PATH}"\n'
+    printf 'unset atomicmemory_bindir atomicmemory_path atomicmemory_before atomicmemory_after\n'
   } >"$posix" || return 1
   PATH_ENV_FILE="$posix"
 
   fishf="${AM_ENV_DIR}/env.fish"
   {
     printf '%s\n' "# atomicmemory shell environment (managed by install-cli.sh; safe to delete)"
-    printf 'if not contains "%s" $PATH\n' "$bindir"
-    printf '  set -gx PATH "%s" $PATH\n' "$bindir"
-    printf 'end\n'
+    printf 'set -gx PATH "%s" (string match -v -- "%s" $PATH)\n' "$bindir" "$bindir"
   } >"$fishf" 2>/dev/null || true
 
   return 0
 }
 
-rc_file_for_shell() {
-  name="$(basename "${SHELL:-}")"
-  case "$name" in
-    zsh) printf '%s' "${ZDOTDIR:-$HOME}/.zshrc" ;;
-    bash)
-      if [ -f "$HOME/.bash_profile" ]; then printf '%s' "$HOME/.bash_profile"; else printf '%s' "$HOME/.bashrc"; fi
-      ;;
-    fish) printf '%s' "$HOME/.config/fish/config.fish" ;;
-    *) printf '' ;;
+activation_command() {
+  case "$(basename "${SHELL:-}")" in
+    fish) printf 'source "%s/env.fish"' "$AM_ENV_DIR" ;;
+    *) printf '. "%s/env"' "$AM_ENV_DIR" ;;
   esac
 }
 
-configure_shell_path() {
-  bindir="$1"
-  command -v awk >/dev/null 2>&1 || return 1
-  rc="$(rc_file_for_shell)"
-  [ -n "$rc" ] || return 1
-
-  case "$(basename "${SHELL:-}")" in
-    fish) line="source \"${AM_ENV_DIR}/env.fish\"" ;;
-    *) line=". \"${AM_ENV_DIR}/env\"" ;;
-  esac
-
-  mkdir -p "$(dirname "$rc")" 2>/dev/null || return 1
-  if [ -e "$rc" ] && { [ ! -f "$rc" ] || [ ! -w "$rc" ]; }; then
-    return 1
-  fi
-
-  if [ -f "$rc" ] && grep -qF "$AM_MARKER_BEGIN" "$rc"; then
-    PATH_RC_ACTION="Updated"
-  elif [ -f "$rc" ]; then
-    PATH_RC_ACTION="Added"
+record_rc_file() {
+  recorded_rc="$1"
+  if [ -n "$PATH_RC_FILES" ]; then
+    PATH_RC_FILES="${PATH_RC_FILES}, ${recorded_rc}"
   else
-    PATH_RC_ACTION="Created"
+    PATH_RC_FILES="$recorded_rc"
   fi
+}
 
-  tmp="${rc}.atomicmemory.tmp"
-  if [ -f "$rc" ]; then
+can_write_rc_file() {
+  writable_rc="$1"
+  mkdir -p "$(dirname "$writable_rc")" 2>/dev/null || return 1
+  [ ! -e "$writable_rc" ] || { [ -f "$writable_rc" ] && [ -w "$writable_rc" ]; }
+}
+
+write_managed_rc() {
+  managed_rc="$1"
+  managed_line="$2"
+  managed_tmp="${managed_rc}.atomicmemory.tmp"
+  if [ -f "$managed_rc" ]; then
     awk -v b="$AM_MARKER_BEGIN" -v e="$AM_MARKER_END" '
       $0==b{skip=1; next}
       $0==e{skip=0; next}
       skip{next}
       {print}
-    ' "$rc" >"$tmp" || { rm -f "$tmp"; return 1; }
+    ' "$managed_rc" >"$managed_tmp" || { rm -f "$managed_tmp"; return 1; }
   else
-    : >"$tmp"
+    : >"$managed_tmp"
   fi
-
   {
     printf '\n%s\n' "$AM_MARKER_BEGIN"
-    printf '%s\n' "$line"
+    printf '%s\n' "$managed_line"
     printf '%s\n' "$AM_MARKER_END"
-  } >>"$tmp"
+  } >>"$managed_tmp"
+  mv "$managed_tmp" "$managed_rc" || { rm -f "$managed_tmp"; return 1; }
+  record_rc_file "$managed_rc"
+}
 
-  mv "$tmp" "$rc" || { rm -f "$tmp"; return 1; }
-  PATH_RC_FILE="$rc"
-  SHELL_RC_CONFIGURED=1
-  return 0
+strip_managed_rc() {
+  old_rc="$1"
+  [ -f "$old_rc" ] && grep -qF "$AM_MARKER_BEGIN" "$old_rc" 2>/dev/null || return 0
+  old_tmp="${old_rc}.atomicmemory.tmp"
+  awk -v b="$AM_MARKER_BEGIN" -v e="$AM_MARKER_END" '
+    $0==b{skip=1; next}
+    $0==e{skip=0; next}
+    skip{next}
+    {print}
+  ' "$old_rc" >"$old_tmp" || { rm -f "$old_tmp"; return 1; }
+  mv "$old_tmp" "$old_rc"
+}
+
+bash_login_rc() {
+  if [ -f "$HOME/.bash_profile" ]; then
+    printf '%s' "$HOME/.bash_profile"
+  elif [ -f "$HOME/.bash_login" ]; then
+    printf '%s' "$HOME/.bash_login"
+  else
+    printf '%s' "$HOME/.profile"
+  fi
+}
+
+configure_shell_path() {
+  command -v awk >/dev/null 2>&1 || return 1
+  shell_name="$(basename "${SHELL:-}")"
+  posix_line=". \"${AM_ENV_DIR}/env\""
+  fish_line="source \"${AM_ENV_DIR}/env.fish\""
+  case "$shell_name" in
+    bash)
+      login_rc="$(bash_login_rc)"
+      can_write_rc_file "$HOME/.bashrc" && can_write_rc_file "$login_rc" || return 1
+      write_managed_rc "$HOME/.bashrc" "$posix_line" || return 1
+      [ "$login_rc" = "$HOME/.bashrc" ] || write_managed_rc "$login_rc" "$posix_line" || return 1
+      ;;
+    zsh)
+      zsh_rc="${ZDOTDIR:-$HOME}/.zshrc"
+      can_write_rc_file "$zsh_rc" || return 1
+      write_managed_rc "$zsh_rc" "$posix_line" || return 1
+      ;;
+    fish)
+      fish_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+      fish_rc="$fish_config_home/fish/conf.d/atomicmemory.fish"
+      can_write_rc_file "$fish_rc" || return 1
+      write_managed_rc "$fish_rc" "$fish_line" || return 1
+      strip_managed_rc "$fish_config_home/fish/config.fish" || return 1
+      ;;
+    sh | dash | ksh | ash)
+      can_write_rc_file "$HOME/.profile" || return 1
+      write_managed_rc "$HOME/.profile" "$posix_line" || return 1
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 activate_install_path() {
@@ -528,6 +614,19 @@ activate_install_path() {
     PATH="${AM_INSTALL_DIR}:${PATH}"
     export PATH
   fi
+}
+
+run_init() {
+  init_bin="${AM_INSTALL_DIR}/am"
+  if [ -t 0 ]; then
+    "$init_bin" init || err "am init failed (run: ${init_bin} init)"
+    return
+  fi
+  if ( : </dev/tty ) 2>/dev/null; then
+    "$init_bin" init </dev/tty || err "am init failed (run: ${init_bin} init)"
+    return
+  fi
+  err "--init requires an interactive terminal. The CLI is installed; run ${init_bin} init from a terminal to finish setup."
 }
 
 # --- resolve version ---------------------------------------------------------
@@ -550,6 +649,7 @@ REL_URL="${AM_BASE_URL}/cli/v${AM_VERSION}"
 if [ -z "$AM_INSTALL_DIR" ]; then
   AM_INSTALL_DIR="$(prefer_install_dir)"
 fi
+validate_install_dir "$AM_INSTALL_DIR"
 validate_install_target "$AM_INSTALL_DIR"
 case "$AM_INSTALL_DIR" in
   /usr/* | /opt/*) USE_SUDO=1 ;;
@@ -616,6 +716,7 @@ if ! write_env_files "$AM_INSTALL_DIR"; then
 else
   PATH_ENV_FILE="${AM_ENV_DIR}/env"
 fi
+PATH_ACTIVATION="$(activation_command)"
 
 # --- PATH persistence + shadow detection -------------------------------------
 on_path=0
@@ -636,20 +737,19 @@ needs_path=0
 if [ "$needs_path" -eq 1 ]; then
   if [ "$AM_NO_MODIFY_PATH" = "1" ]; then
     info ""
-    info "  Add ${AM_INSTALL_DIR} to the FRONT of your PATH:"
-    info "    . \"${AM_ENV_DIR}/env\""
-    info "  or: export PATH=\"${AM_INSTALL_DIR}:\$PATH\""
-  elif configure_shell_path "$AM_INSTALL_DIR"; then
+    info "  Activate ${AM_INSTALL_DIR} in this shell with:"
+    info "    ${PATH_ACTIVATION}"
+  elif configure_shell_path; then
     info ""
-    info "  ${PATH_RC_ACTION} PATH entry in ${PATH_RC_FILE}"
-    info "  Activate it now with:"
-    info "    . \"${PATH_ENV_FILE:-$AM_ENV_DIR/env}\""
+    info "  Configured PATH in ${PATH_RC_FILES}"
+    info "  New terminals will find am automatically."
+    info "  Activate it in this shell with:"
+    info "    ${PATH_ACTIVATION}"
   else
     info ""
     info "  Could not update your shell startup file automatically."
-    info "  Activate PATH now with:"
-    info "    . \"${AM_ENV_DIR}/env\""
-    info "  or: export PATH=\"${AM_INSTALL_DIR}:\$PATH\""
+    info "  Activate PATH in this shell with:"
+    info "    ${PATH_ACTIVATION}"
   fi
 fi
 
@@ -661,7 +761,7 @@ if [ -n "$shadow" ]; then
   if is_appman_am "$shadow"; then
     info "  AppMan uses \`am\` on Linux; AtomicMemory CLI was installed as:"
     info "    ${AM_INSTALL_DIR}/am"
-    info "  Source ~/.atomicmemory/env (or restart your shell) so this install wins."
+    info "  Run ${PATH_ACTIVATION} (or restart your shell) so this install wins."
     info "  AppMan's local mode uses the \`appman\` command — no rename needed."
   else
     info "  It will keep shadowing the new build until you restart your shell"
@@ -687,21 +787,19 @@ fi
 
 if [ "$AM_INIT" = "1" ]; then
   activate_install_path
-  "${AM_INSTALL_DIR}/am" init \
-    || err "am init failed (run: . \"${AM_ENV_DIR}/env\" && am init)"
+  run_init
   info "  ran am init"
 fi
 
 info ""
 if [ "$AM_INIT" = "1" ]; then
-  info "  Next: am integrate --help"
-elif [ "$SHELL_RC_CONFIGURED" = "1" ]; then
-  # The rc entry only applies to future shells, so offer the same-session
-  # activation too: the documented quickstart runs `am init` right away.
-  info "  Next (same session): . \"${PATH_ENV_FILE:-$AM_ENV_DIR/env}\" && am init"
-  info "  or open a new terminal, then run: am init"
+  if [ "$needs_path" -eq 1 ]; then
+    info "  Setup complete. Open a new terminal, then run: am integrate --help"
+  else
+    info "  Next: am integrate --help"
+  fi
 elif [ "$needs_path" -eq 1 ]; then
-  info "  Next (same session): . \"${AM_ENV_DIR}/env\" && am init"
+  info "  Open a new terminal, then run: am init"
 else
   info "  Next: am init"
 fi

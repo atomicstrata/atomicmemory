@@ -1,11 +1,14 @@
 //! `am config` — inspect and edit profiles and resolved settings.
 
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use clap::Subcommand;
 use serde::Serialize;
 
 use crate::auth::clerk_oauth::resolve_oauth_pair;
-use crate::cli::GlobalOptions;
+use crate::cli::{GlobalOptions, OutputFormat};
+use crate::commands::client::emit_cloud_export_warning_if_needed;
 use crate::config::{
     ProfileConfig, ProfileKind, apply_environment_preset, load_config, resolve_profile,
     update_config,
@@ -111,6 +114,10 @@ struct EnvShowReport {
     oauth_client_id: Option<String>,
 }
 
+fn profile_list_json_payload(cfg: &crate::config::ConfigFile) -> &BTreeMap<String, ProfileConfig> {
+    &cfg.profiles
+}
+
 pub async fn run(cmd: ConfigCommand, global: &GlobalOptions) -> Result<()> {
     match cmd {
         ConfigCommand::Env { action } => match action {
@@ -195,7 +202,17 @@ pub async fn run(cmd: ConfigCommand, global: &GlobalOptions) -> Result<()> {
         ConfigCommand::Profile { action } => match action {
             ProfileAction::List => {
                 let cfg = load_config()?;
-                emit(global.output, &cfg.profiles, global.quiet)
+                let default_profile = cfg
+                    .default_profile
+                    .clone()
+                    .unwrap_or_else(|| crate::config::DEFAULT_PROFILE.to_string());
+                if global.output == OutputFormat::Table && !global.quiet {
+                    message(
+                        !global.quiet,
+                        &format!("Default profile: {default_profile}"),
+                    );
+                }
+                emit(global.output, profile_list_json_payload(&cfg), global.quiet)
             }
             ProfileAction::Show { name } => {
                 let cfg = load_config()?;
@@ -222,6 +239,7 @@ pub async fn run(cmd: ConfigCommand, global: &GlobalOptions) -> Result<()> {
                 project_id,
             } => {
                 let kind = kind.map(ProfileKind::from).unwrap_or(ProfileKind::Cloud);
+                let hosted_cloud_managed = matches!(kind, ProfileKind::Cloud).then_some(false);
                 update_config(|cfg| {
                     cfg.profiles.insert(
                         name.clone(),
@@ -230,6 +248,7 @@ pub async fn run(cmd: ConfigCommand, global: &GlobalOptions) -> Result<()> {
                             kind,
                             local_url,
                             project_id,
+                            hosted_cloud_managed,
                             ..Default::default()
                         },
                     );
@@ -258,6 +277,12 @@ fn build_env_show_report(global: &GlobalOptions) -> Result<EnvShowReport> {
         global.base_url.as_deref(),
         global.environment,
     )?;
+    let stored_kind = cfg
+        .profiles
+        .get(&profile.name)
+        .map(|p| p.kind)
+        .unwrap_or_default();
+    emit_cloud_export_warning_if_needed(global, stored_kind, &profile);
     let profile_base = cfg
         .profiles
         .get(&profile.name)
@@ -321,6 +346,43 @@ mod tests {
         assert_eq!(
             format_source(ValueSource::BuiltInDefault),
             "built_in_default"
+        );
+    }
+
+    #[test]
+    fn profile_list_json_emits_profile_map_contract() {
+        let mut cfg = crate::config::default_config_for_test();
+        cfg.profiles.insert(
+            "local".to_string(),
+            ProfileConfig {
+                base_url: Some("http://127.0.0.1:17350".into()),
+                kind: ProfileKind::Local,
+                ..Default::default()
+            },
+        );
+
+        let value =
+            serde_json::to_value(profile_list_json_payload(&cfg)).expect("serialize list payload");
+        assert!(value.get("local").is_some());
+        assert!(value.get("default_profile").is_none());
+        assert!(value.get("profiles").is_none());
+    }
+
+    #[test]
+    fn profile_list_handler_uses_top_level_map_payload() {
+        let src = include_str!("config_cmd.rs").replace('\r', "");
+        let code: String = src
+            .lines()
+            .take_while(|line| !line.starts_with("#[cfg(test)]"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            code.contains("profile_list_json_payload(&cfg)"),
+            "ProfileAction::List must emit the stable top-level profile map helper",
+        );
+        assert!(
+            !code.contains("struct ProfileListReport"),
+            "profile list must not revert to the breaking default_profile envelope",
         );
     }
 

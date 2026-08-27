@@ -74,8 +74,8 @@ mv "$version_json" "${TMP}/mirror/version.json"
 installer="${TMP}/install-cli.sh"
 [ -f "$installer" ] || err "install-cli.sh missing from release ${AM_INTERNAL_TAG}"
 
-# Public installer defaults attestation to on for get.atomicstrata.ai; this
-# channel has no attestations and must never hit the production mirror.
+# Public installer automatically verifies authenticated get.atomicstrata.ai
+# downloads; this channel has no attestations and must never hit that mirror.
 export AM_BASE_URL="file://${TMP}/mirror"
 export AM_VERIFY_ATTESTATION=0
 export AM_VERSION

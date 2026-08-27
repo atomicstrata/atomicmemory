@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 
 pub const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
-pub const CONNECTED_LOCAL_DOCS: &str = "https://docs.atomicstrata.ai/cloud";
+pub const CONNECTED_LOCAL_DOCS: &str = "https://docs.atomicstrata.ai/cloud/troubleshooting";
 
 /// Lightweight OpenAI auth probe (`GET /v1/models`).
 pub async fn validate_openai_api_key(key: &str) -> Result<()> {

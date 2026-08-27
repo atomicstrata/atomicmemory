@@ -160,7 +160,7 @@ mod tests {
             project_name: "local",
             project_id: "proj_1",
             local_url: "http://127.0.0.1:17350",
-            api_base_url: "https://api.staging.example.com",
+            api_base_url: "https://custom.example.com",
             core_healthy: true,
             no_instance: false,
             cloud_connection_online: true,

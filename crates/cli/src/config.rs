@@ -5,16 +5,19 @@ use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use fs4::fs_std::FileExt;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::auth::origin::check_api_key_origin;
-use crate::environment::{BaseUrlInput, Environment, resolve_base_url};
+use crate::environment::{BaseUrlInput, Environment, is_remote_cloud_api_url, resolve_base_url};
 
 pub use crate::environment::ENV_CORE_IMAGE;
 
 pub const ENV_PROFILE: &str = "ATOMICMEMORY_PROFILE";
+pub const ENV_API_KEY: &str = "ATOMICMEMORY_API_KEY";
+/// When truthy, `ATOMICMEMORY_API_KEY` overrides a bound Hosted Cloud profile key.
+pub const ENV_API_KEY_FORCE: &str = "ATOMICMEMORY_API_KEY_FORCE";
 pub const ENV_CORE_API_KEY: &str = "ATOMICMEMORY_CORE_API_KEY";
 pub const ENV_LEGACY_CORE_API_KEY: &str = "CORE_API_KEY";
 pub const DEFAULT_PROFILE: &str = "cloud";
@@ -55,6 +58,14 @@ pub struct ConfigFile {
     /// Whether `first_real_memory_created` has been emitted for this install.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub telemetry_first_real_memory_sent: Option<bool>,
+    /// Stable per-install id used to name the Cloud API keys this machine owns.
+    ///
+    /// Lives in `config.toml`, not `credentials.toml`, so clearing credentials
+    /// does not change which key this machine claims. Deliberately separate
+    /// from `telemetry_distinct_id`: key names are visible in the dashboard and
+    /// must not correlate an install with its telemetry identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cli_key_id: Option<String>,
     /// Host MCP installs performed by `am integrate` (key = canonical config path).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub integrations: BTreeMap<String, IntegrationRecord>,
@@ -91,6 +102,11 @@ pub struct ProfileConfig {
     pub api_key_ref: Option<String>,
     pub local_url: Option<String>,
     pub oauth_ref: Option<String>,
+    /// Init-managed Hosted Cloud marker. `Some(true)` is set by Hosted Cloud
+    /// init; `Some(false)` marks a hand-created Cloud profile; absent (`None`)
+    /// applies legacy inference for pre-marker init profiles only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_cloud_managed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -205,7 +221,7 @@ fn write_config_at(path: &Path, file: &ConfigFile) -> Result<()> {
 }
 
 pub fn load_config() -> Result<ConfigFile> {
-    read_config_at(&config_path()?)
+    ConfigStore::production()?.load()
 }
 
 /// Read, mutate, and write `config.toml` while holding the file lock for the
@@ -313,6 +329,214 @@ fn bind_key_origin(secret: &str, api_origin: &str, project_id: &str) -> ApiKeySe
     }
 }
 
+fn api_key_force_enabled() -> bool {
+    std::env::var(ENV_API_KEY_FORCE).ok().is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+/// Credential ref written by Hosted Cloud init for a project (`hosted-cloud-<id>`).
+pub(crate) fn hosted_cloud_init_credential_ref(project_id: &str) -> String {
+    format!("hosted-cloud-{project_id}")
+}
+
+/// Pre-`hosted_cloud_managed` profiles activated by Hosted Cloud init.
+///
+/// Inference requires the init contract: Cloud kind, a project id, an
+/// `api_key_ref` that exactly matches the init credential ref for that project,
+/// and no explicit `hosted_cloud_managed = false`. Hand-created Cloud profiles
+/// must set `hosted_cloud_managed = false` (via `am config profile add` or
+/// `am key create --save`) even when the profile name matches the init ref.
+fn legacy_init_managed_hosted_cloud_profile(profile: &ProfileConfig) -> bool {
+    if profile.kind != ProfileKind::Cloud {
+        return false;
+    }
+    matches!(
+        (
+            profile.project_id.as_deref(),
+            profile.api_key_ref.as_deref(),
+        ),
+        (Some(project_id), Some(api_key_ref))
+            if api_key_ref == hosted_cloud_init_credential_ref(project_id)
+    )
+}
+
+/// Whether Hosted Cloud init key precedence applies to this profile.
+pub(crate) fn hosted_cloud_managed_for_key_policy(profile: &ProfileConfig) -> bool {
+    if profile.kind != ProfileKind::Cloud {
+        return false;
+    }
+    match profile.hosted_cloud_managed {
+        Some(true) => true,
+        Some(false) => false,
+        None => legacy_init_managed_hosted_cloud_profile(profile),
+    }
+}
+
+/// Atomically require a Connected Local profile and link an export project id.
+/// Identity of the profile an export was planned against, captured from the
+/// raw config entry at resolve time. Compared inside the store's locked
+/// mutation so a same-name replacement is rejected BEFORE its project binding
+/// is overwritten — checking after the write already corrupted the
+/// replacement's binding on the way to the abort.
+///
+/// Raw stored fields, not resolved ones: a resolved `base_url` can carry a
+/// per-invocation `--base-url` override and `memory_base_url` is derived, so
+/// comparing resolved values against the stored entry would reject legitimate
+/// runs. `project_id` is deliberately absent — it is the field this store
+/// exists to change.
+/// Identity of the profile an export was planned against: the COMPLETE raw
+/// config entry, captured from the same loaded ConfigFile the resolution used.
+///
+/// Compared inside the store's locked mutation so a same-name replacement is
+/// rejected BEFORE its project binding is overwritten. Holding the full entry
+/// rather than a field allowlist is what terminates the class: every previous
+/// hole here was a field somebody forgot to compare (local_url, then
+/// oauth_ref/api_key_ref/hosted_cloud_managed), and `mismatch` destructures
+/// both entries exhaustively, so adding a field to ProfileConfig refuses to
+/// compile until it is classified as identity or export-mutable.
+///
+/// `project_id` is the one export-mutable field — changing it is what the
+/// store exists to do.
+#[derive(Debug, Clone)]
+pub struct ExpectedExportProfile {
+    pub entry: ProfileConfig,
+    /// The concrete OAuth session selected at planning time, from the same
+    /// credentials read the resolution used. Execution authenticates with
+    /// exactly this key and never re-selects: the Local fallback picks the
+    /// credential map's first session, so re-running it at execution let a
+    /// concurrent login redirect the export to a different same-origin
+    /// account. `None` means no session existed at planning time; the
+    /// dashboard step fails with the usual not-logged-in guidance.
+    pub oauth_storage_key: Option<String>,
+}
+
+impl ExpectedExportProfile {
+    /// Test-only convenience; production captures inside
+    /// `resolve_profile_with_export_identity` from the same loaded config that
+    /// resolution used, which this by-name lookup cannot guarantee.
+    #[cfg(test)]
+    pub fn capture(config: &ConfigFile, profile_name: &str) -> Result<Self> {
+        let entry = config
+            .profiles
+            .get(profile_name)
+            .ok_or_else(|| anyhow!("profile '{profile_name}' not found"))?;
+        Ok(Self {
+            entry: entry.clone(),
+            oauth_storage_key: None,
+        })
+    }
+
+    fn mismatch(&self, current: &ProfileConfig) -> Option<&'static str> {
+        // Exhaustive on purpose — see the type docs. `..` is forbidden here.
+        let ProfileConfig {
+            base_url,
+            kind,
+            project_id: _, // export-mutable: this store's own write target
+            api_key_ref,
+            local_url,
+            oauth_ref,
+            hosted_cloud_managed,
+        } = current;
+        let ProfileConfig {
+            base_url: expected_base_url,
+            kind: expected_kind,
+            project_id: _,
+            api_key_ref: expected_api_key_ref,
+            local_url: expected_local_url,
+            oauth_ref: expected_oauth_ref,
+            hosted_cloud_managed: expected_hosted_cloud_managed,
+        } = &self.entry;
+        if kind != expected_kind {
+            return Some("kind");
+        }
+        if base_url != expected_base_url {
+            return Some("base_url");
+        }
+        if local_url != expected_local_url {
+            return Some("local_url");
+        }
+        if api_key_ref != expected_api_key_ref {
+            return Some("api_key_ref");
+        }
+        if oauth_ref != expected_oauth_ref {
+            return Some("oauth_ref");
+        }
+        if hosted_cloud_managed != expected_hosted_cloud_managed {
+            return Some("hosted_cloud_managed");
+        }
+        None
+    }
+}
+
+pub fn store_local_export_project_id(
+    profile_name: &str,
+    expected: &ExpectedExportProfile,
+    project_id: &str,
+) -> Result<()> {
+    update_config(|config| {
+        store_local_export_project_id_mut(config, profile_name, expected, project_id)
+    })
+}
+
+fn store_local_export_project_id_mut(
+    config: &mut ConfigFile,
+    profile_name: &str,
+    expected: &ExpectedExportProfile,
+    project_id: &str,
+) -> Result<()> {
+    let entry = config
+        .profiles
+        .get_mut(profile_name)
+        .ok_or_else(|| anyhow!("profile '{profile_name}' not found"))?;
+    if entry.kind != ProfileKind::Local {
+        bail!(
+            "export requires an active Connected Local profile — active profile '{profile_name}' is Cloud"
+        );
+    }
+    // Same lock as the write: reject a same-name replacement before touching
+    // its binding, not after.
+    if let Some(field) = expected.mismatch(entry) {
+        bail!(
+            "profile '{profile_name}' was replaced during export ({field} changed) — rerun `am migrate export`"
+        );
+    }
+    entry.project_id = Some(project_id.to_string());
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn store_local_export_project_id_in(
+    store: &ConfigStore,
+    profile_name: &str,
+    expected: &ExpectedExportProfile,
+    project_id: &str,
+) -> Result<()> {
+    store.update(|config| {
+        store_local_export_project_id_mut(config, profile_name, expected, project_id)
+    })
+}
+
+/// Stored key that matches the resolved origin and project binding, if any.
+fn bound_stored_api_key(
+    stored: Option<&ApiKeySecret>,
+    resolved_base_url: &str,
+    resolved_project_id: Option<&str>,
+) -> Option<String> {
+    let stored = stored?;
+    match stored.api_origin.as_deref() {
+        Some(origin) if check_api_key_origin(origin, resolved_base_url) => {}
+        _ => return None,
+    }
+    match (stored.project_id.as_deref(), resolved_project_id) {
+        (Some(issued_for), Some(target)) if issued_for == target => Some(stored.secret.clone()),
+        _ => None,
+    }
+}
+
 /// Choose the API key to send to `resolved_base_url`.
 ///
 /// A stored `amc_` key belongs to the origin it was minted against — the
@@ -321,34 +545,72 @@ fn bind_key_origin(secret: &str, api_origin: &str, project_id: &str) -> ApiKeySe
 /// stored key is withheld unless the two origins agree; this is the same
 /// invariant that governs session tokens (see [`crate::auth::origin`]).
 ///
-/// An explicit `ATOMICMEMORY_API_KEY` is per-invocation user intent, like a
-/// flag, and is passed through unchanged.
+/// Local profiles and hand-created Cloud profiles: an explicit
+/// `ATOMICMEMORY_API_KEY` is per-invocation user intent, like a flag.
+///
+/// Init-managed Hosted Cloud profiles (`hosted-cloud-<project-id>` credential
+/// refs from `am init`): the bound stored key wins over a stale shell export
+/// unless `ATOMICMEMORY_API_KEY_FORCE=1`.
 fn select_api_key(
     env_override: Option<String>,
     stored: Option<&ApiKeySecret>,
     resolved_base_url: &str,
     resolved_project_id: Option<&str>,
+    init_managed_hosted: bool,
 ) -> Option<String> {
+    select_api_key_with_force(
+        env_override,
+        stored,
+        resolved_base_url,
+        resolved_project_id,
+        init_managed_hosted,
+        api_key_force_enabled(),
+    )
+}
+
+fn select_api_key_with_force(
+    env_override: Option<String>,
+    stored: Option<&ApiKeySecret>,
+    resolved_base_url: &str,
+    resolved_project_id: Option<&str>,
+    init_managed_hosted: bool,
+    force_env_override: bool,
+) -> Option<String> {
+    let env_override = env_override.filter(|value| !value.is_empty());
+    if init_managed_hosted {
+        let bound = bound_stored_api_key(stored, resolved_base_url, resolved_project_id);
+        if force_env_override {
+            return env_override.or(bound);
+        }
+        if let Some(secret) = bound {
+            return Some(secret);
+        }
+        return env_override;
+    }
+
     if let Some(key) = env_override {
         return Some(key);
     }
-    let stored = stored?;
-    match stored.api_origin.as_deref() {
-        Some(origin) if check_api_key_origin(origin, resolved_base_url) => {}
-        // No recorded origin means the key cannot be proven to belong to this
-        // destination — including production. Re-save it with
-        // `am key create --save` rather than assuming where it came from.
-        _ => return None,
-    }
+    bound_stored_api_key(stored, resolved_base_url, resolved_project_id)
+}
 
-    // The origin is necessary but not sufficient: one origin hosts many
-    // projects. A key issued for project A must not be sent on behalf of a
-    // profile now linked to project B.
-    match (stored.project_id.as_deref(), resolved_project_id) {
-        (Some(issued_for), Some(target)) if issued_for == target => Some(stored.secret.clone()),
-        // Unknown binding fails closed, like an originless key.
-        _ => None,
+/// Select which stored OAuth session a profile authenticates with.
+///
+/// One implementation shared by the by-name path and export planning, so the
+/// two cannot drift: the named ref when present, any session for Local
+/// profiles (BTreeMap order — first key), none otherwise.
+pub(crate) fn select_oauth_session_key(
+    creds: &CredentialsFile,
+    oauth_ref: &str,
+    allow_local_fallback: bool,
+) -> Option<String> {
+    if creds.oauth.contains_key(oauth_ref) {
+        return Some(oauth_ref.to_string());
     }
+    if allow_local_fallback {
+        return creds.oauth.keys().next().cloned();
+    }
+    None
 }
 
 pub fn resolve_profile(
@@ -358,6 +620,74 @@ pub fn resolve_profile(
 ) -> Result<ResolvedProfile> {
     let config = load_config()?;
     let creds = load_credentials()?;
+    resolve_profile_from(
+        &config,
+        &creds,
+        profile_name,
+        base_url_override,
+        environment_override,
+    )
+}
+
+/// Resolve the profile and capture its raw export identity from ONE config
+/// read.
+///
+/// Resolving and then re-loading config.toml to capture the identity leaves a
+/// filesystem-level gap: another PROCESS can replace the profile between the
+/// two reads, so the resolved profile describes A while the captured identity
+/// describes its replacement B — and the store's in-lock check then compares
+/// B against B and happily writes A's project into it. "No await between them"
+/// only rules out same-process interleaving. Deriving both from a single
+/// loaded ConfigFile closes the class: the pair cannot disagree about which
+/// generation it saw.
+pub fn resolve_profile_with_export_identity(
+    profile_name: Option<&str>,
+    base_url_override: Option<&str>,
+    environment_override: Option<Environment>,
+) -> Result<(ResolvedProfile, ExpectedExportProfile)> {
+    let config = load_config()?;
+    let creds = load_credentials()?;
+    let resolved = resolve_profile_from(
+        &config,
+        &creds,
+        profile_name,
+        base_url_override,
+        environment_override,
+    )?;
+    // Mirror resolve_profile_from's missing-entry semantics (a synthesized
+    // Cloud default) so a nonexistent profile still fails export on the kind
+    // check with the same message as before, not on a lookup error here.
+    let entry = config
+        .profiles
+        .get(&resolved.name)
+        .cloned()
+        .unwrap_or_else(|| ProfileConfig {
+            base_url: Some(DEFAULT_CLOUD_URL.to_string()),
+            kind: ProfileKind::Cloud,
+            ..Default::default()
+        });
+    let oauth_ref = entry
+        .oauth_ref
+        .clone()
+        .unwrap_or_else(|| resolved.name.clone());
+    let oauth_storage_key =
+        select_oauth_session_key(&creds, &oauth_ref, entry.kind == ProfileKind::Local);
+    Ok((
+        resolved,
+        ExpectedExportProfile {
+            entry,
+            oauth_storage_key,
+        },
+    ))
+}
+
+pub(crate) fn resolve_profile_from(
+    config: &ConfigFile,
+    creds: &CredentialsFile,
+    profile_name: Option<&str>,
+    base_url_override: Option<&str>,
+    environment_override: Option<Environment>,
+) -> Result<ResolvedProfile> {
     let name = profile_name
         .map(str::to_string)
         .or_else(|| std::env::var(ENV_PROFILE).ok())
@@ -383,13 +713,11 @@ pub fn resolve_profile(
     })
     .value;
 
-    let memory_base_url = match profile.kind {
-        ProfileKind::Local => profile
-            .local_url
-            .clone()
-            .unwrap_or_else(|| base_url.clone()),
-        ProfileKind::Cloud => base_url.clone(),
-    };
+    let stored_kind = profile.kind;
+    let local_memory_url = profile
+        .local_url
+        .clone()
+        .unwrap_or_else(|| base_url.clone());
 
     // A stored `amc_` key belongs to the origin it was minted against, which is
     // the profile's own base URL (or the default when it has none). The
@@ -399,25 +727,133 @@ pub fn resolve_profile(
     // An explicit ATOMICMEMORY_API_KEY is per-invocation user intent, like a
     // flag, and is passed through.
     let api_key_ref = profile.api_key_ref.clone().unwrap_or_else(|| name.clone());
+    let init_managed_hosted = hosted_cloud_managed_for_key_policy(&profile);
+    let env_api_key = std::env::var(ENV_API_KEY)
+        .ok()
+        .filter(|value| !value.is_empty());
     let api_key = select_api_key(
-        std::env::var("ATOMICMEMORY_API_KEY").ok(),
+        env_api_key.clone(),
         creds.api_keys.get(&api_key_ref),
         &base_url,
         profile.project_id.as_deref(),
+        init_managed_hosted,
     );
 
     let oauth_ref = profile.oauth_ref.clone().unwrap_or_else(|| name.clone());
     let oauth = creds.oauth.get(&oauth_ref).cloned();
 
+    let ephemeral_cloud_override = ephemeral_cloud_override_applies(
+        stored_kind,
+        base_url_override,
+        environment_override,
+        &base_url,
+        env_api_key.as_deref(),
+    );
+
+    let (kind, memory_base_url, project_id) = if ephemeral_cloud_override {
+        (ProfileKind::Cloud, base_url.clone(), None)
+    } else {
+        let memory_base_url = match stored_kind {
+            ProfileKind::Local => local_memory_url,
+            ProfileKind::Cloud => base_url.clone(),
+        };
+        (stored_kind, memory_base_url, profile.project_id)
+    };
+
     Ok(ResolvedProfile {
         name,
         base_url,
-        kind: profile.kind,
-        project_id: profile.project_id,
+        kind,
+        project_id,
         memory_base_url,
         api_key,
         oauth,
     })
+}
+
+/// Whether a stored Local profile should flip to Cloud for this invocation.
+///
+/// Requires an explicitly exported `amc_` key — stored Local trace-sync keys
+/// must not satisfy this gate.
+fn ephemeral_cloud_override_applies(
+    stored_kind: ProfileKind,
+    base_url_override: Option<&str>,
+    environment_override: Option<Environment>,
+    resolved_base_url: &str,
+    env_api_key: Option<&str>,
+) -> bool {
+    let has_override_intent = base_url_override
+        .filter(|value| !value.is_empty())
+        .is_some()
+        || environment_override.is_some();
+    stored_kind == ProfileKind::Local
+        && has_override_intent
+        && is_remote_cloud_api_url(resolved_base_url)
+        && env_api_key.is_some_and(is_cloud_api_key)
+}
+
+/// Warn when an init-managed Hosted Cloud profile ignores a stale `ATOMICMEMORY_API_KEY`.
+pub fn hosted_cloud_env_key_override_warning(
+    hosted_cloud_managed: bool,
+    env_api_key: Option<&str>,
+    stored: Option<&ApiKeySecret>,
+    resolved_base_url: &str,
+    project_id: Option<&str>,
+) -> Option<String> {
+    hosted_cloud_env_key_override_warning_with_force(
+        hosted_cloud_managed,
+        env_api_key,
+        stored,
+        resolved_base_url,
+        project_id,
+        api_key_force_enabled(),
+    )
+}
+
+fn hosted_cloud_env_key_override_warning_with_force(
+    hosted_cloud_managed: bool,
+    env_api_key: Option<&str>,
+    stored: Option<&ApiKeySecret>,
+    resolved_base_url: &str,
+    project_id: Option<&str>,
+    force_env_override: bool,
+) -> Option<String> {
+    if !hosted_cloud_managed || force_env_override {
+        return None;
+    }
+    let env = env_api_key.filter(|value| !value.is_empty())?;
+    let stored_secret = bound_stored_api_key(stored, resolved_base_url, project_id)?;
+    if env == stored_secret {
+        return None;
+    }
+    Some(format!(
+        "warning: {ENV_API_KEY} is set but ignored — Hosted Cloud uses the saved profile key. \
+         Unset it or set {ENV_API_KEY_FORCE}=1 to override."
+    ))
+}
+
+/// Warn when Cloud URL exports cannot override a stored Local profile.
+pub fn local_profile_cloud_export_warning(
+    stored_kind: ProfileKind,
+    base_url_override: Option<&str>,
+    resolved_base_url: &str,
+    env_api_key: Option<&str>,
+    local_memory_url: &str,
+) -> Option<String> {
+    if stored_kind != ProfileKind::Local {
+        return None;
+    }
+    base_url_override.filter(|value| !value.is_empty())?;
+    if !is_remote_cloud_api_url(resolved_base_url) {
+        return None;
+    }
+    if env_api_key.is_some_and(is_cloud_api_key) {
+        return None;
+    }
+    Some(format!(
+        "warning: ATOMICMEMORY_API_URL points to Cloud ({resolved_base_url}) but the active profile is Local — \
+         commands will use {local_memory_url} unless you set ATOMICMEMORY_API_KEY (amc_…) or switch profiles"
+    ))
 }
 
 /// Dashboard session + API base URL aligned with `am project list`.
@@ -576,16 +1012,138 @@ pub fn store_api_key(
     })?;
 
     update_config(|config| {
-        let entry = config.profiles.entry(profile_name.to_string()).or_default();
-        entry.api_key_ref = Some(profile_name.to_string());
+        store_api_key_profile_mut(config, profile_name);
         Ok(())
     })
 }
 
+fn store_api_key_profile_mut(config: &mut ConfigFile, profile_name: &str) {
+    let entry = config.profiles.entry(profile_name.to_string()).or_default();
+    let init_managed = hosted_cloud_managed_for_key_policy(entry);
+    entry.api_key_ref = Some(profile_name.to_string());
+    entry.hosted_cloud_managed = Some(init_managed);
+}
+
+/// Save a project-scoped Hosted Cloud key without changing the active profile.
+pub(crate) fn store_hosted_cloud_api_key(
+    credential_ref: &str,
+    secret: &str,
+    api_origin: &str,
+    project_id: &str,
+) -> Result<()> {
+    let record = bind_key_origin(secret, api_origin, project_id);
+    update_credentials(|creds| {
+        creds.api_keys.insert(credential_ref.to_string(), record);
+        Ok(())
+    })
+}
+
+/// Activate Hosted Cloud only after its project credential is ready.
+pub(crate) fn activate_hosted_cloud_profile(
+    profile_name: &str,
+    api_origin: &str,
+    project_id: &str,
+    oauth_ref: &str,
+    credential_ref: &str,
+) -> Result<()> {
+    update_config(|config| {
+        configure_hosted_cloud_profile(
+            config,
+            profile_name,
+            api_origin,
+            project_id,
+            oauth_ref,
+            credential_ref,
+        )
+    })
+}
+
+/// Refuse Hosted Cloud activation when its OAuth profile name belongs to Local.
+pub(crate) fn ensure_hosted_cloud_profile_available(profile_name: &str) -> Result<()> {
+    validate_hosted_cloud_profile(&load_config()?, profile_name)
+}
+
+fn validate_hosted_cloud_profile(config: &ConfigFile, profile_name: &str) -> Result<()> {
+    if config
+        .profiles
+        .get(profile_name)
+        .is_some_and(|profile| profile.kind == ProfileKind::Local)
+    {
+        bail!(
+            "profile '{profile_name}' is Connected Local and cannot be overwritten by Hosted Cloud; rerun with an unused global profile, for example `am --profile hosted-cloud init`"
+        );
+    }
+    Ok(())
+}
+
+fn configure_hosted_cloud_profile(
+    config: &mut ConfigFile,
+    profile_name: &str,
+    api_origin: &str,
+    project_id: &str,
+    oauth_ref: &str,
+    credential_ref: &str,
+) -> Result<()> {
+    validate_hosted_cloud_profile(config, profile_name)?;
+
+    config.profiles.insert(
+        profile_name.to_string(),
+        ProfileConfig {
+            base_url: Some(api_origin.to_string()),
+            kind: ProfileKind::Cloud,
+            project_id: Some(project_id.to_string()),
+            api_key_ref: Some(credential_ref.to_string()),
+            local_url: None,
+            oauth_ref: Some(oauth_ref.to_string()),
+            hosted_cloud_managed: Some(true),
+        },
+    );
+    config.default_profile = Some(profile_name.to_string());
+    Ok(())
+}
+
+/// Where an OpenAI key came from. Collapsing these to a bare `String` made
+/// every override look like a stored credential: an `--openai-api-key` or
+/// `OPENAI_API_KEY` value got written to `credentials.toml`, and a rejected
+/// override deleted the stored key it never even tried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenAiKeySource {
+    /// Passed as `--openai-api-key` on this invocation.
+    Flag,
+    /// Read from `OPENAI_API_KEY` in the environment.
+    Environment,
+    /// Loaded from `credentials.toml` for this profile.
+    Stored,
+    /// Typed at the hidden prompt, which states that it will be saved.
+    Prompted,
+}
+
+impl OpenAiKeySource {
+    /// Only a prompted key is persisted. The prompt is the one place the user
+    /// is told the key will be saved, so it is the only place that consents.
+    pub fn should_persist(self) -> bool {
+        matches!(self, Self::Prompted)
+    }
+
+    /// Only a rejected *stored* key may be cleared. A bad flag or environment
+    /// value says nothing about the credential on disk.
+    pub fn should_clear_stored(self) -> bool {
+        matches!(self, Self::Stored)
+    }
+}
+
 pub fn resolve_openai_api_key(profile_name: &str) -> Option<String> {
+    resolve_openai_api_key_with_source(profile_name).map(|(key, _)| key)
+}
+
+/// Resolve the key and report which source supplied it. Environment still wins
+/// over the stored credential; the difference is that the caller can now tell
+/// them apart.
+pub fn resolve_openai_api_key_with_source(profile_name: &str) -> Option<(String, OpenAiKeySource)> {
     std::env::var("OPENAI_API_KEY")
         .ok()
         .filter(|s| !s.is_empty())
+        .map(|key| (key, OpenAiKeySource::Environment))
         .or_else(|| {
             load_credentials()
                 .ok()
@@ -595,6 +1153,7 @@ pub fn resolve_openai_api_key(profile_name: &str) -> Option<String> {
                         .and_then(|s| s.openai_api_key.clone())
                 })
                 .filter(|s| !s.is_empty())
+                .map(|key| (key, OpenAiKeySource::Stored))
         })
 }
 
@@ -605,6 +1164,15 @@ pub fn store_openai_api_key(profile_name: &str, key: &str) -> Result<()> {
             .entry(profile_name.to_string())
             .or_default()
             .openai_api_key = Some(key.to_string());
+        Ok(())
+    })
+}
+
+pub fn clear_openai_api_key(profile_name: &str) -> Result<()> {
+    update_credentials(|creds| {
+        if let Some(secrets) = creds.profile_secrets.get_mut(profile_name) {
+            secrets.openai_api_key = None;
+        }
         Ok(())
     })
 }
@@ -678,8 +1246,62 @@ fn default_config() -> ConfigFile {
         profiles,
         telemetry_distinct_id: None,
         telemetry_first_real_memory_sent: None,
+        cli_key_id: None,
         integrations: BTreeMap::new(),
     }
+}
+
+/// Stable id for the Cloud API keys this machine owns.
+///
+/// Read-or-create under a single `update_config` lock so two concurrent
+/// invocations agree on one id instead of each writing its own.
+pub fn machine_key_id() -> Result<String> {
+    machine_key_id_with(&ConfigStore::production()?)
+}
+
+fn machine_key_id_with(store: &ConfigStore) -> Result<String> {
+    store.update(|cfg| {
+        if let Some(id) = cfg.cli_key_id.clone() {
+            if !is_valid_machine_key_id(&id) {
+                bail!(
+                    "invalid cli_key_id in config.toml: expected exactly 12 lowercase hexadecimal characters"
+                );
+            }
+            return Ok(id);
+        }
+        let id = random_key_id();
+        cfg.cli_key_id = Some(id.clone());
+        Ok(id)
+    })
+}
+
+fn random_key_id() -> String {
+    use rand::Rng as _;
+    let mut bytes = [0u8; 6];
+    rand::rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn is_valid_machine_key_id(id: &str) -> bool {
+    id.len() == 12
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Name the key this machine owns, e.g. `am-cli-9f2c1a4b7e05`.
+///
+/// Key provisioning rotates an existing key rather than creating a new one, to
+/// stay inside the project's key quota. Rotation invalidates the old secret, so
+/// selecting by a shared name meant a second machine's first `am init` rotated
+/// the key the first machine was actively using and broke it. Scoping the name
+/// to this install means a machine can only ever rotate a key it owns.
+pub fn machine_scoped_key_name(base: &str) -> Result<String> {
+    Ok(machine_scoped_key_name_with(base, &machine_key_id()?))
+}
+
+fn machine_scoped_key_name_with(base: &str, id: &str) -> String {
+    format!("{base}-{id}")
 }
 
 fn lock_path_for(target: &Path) -> PathBuf {
@@ -806,6 +1428,41 @@ pub fn default_config_for_test() -> ConfigFile {
 #[cfg(test)]
 mod tests {
 
+    /// Why migrate export must refresh the profile after binding the project.
+    ///
+    /// `am key create --project <id> --save` binds the credential to a project
+    /// without setting the profile's project_id, so until something writes that
+    /// binding the key is unusable. Export performs that write itself, which is
+    /// why it cannot keep using the snapshot it took beforehand.
+    #[test]
+    fn stored_key_needs_the_profile_project_to_be_set() {
+        let stored = key_for("https://api.atomicstrata.ai/", "proj_a");
+        assert_eq!(
+            super::bound_stored_api_key(Some(&stored), "https://api.atomicstrata.ai/", None),
+            None,
+            "no resolved project means the bound key is withheld"
+        );
+        assert_eq!(
+            super::bound_stored_api_key(
+                Some(&stored),
+                "https://api.atomicstrata.ai/",
+                Some("proj_a")
+            )
+            .as_deref(),
+            Some("amc_live_example"),
+            "once the profile names the same project the key resolves"
+        );
+        // A different project must still be refused.
+        assert_eq!(
+            super::bound_stored_api_key(
+                Some(&stored),
+                "https://api.atomicstrata.ai/",
+                Some("proj_b")
+            ),
+            None
+        );
+    }
+
     fn key_for(origin: &str, project: &str) -> ApiKeySecret {
         ApiKeySecret {
             secret: "amc_live_example".into(),
@@ -828,6 +1485,7 @@ mod tests {
             Some(&stored),
             "https://api.atomicstrata.ai",
             Some("proj_b"),
+            false,
         );
         assert_eq!(
             selected, None,
@@ -843,6 +1501,7 @@ mod tests {
             Some(&stored),
             "https://api.atomicstrata.ai",
             Some("proj_a"),
+            false,
         );
         assert_eq!(selected.as_deref(), Some("amc_live_example"));
     }
@@ -856,6 +1515,7 @@ mod tests {
             Some(&stored),
             "http://127.0.0.1:38767",
             Some("proj_a"),
+            false,
         );
         assert_eq!(selected, None, "the origin check must still apply");
     }
@@ -873,19 +1533,36 @@ mod tests {
             Some(&stored),
             "https://api.atomicstrata.ai",
             Some("proj_a"),
+            false,
         );
         assert_eq!(selected, None, "an unproven binding must not be trusted");
     }
 
-    /// An explicit env override is per-invocation user intent, like a flag.
+    /// Local profiles still treat an explicit env override as per-invocation intent.
     #[test]
-    fn an_explicit_env_key_still_passes_through() {
+    fn an_explicit_env_key_still_passes_through_for_local() {
         let stored = key_for("https://api.atomicstrata.ai", "proj_a");
         let selected = select_api_key(
             Some("amc_from_env".into()),
             Some(&stored),
             "https://api.atomicstrata.ai",
             Some("proj_b"),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    /// Hand-created Cloud profiles (`am config profile add --kind cloud`) keep
+    /// explicit env override even when a bound stored key exists.
+    #[test]
+    fn custom_cloud_profile_honors_explicit_env_over_bound_stored() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            false,
         );
         assert_eq!(selected.as_deref(), Some("amc_from_env"));
     }
@@ -1093,7 +1770,7 @@ mod tests {
         let key = stored_key("amc_stored", Some(PROD));
 
         assert_eq!(
-            select_api_key(None, Some(&key), PROD, Some(TEST_PROJECT)).as_deref(),
+            select_api_key(None, Some(&key), PROD, Some(TEST_PROJECT), false).as_deref(),
             Some("amc_stored")
         );
         for target in [
@@ -1103,7 +1780,7 @@ mod tests {
             "https://api.staging.example.com",
         ] {
             assert_eq!(
-                select_api_key(None, Some(&key), target, Some(TEST_PROJECT)),
+                select_api_key(None, Some(&key), target, Some(TEST_PROJECT), false),
                 None,
                 "stored key must not be sent to {target}"
             );
@@ -1121,7 +1798,8 @@ mod tests {
                 None,
                 Some(&key),
                 "https://api.b.example",
-                Some(TEST_PROJECT)
+                Some(TEST_PROJECT),
+                false,
             ),
             None
         );
@@ -1130,7 +1808,8 @@ mod tests {
                 None,
                 Some(&key),
                 "https://api.a.example",
-                Some(TEST_PROJECT)
+                Some(TEST_PROJECT),
+                false,
             )
             .as_deref(),
             Some("amc_source_secret")
@@ -1146,7 +1825,7 @@ mod tests {
             "http://127.0.0.1:38767",
         ] {
             assert_eq!(
-                select_api_key(None, Some(&legacy), target, Some(TEST_PROJECT)),
+                select_api_key(None, Some(&legacy), target, Some(TEST_PROJECT), false),
                 None,
                 "legacy key must not be trusted for {target}"
             );
@@ -1161,11 +1840,618 @@ mod tests {
                 Some("amc_env".into()),
                 Some(&key),
                 "https://api.staging.example.com",
-                Some(TEST_PROJECT)
+                Some(TEST_PROJECT),
+                false,
             )
             .as_deref(),
             Some("amc_env")
         );
+    }
+
+    #[test]
+    fn legacy_pre_marker_toml_prefers_stored_key_over_stale_env() {
+        let raw = r#"
+kind = "cloud"
+base_url = "https://api.atomicstrata.ai"
+project_id = "proj_a"
+api_key_ref = "hosted-cloud-proj_a"
+"#;
+        let profile: ProfileConfig = toml::from_str(raw).expect("parse legacy profile");
+        assert_eq!(profile.hosted_cloud_managed, None);
+        assert!(hosted_cloud_managed_for_key_policy(&profile));
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_stale_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            hosted_cloud_managed_for_key_policy(&profile),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_live_example"));
+    }
+
+    #[test]
+    fn legacy_inference_does_not_match_hand_created_cloud_profile() {
+        let profile = ProfileConfig {
+            base_url: Some("https://api.atomicstrata.ai".into()),
+            kind: ProfileKind::Cloud,
+            project_id: Some("proj_a".into()),
+            api_key_ref: Some("my-cloud-profile".into()),
+            ..Default::default()
+        };
+        assert!(!hosted_cloud_managed_for_key_policy(&profile));
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            hosted_cloud_managed_for_key_policy(&profile),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    #[test]
+    fn explicit_false_manual_hosted_cloud_ref_honors_env_key() {
+        let raw = r#"
+kind = "cloud"
+base_url = "https://api.atomicstrata.ai"
+project_id = "proj_a"
+api_key_ref = "hosted-cloud-proj_a"
+hosted_cloud_managed = false
+"#;
+        let profile: ProfileConfig = toml::from_str(raw).expect("parse manual profile");
+        assert_eq!(profile.hosted_cloud_managed, Some(false));
+        assert!(!hosted_cloud_managed_for_key_policy(&profile));
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            hosted_cloud_managed_for_key_policy(&profile),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    #[test]
+    fn legacy_init_profile_stays_managed_after_key_save() {
+        let mut config = default_config_for_test();
+        config.profiles.insert(
+            "cloud".into(),
+            ProfileConfig {
+                base_url: Some(Environment::PROD_BASE_URL.into()),
+                kind: ProfileKind::Cloud,
+                project_id: Some("proj_a".into()),
+                api_key_ref: Some(hosted_cloud_init_credential_ref("proj_a")),
+                ..Default::default()
+            },
+        );
+        assert!(hosted_cloud_managed_for_key_policy(
+            config.profiles.get("cloud").unwrap()
+        ));
+        store_api_key_profile_mut(&mut config, "cloud");
+        let profile = &config.profiles["cloud"];
+        assert_eq!(profile.hosted_cloud_managed, Some(true));
+        assert_eq!(profile.api_key_ref.as_deref(), Some("cloud"));
+        assert!(hosted_cloud_managed_for_key_policy(profile));
+        let stored = key_for(Environment::PROD_BASE_URL, "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_stale_env".into()),
+            Some(&stored),
+            Environment::PROD_BASE_URL,
+            Some("proj_a"),
+            hosted_cloud_managed_for_key_policy(profile),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_live_example"));
+    }
+
+    #[test]
+    fn manual_false_profile_stays_manual_after_key_save() {
+        let mut config = default_config_for_test();
+        config.profiles.insert(
+            "hosted-cloud-proj_a".into(),
+            ProfileConfig {
+                base_url: Some(Environment::PROD_BASE_URL.into()),
+                kind: ProfileKind::Cloud,
+                project_id: Some("proj_a".into()),
+                api_key_ref: Some(hosted_cloud_init_credential_ref("proj_a")),
+                hosted_cloud_managed: Some(false),
+                ..Default::default()
+            },
+        );
+        store_api_key_profile_mut(&mut config, "hosted-cloud-proj_a");
+        let profile = &config.profiles["hosted-cloud-proj_a"];
+        assert_eq!(profile.hosted_cloud_managed, Some(false));
+        assert!(!hosted_cloud_managed_for_key_policy(profile));
+        let stored = key_for(Environment::PROD_BASE_URL, "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            Environment::PROD_BASE_URL,
+            Some("proj_a"),
+            hosted_cloud_managed_for_key_policy(profile),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    #[test]
+    fn local_profile_ignores_stale_hosted_cloud_managed_marker() {
+        let profile = ProfileConfig {
+            kind: ProfileKind::Local,
+            hosted_cloud_managed: Some(true),
+            ..Default::default()
+        };
+        assert!(!hosted_cloud_managed_for_key_policy(&profile));
+        let stored = key_for(Environment::PROD_BASE_URL, "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            Environment::PROD_BASE_URL,
+            Some("proj_a"),
+            hosted_cloud_managed_for_key_policy(&profile),
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    #[test]
+    fn load_does_not_persist_hosted_cloud_managed_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+        let raw = r#"
+default_profile = "cloud"
+
+[profiles.cloud]
+kind = "cloud"
+base_url = "https://api.atomicstrata.ai"
+project_id = "proj_a"
+api_key_ref = "hosted-cloud-proj_a"
+"#;
+        std::fs::write(store.path(), raw).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.profiles["cloud"].hosted_cloud_managed, None);
+        assert!(hosted_cloud_managed_for_key_policy(
+            &loaded.profiles["cloud"]
+        ));
+        let disk = std::fs::read_to_string(store.path()).unwrap();
+        assert!(
+            !disk.contains("hosted_cloud_managed"),
+            "load must not rewrite config.toml"
+        );
+    }
+
+    #[test]
+    fn export_store_rejects_replacement_on_every_identity_field() {
+        // The comparator destructures ProfileConfig exhaustively, so this
+        // matrix plus the compiler covers the whole struct: every field except
+        // project_id is identity, and a replacement differing in ANY of them
+        // is rejected without mutation. project_id alone must be accepted —
+        // rewriting it is what the store is for.
+        let baseline = || ProfileConfig {
+            kind: ProfileKind::Local,
+            base_url: Some("https://a.example/".into()),
+            local_url: Some("http://127.0.0.1:17350".into()),
+            project_id: Some("proj_old".into()),
+            api_key_ref: Some("key-a".into()),
+            oauth_ref: Some("oauth-a".into()),
+            hosted_cloud_managed: None,
+        };
+        let cases: Vec<(&str, ProfileConfig)> = vec![
+            (
+                "kind",
+                ProfileConfig {
+                    kind: ProfileKind::Cloud,
+                    ..baseline()
+                },
+            ),
+            (
+                "base_url",
+                ProfileConfig {
+                    base_url: Some("https://b.example/".into()),
+                    ..baseline()
+                },
+            ),
+            (
+                "local_url",
+                ProfileConfig {
+                    local_url: Some("http://127.0.0.1:9999".into()),
+                    ..baseline()
+                },
+            ),
+            (
+                "api_key_ref",
+                ProfileConfig {
+                    api_key_ref: Some("key-b".into()),
+                    ..baseline()
+                },
+            ),
+            (
+                "oauth_ref",
+                ProfileConfig {
+                    oauth_ref: None,
+                    ..baseline()
+                },
+            ),
+            (
+                "hosted_cloud_managed",
+                ProfileConfig {
+                    hosted_cloud_managed: Some(false),
+                    ..baseline()
+                },
+            ),
+        ];
+        for (field, replacement) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let store = ConfigStore::at(dir.path().join("config.toml"));
+            let mut cfg = default_config_for_test();
+            cfg.profiles.insert("local".into(), baseline());
+            store
+                .update(|config| {
+                    *config = cfg.clone();
+                    Ok(())
+                })
+                .unwrap();
+            let expected = ExpectedExportProfile::capture(&store.load().unwrap(), "local").unwrap();
+            store
+                .update(|config| {
+                    config.profiles.insert("local".into(), replacement.clone());
+                    Ok(())
+                })
+                .unwrap();
+            let result = store_local_export_project_id_in(&store, "local", &expected, "proj_new");
+            if replacement.kind != ProfileKind::Local {
+                // The kind bail fires first with its own message; still no write.
+                assert!(result.is_err(), "{field}: replacement must be rejected");
+            } else {
+                let err = result.unwrap_err().to_string();
+                assert!(
+                    err.contains(&format!("{field} changed")),
+                    "{field}: expected named rejection, got: {err}"
+                );
+            }
+            // The replacement survives untouched either way.
+            let after = store.load().unwrap().profiles["local"].clone();
+            assert_eq!(
+                after.project_id, replacement.project_id,
+                "{field}: replacement binding must not be overwritten"
+            );
+        }
+
+        // project_id alone differing is NOT a replacement.
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+        let mut cfg = default_config_for_test();
+        cfg.profiles.insert("local".into(), baseline());
+        store
+            .update(|config| {
+                *config = cfg;
+                Ok(())
+            })
+            .unwrap();
+        let expected = ExpectedExportProfile::capture(&store.load().unwrap(), "local").unwrap();
+        store
+            .update(|config| {
+                config.profiles.get_mut("local").unwrap().project_id = Some("proj_drift".into());
+                Ok(())
+            })
+            .unwrap();
+        store_local_export_project_id_in(&store, "local", &expected, "proj_new").unwrap();
+        assert_eq!(
+            store.load().unwrap().profiles["local"]
+                .project_id
+                .as_deref(),
+            Some("proj_new")
+        );
+    }
+
+    #[test]
+    fn export_store_rejects_same_name_replacement_without_mutation() {
+        // The atomicity property: the identity check runs inside the same
+        // locked mutation as the write. Checking after the store already
+        // overwrote the replacement's project binding on the way to the abort.
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+        let mut cfg = default_config_for_test();
+        cfg.profiles.insert(
+            "local".into(),
+            ProfileConfig {
+                kind: ProfileKind::Local,
+                base_url: Some("https://a.example/".into()),
+                local_url: Some("http://127.0.0.1:17350".into()),
+                project_id: Some("proj_a_old".into()),
+                ..Default::default()
+            },
+        );
+        store
+            .update(|config| {
+                *config = cfg;
+                Ok(())
+            })
+            .unwrap();
+        // Export plans against A…
+        let expected = ExpectedExportProfile::capture(&store.load().unwrap(), "local").unwrap();
+        // …and A is then replaced by a different Local B under the same name,
+        // exactly what `am config profile add` does.
+        let profile_b = ProfileConfig {
+            kind: ProfileKind::Local,
+            base_url: Some("https://b.example/".into()),
+            local_url: Some("http://127.0.0.1:9999".into()),
+            project_id: Some("proj_b".into()),
+            ..Default::default()
+        };
+        store
+            .update(|config| {
+                config.profiles.insert("local".into(), profile_b.clone());
+                Ok(())
+            })
+            .unwrap();
+
+        let err = store_local_export_project_id_in(&store, "local", &expected, "proj_a_selected")
+            .unwrap_err();
+        assert!(err.to_string().contains("replaced during export"));
+        assert!(err.to_string().contains("base_url changed"));
+        // B survives byte-for-byte — its binding was NOT overwritten first.
+        let after = store.load().unwrap().profiles["local"].clone();
+        assert_eq!(after.project_id.as_deref(), Some("proj_b"));
+        assert_eq!(after.base_url.as_deref(), Some("https://b.example/"));
+        assert_eq!(after.local_url.as_deref(), Some("http://127.0.0.1:9999"));
+    }
+
+    #[test]
+    fn export_store_writes_when_identity_matches() {
+        // The identity fields exclude project_id by construction: changing it
+        // is what this store is for, so a differing prior binding must not be
+        // read as a replacement.
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+        let mut cfg = default_config_for_test();
+        cfg.profiles.insert(
+            "local".into(),
+            ProfileConfig {
+                kind: ProfileKind::Local,
+                local_url: Some("http://127.0.0.1:17350".into()),
+                project_id: Some("proj_old".into()),
+                ..Default::default()
+            },
+        );
+        store
+            .update(|config| {
+                *config = cfg;
+                Ok(())
+            })
+            .unwrap();
+        let expected = ExpectedExportProfile::capture(&store.load().unwrap(), "local").unwrap();
+        store_local_export_project_id_in(&store, "local", &expected, "proj_new").unwrap();
+        assert_eq!(
+            store.load().unwrap().profiles["local"]
+                .project_id
+                .as_deref(),
+            Some("proj_new")
+        );
+    }
+
+    #[test]
+    fn store_local_export_project_id_rejects_cloud_without_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+        let mut cfg = default_config_for_test();
+        cfg.profiles.insert(
+            "cloud".into(),
+            ProfileConfig {
+                kind: ProfileKind::Cloud,
+                project_id: Some("proj_before".into()),
+                ..Default::default()
+            },
+        );
+        store
+            .update(|config| {
+                *config = cfg;
+                Ok(())
+            })
+            .unwrap();
+        store_local_export_project_id_in(
+            &store,
+            "cloud",
+            &ExpectedExportProfile::capture(&store.load().unwrap(), "cloud").unwrap(),
+            "proj_after",
+        )
+        .unwrap_err();
+        assert_eq!(
+            store.load().unwrap().profiles["cloud"]
+                .project_id
+                .as_deref(),
+            Some("proj_before")
+        );
+    }
+
+    #[test]
+    fn init_managed_hosted_cloud_prefers_bound_stored_over_stale_env() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_stale_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            true,
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_live_example"));
+    }
+
+    #[test]
+    fn hosted_cloud_named_profile_without_marker_honors_explicit_env() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            false,
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    #[test]
+    fn init_managed_hosted_cloud_env_force_restores_override() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some("amc_from_env".into()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            true,
+            true,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_from_env"));
+    }
+
+    #[test]
+    fn empty_env_is_treated_as_unset_for_init_managed_hosted_cloud() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let selected = select_api_key_with_force(
+            Some(String::new()),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+            true,
+            false,
+        );
+        assert_eq!(selected.as_deref(), Some("amc_live_example"));
+    }
+
+    #[test]
+    fn hosted_cloud_env_key_override_warning_when_env_differs() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        let warning = super::hosted_cloud_env_key_override_warning(
+            true,
+            Some("amc_stale"),
+            Some(&stored),
+            "https://api.atomicstrata.ai",
+            Some("proj_a"),
+        )
+        .expect("expected warning");
+        assert!(warning.contains(ENV_API_KEY));
+        assert!(warning.contains(ENV_API_KEY_FORCE));
+    }
+
+    #[test]
+    fn hosted_cloud_env_key_override_warning_suppressed_for_custom_cloud_profile() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        assert!(
+            super::hosted_cloud_env_key_override_warning(
+                false,
+                Some("amc_stale"),
+                Some(&stored),
+                "https://api.atomicstrata.ai",
+                Some("proj_a"),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn hosted_cloud_env_key_override_warning_suppressed_when_env_matches() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        assert!(
+            super::hosted_cloud_env_key_override_warning(
+                true,
+                Some("amc_live_example"),
+                Some(&stored),
+                "https://api.atomicstrata.ai",
+                Some("proj_a"),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn hosted_cloud_env_key_override_warning_suppressed_with_force() {
+        let stored = key_for("https://api.atomicstrata.ai", "proj_a");
+        assert!(
+            super::hosted_cloud_env_key_override_warning_with_force(
+                true,
+                Some("amc_stale"),
+                Some(&stored),
+                "https://api.atomicstrata.ai",
+                Some("proj_a"),
+                true,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn local_profile_cloud_export_warning_when_cloud_url_without_cloud_key() {
+        let warning = super::local_profile_cloud_export_warning(
+            ProfileKind::Local,
+            Some(Environment::PROD_BASE_URL),
+            Environment::PROD_BASE_URL,
+            None,
+            "http://127.0.0.1:17350",
+        )
+        .expect("expected warning");
+        assert!(warning.contains("active profile is Local"));
+        assert!(warning.contains("127.0.0.1:17350"));
+    }
+
+    #[test]
+    fn local_profile_cloud_export_warning_is_suppressed_with_exported_cloud_key() {
+        assert!(
+            super::local_profile_cloud_export_warning(
+                ProfileKind::Local,
+                Some(Environment::PROD_BASE_URL),
+                Environment::PROD_BASE_URL,
+                Some("amc_dashboard_key"),
+                "http://127.0.0.1:17350",
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn ephemeral_cloud_override_requires_exported_amc_key() {
+        assert!(!ephemeral_cloud_override_applies(
+            ProfileKind::Local,
+            Some(Environment::PROD_BASE_URL),
+            None,
+            Environment::PROD_BASE_URL,
+            None,
+        ));
+        assert!(!ephemeral_cloud_override_applies(
+            ProfileKind::Local,
+            Some(Environment::PROD_BASE_URL),
+            None,
+            Environment::PROD_BASE_URL,
+            Some("core_local_key"),
+        ));
+        assert!(ephemeral_cloud_override_applies(
+            ProfileKind::Local,
+            Some(Environment::PROD_BASE_URL),
+            None,
+            Environment::PROD_BASE_URL,
+            Some("amc_dashboard_key"),
+        ));
+        assert!(!ephemeral_cloud_override_applies(
+            ProfileKind::Local,
+            Some(""),
+            None,
+            Environment::PROD_BASE_URL,
+            Some("amc_dashboard_key"),
+        ));
+        assert!(ephemeral_cloud_override_applies(
+            ProfileKind::Local,
+            None,
+            Some(Environment::Prod),
+            Environment::PROD_BASE_URL,
+            Some("amc_dashboard_key"),
+        ));
     }
 
     #[test]
@@ -1190,6 +2476,148 @@ mod tests {
             reloaded.core_image.as_deref(),
             Some("ghcr.io/example/core:test")
         );
+    }
+
+    #[test]
+    fn machine_key_id_is_twelve_lowercase_hex_and_persisted() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+
+        let first = machine_key_id_with(&store).unwrap();
+        let second = machine_key_id_with(&store).unwrap();
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 12);
+        assert!(
+            first
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        );
+        assert_eq!(
+            store.load().unwrap().cli_key_id.as_deref(),
+            Some(first.as_str())
+        );
+    }
+
+    #[test]
+    fn machine_key_id_rejects_malformed_persisted_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::at(dir.path().join("config.toml"));
+        let mut file = default_config();
+        file.cli_key_id = Some("ABC123".into());
+        write_config_at(store.path(), &file).unwrap();
+
+        let error = machine_key_id_with(&store).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("exactly 12 lowercase hexadecimal")
+        );
+        assert_eq!(store.load().unwrap().cli_key_id.as_deref(), Some("ABC123"));
+    }
+
+    #[test]
+    fn machine_scoped_key_name_uses_the_complete_identifier() {
+        assert_eq!(
+            machine_scoped_key_name_with("am-cli", "a1b2c3d4e5f6"),
+            "am-cli-a1b2c3d4e5f6"
+        );
+        assert_eq!(
+            machine_scoped_key_name_with("connected-local-runtime", "a1b2c3d4e5f6"),
+            "connected-local-runtime-a1b2c3d4e5f6"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn credentials_are_written_with_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("credentials.toml");
+        let mut credentials = CredentialsFile::default();
+        credentials.api_keys.insert(
+            "hosted-cloud-proj_a".into(),
+            key_for(DEFAULT_CLOUD_URL, "proj_a"),
+        );
+
+        write_credentials_at(&path, &credentials).unwrap();
+
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn hosted_cloud_activation_preserves_local_profiles() {
+        let mut config = default_config();
+        config.profiles.insert(
+            "local-work".into(),
+            ProfileConfig {
+                base_url: Some(DEFAULT_CLOUD_URL.into()),
+                kind: ProfileKind::Local,
+                project_id: Some("proj_local".into()),
+                api_key_ref: Some("local-work".into()),
+                local_url: Some("http://127.0.0.1:17350".into()),
+                oauth_ref: Some("cloud".into()),
+                ..Default::default()
+            },
+        );
+        let local_before = toml::to_string(&config.profiles["local-work"]).unwrap();
+
+        configure_hosted_cloud_profile(
+            &mut config,
+            "cloud",
+            DEFAULT_CLOUD_URL,
+            "proj_cloud",
+            "cloud",
+            "hosted-cloud-proj_cloud",
+        )
+        .unwrap();
+
+        assert_eq!(
+            toml::to_string(&config.profiles["local-work"]).unwrap(),
+            local_before
+        );
+        let cloud = &config.profiles["cloud"];
+        assert_eq!(cloud.kind, ProfileKind::Cloud);
+        assert_eq!(cloud.project_id.as_deref(), Some("proj_cloud"));
+        assert_eq!(
+            cloud.api_key_ref.as_deref(),
+            Some("hosted-cloud-proj_cloud")
+        );
+        assert_eq!(cloud.hosted_cloud_managed, Some(true));
+        assert!(cloud.local_url.is_none());
+        assert_eq!(config.default_profile.as_deref(), Some("cloud"));
+    }
+
+    #[test]
+    fn hosted_cloud_activation_never_overwrites_a_local_target_profile() {
+        let mut config = default_config();
+        config.profiles.insert(
+            "cloud".into(),
+            ProfileConfig {
+                kind: ProfileKind::Local,
+                local_url: Some("http://127.0.0.1:17350".into()),
+                ..Default::default()
+            },
+        );
+        let before = toml::to_string(&config).unwrap();
+
+        let error = configure_hosted_cloud_profile(
+            &mut config,
+            "cloud",
+            DEFAULT_CLOUD_URL,
+            "proj_cloud",
+            "cloud",
+            "hosted-cloud-proj_cloud",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("unused global profile"));
+        assert_eq!(toml::to_string(&config).unwrap(), before);
     }
 
     #[test]

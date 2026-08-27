@@ -1,11 +1,11 @@
-//! Cloud API key provisioning for Connected Local (`connected-local-runtime`).
+//! Per-installation Cloud API key provisioning for Connected Local.
 //!
-//! Singleton policy: reuse a working locally stored `amc_` key; otherwise rotate
-//! an existing active key with this name, and only create when none exists. That
-//! keeps `am init` / `am instance start` from burning free-plan key quota.
+//! A working locally stored `amc_` key is reused. Replacement may rotate only
+//! this installation's exact managed name, so another machine's credential is
+//! never invalidated automatically.
 
 use am_cloud_client::{CloudClientError, DashboardClient, MemoryClient};
-use am_cloud_types::{ApiKey, CreateApiKeyRequest};
+use am_cloud_types::{ApiKey, ApiKeyWithSecret, CreateApiKeyRequest};
 use anyhow::{Context, Result, bail};
 use tracing::info;
 use url::Url;
@@ -14,20 +14,61 @@ use crate::auth::origin::same_origin;
 use crate::cli::GlobalOptions;
 use crate::commands::client::{cloud_api_key_client, dashboard_client};
 use crate::config::{
-    ResolvedProfile, is_cloud_api_key, require_api_key, require_project_id, store_api_key,
+    ResolvedProfile, is_cloud_api_key, machine_scoped_key_name, require_api_key,
+    require_project_id, store_api_key,
 };
 use crate::instance::AUTO_KEY_NAME;
 use crate::output::message;
+
+#[async_trait::async_trait]
+trait ConnectedLocalCredentialBackend: Send + Sync {
+    async fn list_api_keys(&self, project_id: &str) -> Result<Vec<ApiKey>, CloudClientError>;
+
+    async fn rotate_api_key(
+        &self,
+        project_id: &str,
+        key_id: &str,
+    ) -> Result<ApiKeyWithSecret, CloudClientError>;
+
+    async fn create_api_key(
+        &self,
+        project_id: &str,
+        request: &CreateApiKeyRequest,
+    ) -> Result<ApiKeyWithSecret, CloudClientError>;
+}
+
+#[async_trait::async_trait]
+impl ConnectedLocalCredentialBackend for DashboardClient {
+    async fn list_api_keys(&self, project_id: &str) -> Result<Vec<ApiKey>, CloudClientError> {
+        DashboardClient::list_api_keys(self, project_id).await
+    }
+
+    async fn rotate_api_key(
+        &self,
+        project_id: &str,
+        key_id: &str,
+    ) -> Result<ApiKeyWithSecret, CloudClientError> {
+        DashboardClient::rotate_api_key(self, project_id, key_id).await
+    }
+
+    async fn create_api_key(
+        &self,
+        project_id: &str,
+        request: &CreateApiKeyRequest,
+    ) -> Result<ApiKeyWithSecret, CloudClientError> {
+        DashboardClient::create_api_key(self, project_id, request).await
+    }
+}
 
 /// How a Connected Local Cloud API key was obtained for this run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProvisionOutcome {
     /// Locally stored `amc_` key still mints against this Cloud origin.
     Reused,
-    /// Rotated an existing active `connected-local-runtime` key (quota-safe).
-    Rotated { key_id: String },
-    /// Created a new `connected-local-runtime` key (none existed).
-    Created { key_id: String },
+    /// Rotated this installation's existing managed key.
+    Rotated { key_id: String, key_name: String },
+    /// Created this installation's managed key.
+    Created { key_id: String, key_name: String },
 }
 
 impl ProvisionOutcome {
@@ -35,8 +76,8 @@ impl ProvisionOutcome {
     pub fn progress_detail(&self) -> &'static str {
         match self {
             Self::Reused => "reused stored key",
-            Self::Rotated { .. } => "rotated existing connected-local-runtime",
-            Self::Created { .. } => "created connected-local-runtime",
+            Self::Rotated { .. } => "rotated per-installation key",
+            Self::Created { .. } => "created per-installation key",
         }
     }
 
@@ -49,25 +90,35 @@ impl ProvisionOutcome {
     pub fn operator_message(&self) -> Option<String> {
         match self {
             Self::Reused => None,
-            Self::Rotated { key_id } => Some(format!(
-                "Rotated existing Cloud API key '{AUTO_KEY_NAME}' ({key_id}) — quota-safe; \
+            Self::Rotated { key_id, key_name } => Some(format!(
+                "Rotated this installation's Cloud API key '{key_name}' ({key_id}); \
                  previous secret is invalidated and the new secret is saved locally (not printed)."
             )),
-            Self::Created { key_id } => Some(format!(
-                "Created Cloud API key '{AUTO_KEY_NAME}' ({key_id}) and saved locally (not printed)."
+            Self::Created { key_id, key_name } => Some(format!(
+                "Created this installation's Cloud API key '{key_name}' ({key_id}) and saved locally (not printed)."
             )),
         }
     }
 }
 
-/// Pick which listed key to rotate for the Connected Local singleton.
+/// Pick this installation's active Connected Local key to rotate.
 ///
-/// Prefers `active` keys named [`AUTO_KEY_NAME`], then most recently used, then
-/// newest `created_at`. Returns `None` when create is required.
-pub fn select_runtime_key_for_rotate(keys: &[ApiKey]) -> Option<&ApiKey> {
+/// Prefers the most recently used exact-name match, then newest `created_at`.
+/// Legacy and other installations' names are excluded.
+pub fn select_runtime_key_for_rotate<'a>(keys: &'a [ApiKey], key_name: &str) -> Option<&'a ApiKey> {
+    select_named_key_for_rotate(keys, key_name)
+}
+
+/// Pick the active exact-name key that is safest to rotate.
+///
+/// Prefers the most recently used key, then the newest key.
+pub(crate) fn select_named_key_for_rotate<'a>(
+    keys: &'a [ApiKey],
+    name: &str,
+) -> Option<&'a ApiKey> {
     let mut candidates: Vec<&ApiKey> = keys
         .iter()
-        .filter(|k| k.name == AUTO_KEY_NAME && status_is_active(&k.status))
+        .filter(|k| k.name == name && status_is_active(&k.status))
         .collect();
     if candidates.is_empty() {
         return None;
@@ -89,7 +140,7 @@ pub fn should_rotate_after_probe(err: &CloudClientError) -> bool {
     matches!(err, CloudClientError::Auth)
 }
 
-fn is_api_key_quota_exceeded(err: &CloudClientError) -> bool {
+pub(crate) fn is_api_key_quota_exceeded(err: &CloudClientError) -> bool {
     match err {
         CloudClientError::Status { code, body } => {
             *code == 429
@@ -144,9 +195,15 @@ pub async fn ensure_connected_local_cloud_api_key(
         );
     }
 
-    let (secret, outcome) =
-        rotate_or_create_runtime_key(&client, &project_id, &profile.name, &profile.base_url)
-            .await?;
+    let key_name = machine_scoped_key_name(AUTO_KEY_NAME)?;
+    let (secret, outcome) = rotate_or_create_runtime_key(
+        &client,
+        &project_id,
+        &key_name,
+        &profile.base_url,
+        |secret| store_api_key(&profile.name, secret, &profile.base_url, &project_id),
+    )
+    .await?;
     probe_cloud_api_key_mint(&profile.base_url, &secret).await?;
     if let Some(msg) = outcome.operator_message() {
         message(!global.quiet, &msg);
@@ -196,26 +253,37 @@ pub async fn ensure_connected_local_cloud_api_key_stored(
     }
 
     let (profile, client) = dashboard_client(global).await?;
-    let (_secret, outcome) =
-        rotate_or_create_runtime_key(&client, project_id, profile_name, &profile.base_url).await?;
+    let key_name = machine_scoped_key_name(AUTO_KEY_NAME)?;
+    let (_secret, outcome) = rotate_or_create_runtime_key(
+        &client,
+        project_id,
+        &key_name,
+        &profile.base_url,
+        |secret| store_api_key(profile_name, secret, &profile.base_url, project_id),
+    )
+    .await?;
     if let Some(msg) = outcome.operator_message() {
         message(!global.quiet, &msg);
     }
     Ok(outcome)
 }
 
-async fn rotate_or_create_runtime_key(
-    client: &DashboardClient,
+async fn rotate_or_create_runtime_key<F>(
+    client: &dyn ConnectedLocalCredentialBackend,
     project_id: &str,
-    profile_name: &str,
+    key_name: &str,
     api_origin: &str,
-) -> Result<(String, ProvisionOutcome)> {
+    store: F,
+) -> Result<(String, ProvisionOutcome)>
+where
+    F: Fn(&str) -> Result<()>,
+{
     let keys = client
         .list_api_keys(project_id)
         .await
         .context("list Cloud API keys")?;
 
-    if let Some(existing) = select_runtime_key_for_rotate(&keys) {
+    if let Some(existing) = select_runtime_key_for_rotate(&keys, key_name) {
         info!(
             key_id = %existing.id,
             name = %existing.name,
@@ -227,63 +295,62 @@ async fn rotate_or_create_runtime_key(
             .with_context(|| {
                 format!("rotate Cloud API key '{}' ({})", existing.name, existing.id)
             })?;
-        store_api_key(profile_name, &rotated.secret, api_origin, project_id)?;
+        store(&rotated.secret)?;
         return Ok((
             rotated.secret,
             ProvisionOutcome::Rotated {
                 key_id: rotated.key.id,
+                key_name: key_name.to_string(),
             },
         ));
     }
 
-    info!(
-        name = AUTO_KEY_NAME,
-        "creating Connected Local Cloud API key"
-    );
+    info!(name = key_name, "creating Connected Local Cloud API key");
     match client
         .create_api_key(
             project_id,
             &CreateApiKeyRequest {
-                name: AUTO_KEY_NAME.to_string(),
+                name: key_name.to_string(),
                 environment: None,
             },
         )
         .await
     {
         Ok(created) => {
-            store_api_key(profile_name, &created.secret, api_origin, project_id)?;
+            store(&created.secret)?;
             Ok((
                 created.secret,
                 ProvisionOutcome::Created {
                     key_id: created.key.id,
+                    key_name: key_name.to_string(),
                 },
             ))
         }
         Err(err) if is_api_key_quota_exceeded(&err) => {
-            // Race: list saw no active singleton but quota is full (revoked leftovers,
-            // or another client created keys). Prefer rotating any same-named key.
-            if let Some(any_named) = keys.iter().find(|k| k.name == AUTO_KEY_NAME) {
+            // Race: list saw no active exact-name key but quota is full. A revoked
+            // key owned by this installation remains safe to rotate; every other
+            // name is outside this installation's authority.
+            if let Some(any_named) = keys.iter().find(|k| k.name == key_name) {
                 let rotated = client
                     .rotate_api_key(project_id, &any_named.id)
                     .await
                     .context("rotate Cloud API key after quota exceeded")?;
-                store_api_key(profile_name, &rotated.secret, api_origin, project_id)?;
+                store(&rotated.secret)?;
                 return Ok((
                     rotated.secret,
                     ProvisionOutcome::Rotated {
                         key_id: rotated.key.id,
+                        key_name: key_name.to_string(),
                     },
                 ));
             }
             Err(err).context(format!(
-                "create Cloud API key '{AUTO_KEY_NAME}' failed (API key quota exceeded).\n\
+                "create Cloud API key '{key_name}' failed (API key quota exceeded).\n\
                  Revoke unused keys in the dashboard, or run: am key list\n\
-                 Then re-run init — the CLI will rotate an existing '{AUTO_KEY_NAME}' key when present."
+                 Then re-run init — the CLI will rotate only this installation's '{key_name}' key when present."
             ))
         }
-        Err(err) => Err(err).context(format!(
-            "create Cloud API key '{AUTO_KEY_NAME}' on {api_origin}"
-        )),
+        Err(err) => Err(err).context(format!("create Cloud API key '{key_name}' on {api_origin}")),
     }
 }
 
@@ -295,8 +362,76 @@ async fn probe_cloud_api_key_mint(base_url: &str, api_key: &str) -> Result<(), C
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
     use super::*;
+    use am_cloud_types::ApiKeyWithSecret;
     use chrono::{TimeZone, Utc};
+
+    const TEST_LOCAL_KEY_NAME: &str = "connected-local-runtime-a1b2c3d4e5f6";
+
+    struct FakeConnectedLocalBackend {
+        lists: Mutex<VecDeque<Result<Vec<ApiKey>, CloudClientError>>>,
+        rotates: Mutex<VecDeque<Result<ApiKeyWithSecret, CloudClientError>>>,
+        rotate_calls: Mutex<Vec<(String, String)>>,
+        creates: Mutex<VecDeque<Result<ApiKeyWithSecret, CloudClientError>>>,
+        create_names: Mutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ConnectedLocalCredentialBackend for FakeConnectedLocalBackend {
+        async fn list_api_keys(&self, _project_id: &str) -> Result<Vec<ApiKey>, CloudClientError> {
+            self.lists
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| Ok(Vec::new()))
+        }
+
+        async fn rotate_api_key(
+            &self,
+            project_id: &str,
+            key_id: &str,
+        ) -> Result<ApiKeyWithSecret, CloudClientError> {
+            self.rotate_calls
+                .lock()
+                .unwrap()
+                .push((project_id.to_string(), key_id.to_string()));
+            self.rotates
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| panic!("missing rotate response"))
+        }
+
+        async fn create_api_key(
+            &self,
+            _project_id: &str,
+            request: &CreateApiKeyRequest,
+        ) -> Result<ApiKeyWithSecret, CloudClientError> {
+            self.create_names.lock().unwrap().push(request.name.clone());
+            self.creates
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| panic!("missing create response"))
+        }
+    }
+
+    fn backend(
+        keys: Vec<ApiKey>,
+        create: Result<ApiKeyWithSecret, CloudClientError>,
+        rotates: Vec<Result<ApiKeyWithSecret, CloudClientError>>,
+    ) -> FakeConnectedLocalBackend {
+        FakeConnectedLocalBackend {
+            lists: Mutex::new([Ok(keys)].into()),
+            rotates: Mutex::new(rotates.into()),
+            rotate_calls: Mutex::new(Vec::new()),
+            creates: Mutex::new([create].into()),
+            create_names: Mutex::new(Vec::new()),
+        }
+    }
 
     fn key(
         id: &str,
@@ -316,47 +451,154 @@ mod tests {
         }
     }
 
+    fn key_with_secret(key: ApiKey, secret: &str) -> ApiKeyWithSecret {
+        ApiKeyWithSecret {
+            key,
+            secret: secret.into(),
+        }
+    }
+
     #[test]
-    fn select_prefers_active_runtime_name() {
+    fn select_matches_only_this_installations_active_runtime_name() {
         let keys = vec![
-            key("k1", "other", "active", 100, Some(200)),
-            key("k2", AUTO_KEY_NAME, "revoked", 300, Some(400)),
-            key("k3", AUTO_KEY_NAME, "active", 50, Some(10)),
+            key(
+                "legacy",
+                "connected-local-runtime",
+                "active",
+                100,
+                Some(200),
+            ),
+            key(
+                "foreign",
+                "connected-local-runtime-ffffffffffff",
+                "active",
+                300,
+                Some(400),
+            ),
+            key("own", TEST_LOCAL_KEY_NAME, "active", 50, Some(10)),
         ];
-        let picked = select_runtime_key_for_rotate(&keys).unwrap();
-        assert_eq!(picked.id, "k3");
+        let picked = select_runtime_key_for_rotate(&keys, TEST_LOCAL_KEY_NAME).unwrap();
+        assert_eq!(picked.id, "own");
     }
 
     #[test]
     fn select_prefers_most_recently_used_among_active_runtime_keys() {
         let keys = vec![
-            key("old", AUTO_KEY_NAME, "active", 10, Some(20)),
-            key("fresh", AUTO_KEY_NAME, "active", 5, Some(99)),
-            key("newer_created", AUTO_KEY_NAME, "active", 80, None),
+            key("old", TEST_LOCAL_KEY_NAME, "active", 10, Some(20)),
+            key("fresh", TEST_LOCAL_KEY_NAME, "active", 5, Some(99)),
+            key("newer_created", TEST_LOCAL_KEY_NAME, "active", 80, None),
         ];
-        let picked = select_runtime_key_for_rotate(&keys).unwrap();
+        let picked = select_runtime_key_for_rotate(&keys, TEST_LOCAL_KEY_NAME).unwrap();
         assert_eq!(picked.id, "fresh");
     }
 
     #[test]
-    fn select_returns_none_when_no_active_runtime_key() {
+    fn select_returns_none_for_legacy_and_foreign_installation_names() {
         let keys = vec![
-            key("k1", AUTO_KEY_NAME, "revoked", 1, None),
-            key("k2", "connected-traces", "active", 2, None),
+            key("legacy", "connected-local-runtime", "active", 1, None),
+            key(
+                "foreign",
+                "connected-local-runtime-ffffffffffff",
+                "active",
+                2,
+                None,
+            ),
         ];
-        assert!(select_runtime_key_for_rotate(&keys).is_none());
+        assert!(select_runtime_key_for_rotate(&keys, TEST_LOCAL_KEY_NAME).is_none());
+    }
+
+    #[tokio::test]
+    async fn quota_never_rotates_legacy_or_foreign_installation_keys() {
+        let client = backend(
+            vec![
+                key("legacy", "connected-local-runtime", "active", 1, None),
+                key(
+                    "foreign",
+                    "connected-local-runtime-ffffffffffff",
+                    "active",
+                    2,
+                    None,
+                ),
+            ],
+            Err(CloudClientError::Status {
+                code: 429,
+                body: "quota_exceeded: max_api_keys".into(),
+            }),
+            Vec::new(),
+        );
+
+        let error = rotate_or_create_runtime_key(
+            &client,
+            "proj_test",
+            TEST_LOCAL_KEY_NAME,
+            "https://api.atomicstrata.ai",
+            |_| -> Result<()> { panic!("quota must not store a credential") },
+        )
+        .await
+        .expect_err("foreign keys must not be quota recovery candidates");
+
+        assert!(error.to_string().contains("quota exceeded"));
+        assert!(client.rotate_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            client.create_names.lock().unwrap().as_slice(),
+            [TEST_LOCAL_KEY_NAME]
+        );
+    }
+
+    #[tokio::test]
+    async fn quota_rotates_only_a_non_active_exact_installation_key() {
+        let rotated = key_with_secret(
+            key("own", TEST_LOCAL_KEY_NAME, "active", 1, None),
+            "amc_rotated_secret",
+        );
+        let client = backend(
+            vec![key("own", TEST_LOCAL_KEY_NAME, "revoked", 1, None)],
+            Err(CloudClientError::Status {
+                code: 429,
+                body: "quota_exceeded: max_api_keys".into(),
+            }),
+            vec![Ok(rotated)],
+        );
+        let stored = Mutex::new(Vec::new());
+
+        let (_, outcome) = rotate_or_create_runtime_key(
+            &client,
+            "proj_test",
+            TEST_LOCAL_KEY_NAME,
+            "https://api.atomicstrata.ai",
+            |secret| {
+                stored.lock().unwrap().push(secret.to_string());
+                Ok(())
+            },
+        )
+        .await
+        .expect("the exact installation key is safe to rotate");
+
+        assert_eq!(
+            outcome,
+            ProvisionOutcome::Rotated {
+                key_id: "own".into(),
+                key_name: TEST_LOCAL_KEY_NAME.into(),
+            }
+        );
+        assert_eq!(
+            client.rotate_calls.lock().unwrap().as_slice(),
+            [("proj_test".into(), "own".into())]
+        );
+        assert_eq!(stored.lock().unwrap().as_slice(), ["amc_rotated_secret"]);
     }
 
     #[test]
-    fn rotated_message_is_obvious_and_quota_safe() {
+    fn rotated_message_names_this_installations_key() {
         let msg = ProvisionOutcome::Rotated {
             key_id: "key_abc".into(),
+            key_name: TEST_LOCAL_KEY_NAME.into(),
         }
         .operator_message()
         .unwrap();
         assert!(msg.contains("Rotated"));
-        assert!(msg.contains(AUTO_KEY_NAME));
-        assert!(msg.contains("quota-safe"));
+        assert!(msg.contains(TEST_LOCAL_KEY_NAME));
+        assert!(!msg.contains("quota-safe"));
         assert!(msg.contains("invalidated"));
         assert!(msg.contains("key_abc"));
     }
@@ -365,11 +607,12 @@ mod tests {
     fn created_message_names_the_key() {
         let msg = ProvisionOutcome::Created {
             key_id: "key_new".into(),
+            key_name: TEST_LOCAL_KEY_NAME.into(),
         }
         .operator_message()
         .unwrap();
         assert!(msg.contains("Created"));
-        assert!(msg.contains(AUTO_KEY_NAME));
+        assert!(msg.contains(TEST_LOCAL_KEY_NAME));
         assert!(msg.contains("key_new"));
     }
 
@@ -385,8 +628,20 @@ mod tests {
     #[test]
     fn requires_container_sync_only_for_created_and_rotated() {
         assert!(!ProvisionOutcome::Reused.requires_container_sync());
-        assert!(ProvisionOutcome::Rotated { key_id: "k".into() }.requires_container_sync());
-        assert!(ProvisionOutcome::Created { key_id: "k".into() }.requires_container_sync());
+        assert!(
+            ProvisionOutcome::Rotated {
+                key_id: "k".into(),
+                key_name: TEST_LOCAL_KEY_NAME.into(),
+            }
+            .requires_container_sync()
+        );
+        assert!(
+            ProvisionOutcome::Created {
+                key_id: "k".into(),
+                key_name: TEST_LOCAL_KEY_NAME.into(),
+            }
+            .requires_container_sync()
+        );
     }
 
     #[test]

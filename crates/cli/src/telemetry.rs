@@ -29,6 +29,8 @@ pub enum ActivationEvent {
     FirstRetrievalCompleted,
     FirstRealMemoryCreated,
     InitStepFailed,
+    HostedCloudHandoff,
+    HostedCloudConfigured,
 }
 
 impl ActivationEvent {
@@ -44,6 +46,8 @@ impl ActivationEvent {
             Self::FirstRetrievalCompleted => "first_retrieval_completed",
             Self::FirstRealMemoryCreated => "first_real_memory_created",
             Self::InitStepFailed => "init_step_failed",
+            Self::HostedCloudHandoff => "hosted_cloud_handoff",
+            Self::HostedCloudConfigured => "hosted_cloud_configured",
         }
     }
 }
@@ -87,6 +91,13 @@ impl ActivationContext {
     pub fn local() -> Self {
         Self {
             mode: Some("local"),
+            ..Default::default()
+        }
+    }
+
+    pub fn cloud() -> Self {
+        Self {
+            mode: Some("cloud"),
             ..Default::default()
         }
     }
@@ -335,6 +346,22 @@ mod tests {
     #[test]
     fn init_step_failed_event_name_is_stable() {
         assert_eq!(ActivationEvent::InitStepFailed.as_str(), "init_step_failed");
+    }
+
+    #[test]
+    fn hosted_cloud_handoff_event_name_is_stable() {
+        assert_eq!(
+            ActivationEvent::HostedCloudHandoff.as_str(),
+            "hosted_cloud_handoff"
+        );
+    }
+
+    #[test]
+    fn hosted_cloud_configured_event_name_is_stable() {
+        assert_eq!(
+            ActivationEvent::HostedCloudConfigured.as_str(),
+            "hosted_cloud_configured"
+        );
     }
 
     #[test]

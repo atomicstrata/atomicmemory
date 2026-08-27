@@ -280,5 +280,6 @@ jobs:
         run: |
           pnpm run test:security-compliance
           pnpm run test:release-cli-version
+          pnpm run test:mirror-cli-r2
           pnpm run test:install-cli
           pnpm run security-compliance
