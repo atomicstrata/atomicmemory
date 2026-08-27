@@ -129,6 +129,16 @@ detect_target() {
 main() {
   printf 'install-cli-internal tests\n'
   FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/am-internal-test.XXXXXX")"
+  local test_home="${FIXTURE_ROOT}/home"
+  mkdir -p "$test_home"
+  HOME="$test_home"
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+  SHELL="/bin/sh"
+  XDG_CONFIG_HOME="${test_home}/.config"
+  ZDOTDIR="$test_home"
+  export HOME PATH SHELL XDG_CONFIG_HOME ZDOTDIR
+  unset AM_INSTALL_DIR AM_VERSION AM_NO_MODIFY_PATH AM_ENVIRONMENT AM_CORE_IMAGE
+  unset AM_VERIFY_ATTESTATION AM_FORCE
   local ver="0.2.0"
   local target
   target="$(detect_target)" || {

@@ -144,7 +144,9 @@ Codex hook environments are usually spawned with a thinner PATH than the interac
 command -v am
 ```
 
-If the command is not found, run `curl -fsSL https://get.atomicstrata.ai/install.sh | sh` and open a new terminal.
+If the command is not found, run
+`curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh`
+and open a new terminal.
 
 #### Stop-threshold guidance (`ATOMICMEMORY_STOP_MIN_ASSISTANT_CHARS`)
 

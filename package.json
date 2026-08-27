@@ -50,7 +50,8 @@
     "ci:public-smoke": "turbo run public-integration-smoke",
     "ci:contract-conformance": "node scripts/check-ingest-contract-conformance.mjs",
     "validate:cli": "pnpm --filter @atomicmemory/cli build && node packages/cli/dist/bin.js validate",
-    "ci:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo test --workspace --locked && cargo run -p atomicmemory --release --locked --bin am -- --help"
+    "ci:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo test --workspace --locked && cargo run -p atomicmemory --release --locked --bin am -- --help",
+    "test:mirror-cli-r2": "bash scripts/__tests__/mirror-cli-r2.test.sh"
   },
   "devDependencies": {
     "@typescript-eslint/parser": "^8.59.3",

@@ -44,7 +44,7 @@ These results put AtomicMemory at or near the published ceiling in each reported
 
 ## Quick Start
 
-For the full walkthrough, see the [Core Quickstart](https://docs.atomicstrata.ai/quickstart).
+For the full walkthrough, see the [Core Quickstart](https://docs.atomicstrata.ai/open-source/quickstart).
 
 ### Docker image (recommended)
 

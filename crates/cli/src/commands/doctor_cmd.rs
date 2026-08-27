@@ -5,8 +5,9 @@ use clap::Args;
 
 use crate::auth::doctor::{DoctorOverrides, report_ok, run_doctor as run_auth_doctor};
 use crate::cli::GlobalOptions;
+use crate::commands::client::resolve_profile_and_warn;
 use crate::commands::connect::{ConnectCommand, ConnectOptions, run as run_connect};
-use crate::config::{ProfileKind, resolve_profile};
+use crate::config::ProfileKind;
 use crate::progress::progress_for;
 use crate::telemetry::{
     ActivationContext, ActivationEvent, InitStep, capture_activation, capture_step_failure,
@@ -53,11 +54,7 @@ async fn run_with_progress(
     }
     progress.succeed("auth", Some("ok"));
 
-    let profile = resolve_profile(
-        global.profile.as_deref(),
-        global.base_url.as_deref(),
-        global.environment,
-    )?;
+    let profile = resolve_profile_and_warn(global)?;
     if profile.kind == ProfileKind::Local {
         progress.start_step("connect", "Connect wiring checks");
         match run_connect(

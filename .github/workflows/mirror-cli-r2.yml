@@ -147,13 +147,23 @@ jobs:
         env:
           VERSION: ${{ steps.rel.outputs.version }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          # The installer defaults to AM_VERIFY_ATTESTATION=auto and `gh` is
+          # present on runners, so it runs `gh attestation verify --repo
+          # atomicstrata/atomicmemory`. Without a token gh refuses outright and
+          # the whole verification fails. Same token the download step uses to
+          # reach the public repo from here.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ver="$VERSION"
           base="${R2_PUBLIC_BASE_URL:-https://get.atomicstrata.ai}"
           base="${base%/}"
+          # Invoke through `sh`: release assets downloaded from GitHub do not
+          # keep their executable bit, so calling dist/install.sh directly
+          # exits 126 (Permission denied). This also matches how users consume
+          # it (`curl ... | sh`).
           AM_BASE_URL="${base}" AM_VERSION="${ver}" \
-            dist/install.sh --bin-dir "$HOME/.am/bin" --no-modify-path
+            sh dist/install.sh --bin-dir "$HOME/.am/bin" --no-modify-path
           got="$("$HOME/.am/bin/am" --version)"
           expected="am ${ver}"
           if [ "$got" != "$expected" ]; then

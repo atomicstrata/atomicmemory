@@ -57,7 +57,13 @@ case "\$1" in
     esac
     exit 0
     ;;
-  init) exit 0 ;;
+  init)
+    if [ -n "\${AM_TEST_INIT_STDIN_FILE:-}" ]; then
+      if [ -t 0 ]; then init_stdin=tty; else init_stdin=not-tty; fi
+      printf '%s\n' "\$init_stdin" >"\$AM_TEST_INIT_STDIN_FILE"
+    fi
+    exit 0
+    ;;
   *) exit 0 ;;
 esac
 EOF
@@ -153,6 +159,16 @@ printf '\ninstall-cli contract tests\n'
 
 TARGET="$(detect_target)"
 start_fixture_server "0.2.0" "$TARGET"
+TEST_HOME="${FIXTURE_ROOT}/home"
+mkdir -p "$TEST_HOME"
+HOME="$TEST_HOME"
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+SHELL="/bin/sh"
+XDG_CONFIG_HOME="${TEST_HOME}/.config"
+ZDOTDIR="$TEST_HOME"
+export HOME PATH SHELL XDG_CONFIG_HOME ZDOTDIR
+unset AM_INSTALL_DIR AM_VERSION AM_NO_MODIFY_PATH AM_ENVIRONMENT AM_CORE_IMAGE
+unset AM_VERIFY_ATTESTATION AM_FORCE
 BIN_DIR="${FIXTURE_ROOT}/bin"
 mkdir -p "$BIN_DIR"
 
@@ -183,6 +199,32 @@ case "$output" in
 esac
 [ ! -x "$BIN_DIR/reject/am" ] && assert "invalid version does not install binary" true \
   || assert "invalid version does not install binary" false
+
+assert_unsafe_bin_dir_rejected() {
+  local label="$1"
+  local path="$2"
+  local unsafe_home="${FIXTURE_ROOT}/unsafe-home-${label}"
+  local output status
+  mkdir -p "$unsafe_home"
+  output="$(HOME="$unsafe_home" run_install \
+    --version 0.2.0 --bin-dir "$path" 2>&1)"
+  status=$?
+  [ "$status" -ne 0 ] && assert "unsafe ${label} bin dir exits nonzero" true \
+    || assert "unsafe ${label} bin dir exits nonzero" false
+  case "$output" in
+    *"safe absolute path"*) assert "unsafe ${label} bin dir explains path contract" true ;;
+    *) assert "unsafe ${label} bin dir explains path contract" false ;;
+  esac
+  [ ! -e "${unsafe_home}/.atomicmemory/env" ] \
+    && assert "unsafe ${label} bin dir writes no sourced env" true \
+    || assert "unsafe ${label} bin dir writes no sourced env" false
+}
+
+printf '\nCase: unsafe install directories fail before sourced env generation\n'
+assert_unsafe_bin_dir_rejected "quote" "${BIN_DIR}/unsafe\"path"
+assert_unsafe_bin_dir_rejected "dollar" "${BIN_DIR}/unsafe\$path"
+unsafe_newline="$(printf '%s\n%s' "${BIN_DIR}/unsafe" "path")"
+assert_unsafe_bin_dir_rejected "newline" "$unsafe_newline"
 
 printf '\nCase: regex-like version mismatch is rejected\n'
 bad_stage="${FIXTURE_ROOT}/bad-stage"
@@ -253,33 +295,8 @@ esac
 [ ! -x "$BIN_DIR/bad/am" ] && assert "checksum mismatch does not install binary" true \
   || assert "checksum mismatch does not install binary" false
 
-printf '\nCase: forced attestation verification invokes gh before install\n'
-fake_gh_dir="${FIXTURE_ROOT}/fake-gh-bin"
-gh_log="${FIXTURE_ROOT}/gh.log"
-mkdir -p "$fake_gh_dir"
-cat >"${fake_gh_dir}/gh" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >>"$GH_LOG"
-exit 0
-EOF
-chmod +x "${fake_gh_dir}/gh"
-attest_dir="$BIN_DIR/attest"
-if PATH="${fake_gh_dir}:$PATH" GH_LOG="$gh_log" AM_VERIFY_ATTESTATION=1 AM_BASE_URL="$AM_BASE_URL" \
-  sh "$INSTALLER" --version 0.2.0 --bin-dir "$attest_dir" --no-modify-path >/dev/null; then
-  case "$(cat "$gh_log" 2>/dev/null || true)" in
-    *'attestation verify'*'--signer-workflow'*'release-cli.yml'*)
-      assert "gh attestation verify is invoked for forced verification" true
-      ;;
-    *)
-      assert "gh attestation verify is invoked for forced verification" false
-      ;;
-  esac
-  [ -x "$attest_dir/am" ] && assert "attested install writes am binary" true \
-    || assert "attested install writes am binary" false
-else
-  assert "gh attestation verify is invoked for forced verification" false
-  assert "attested install writes am binary" false
-fi
+# shellcheck source=scripts/__tests__/install-cli-attestation-cases.sh
+. "$ROOT/scripts/__tests__/install-cli-attestation-cases.sh"
 
 printf '\nCase: uninstall refuses foreign am binary\n'
 foreign_am_dir="${BIN_DIR}/foreign-am"
@@ -337,12 +354,33 @@ HOME="$env_dir" run_install --version 0.2.0 --bin-dir "$BIN_DIR/env-always" --no
 [ -f "$env_dir/.atomicmemory/env" ] && assert "install writes env file even with --no-modify-path" true \
   || assert "install writes env file even with --no-modify-path" false
 
-printf '\nCase: --init runs am init in install subshell\n'
-output="$(run_install --version 0.2.0 --bin-dir "$BIN_DIR/init-flag" --no-modify-path --init 2>&1 || true)"
+printf '\nCase: --init fails with recovery guidance without a terminal\n'
+no_tty_dir="$BIN_DIR/init-no-tty"
+set +e
+output="$(run_install --version 0.2.0 --bin-dir "$no_tty_dir" --no-modify-path --init </dev/null)"
+init_status=$?
+set -e
+[ "$init_status" -ne 0 ] && assert "--init fails when no terminal is available" true \
+  || assert "--init fails when no terminal is available" false
+[ -x "$no_tty_dir/am" ] && assert "non-TTY failure leaves am installed" true \
+  || assert "non-TTY failure leaves am installed" false
 case "$output" in
-  *'ran am init'*) assert "--init reports am init ran" true ;;
-  *) assert "--init reports am init ran" false ;;
+  *"$no_tty_dir/am init"*) assert "non-TTY failure prints absolute recovery command" true ;;
+  *) assert "non-TTY failure prints absolute recovery command" false ;;
 esac
+
+printf '\nCase: piped --init reconnects am init to the terminal\n'
+tty_dir="$BIN_DIR/init-tty"
+tty_state="${FIXTURE_ROOT}/init-stdin"
+if AM_BASE_URL="$AM_BASE_URL" AM_TEST_INIT_STDIN_FILE="$tty_state" \
+  python3 "$ROOT/scripts/__tests__/run-installer-in-pty.py" "$INSTALLER" \
+    --version 0.2.0 --bin-dir "$tty_dir" --no-modify-path --init >/dev/null 2>&1; then
+  [ "$(cat "$tty_state" 2>/dev/null || true)" = "tty" ] \
+    && assert "piped --init gives am init a terminal" true \
+    || assert "piped --init gives am init a terminal" false
+else
+  assert "piped --init gives am init a terminal" false
+fi
 
 printf '\nCase: requested environment failure fails install\n'
 set +e
@@ -367,6 +405,9 @@ case "$output" in
   *"could not seed Core image override 'bad-image'"*) assert "--core-image failure fails with message" true ;;
   *) assert "--core-image failure fails with message" false ;;
 esac
+
+# shellcheck source=scripts/__tests__/install-cli-path-cases.sh
+. "$ROOT/scripts/__tests__/install-cli-path-cases.sh"
 
 printf '\nResults: %s passed, %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 if [ "$FAIL_COUNT" -ne 0 ]; then

@@ -159,22 +159,30 @@ fn authorize_stored_session(
         .get(profile_name)
         .and_then(|p| p.oauth_ref.clone())
         .unwrap_or_else(|| profile_name.to_string());
-
-    let (storage_key, tokens) = if let Some(t) = creds.oauth.get(&oauth_ref).cloned() {
-        (oauth_ref, t)
-    } else if config
+    let allow_local_fallback = config
         .profiles
         .get(profile_name)
-        .is_some_and(|p| p.kind == crate::config::ProfileKind::Local)
-    {
-        creds
-            .oauth
-            .iter()
-            .next()
-            .map(|(k, t)| (k.clone(), t.clone()))
-            .ok_or_else(|| anyhow!("not logged in — run `am auth login`"))?
-    } else {
-        bail!("not logged in — run `am auth login`");
+        .is_some_and(|p| p.kind == crate::config::ProfileKind::Local);
+    // Same selection policy planning uses; here it runs against the freshly
+    // loaded credentials, preserving the historical by-name behavior.
+    let storage_key =
+        crate::config::select_oauth_session_key(creds, &oauth_ref, allow_local_fallback)
+            .ok_or_else(|| anyhow!("not logged in — run `am auth login`"))?;
+    authorize_stored_session_pinned(config, creds, &PinnedOAuth { storage_key }, target_base_url)
+}
+
+fn authorize_stored_session_pinned(
+    config: &ConfigFile,
+    creds: &CredentialsFile,
+    pinned: &PinnedOAuth,
+    target_base_url: &str,
+) -> Result<AuthorizedSession> {
+    // No selection here, by design: exactly the planned key or failure.
+    let (storage_key, tokens) = match creds.oauth.get(&pinned.storage_key).cloned() {
+        Some(t) => (pinned.storage_key.clone(), t),
+        None => bail!(
+            "the OAuth session selected for this operation no longer exists — run `am auth login` and retry"
+        ),
     };
 
     // Enforce the origin binding BEFORE the token can be handed out. The
@@ -206,12 +214,46 @@ fn authorize_stored_session(
 pub async fn valid_bearer_token(profile_name: &str, target_base_url: &str) -> Result<String> {
     let config = load_config()?;
     let creds = load_credentials()?;
+    let session = authorize_stored_session(&config, &creds, profile_name, target_base_url)?;
+    complete_bearer_token(session, target_base_url).await
+}
+
+/// The concrete OAuth session selected at planning time, for callers that
+/// must not let any concurrent mutation redirect which stored session
+/// authenticates them. `valid_bearer_token` re-derives the selection from
+/// fresh config and credentials reads by profile NAME — a replacement can
+/// swap `oauth_ref`, and the Local fallback picks the credential map's first
+/// session, so a concurrent login could redirect it too. Pinning the storage
+/// key means execution makes NO selection decision at all; it looks up
+/// exactly this key or fails. The origin binding still re-validates whatever
+/// is found under it.
+#[derive(Debug, Clone)]
+pub struct PinnedOAuth {
+    /// Storage key in `credentials.toml`'s oauth map, selected at planning
+    /// time by [`crate::config::select_oauth_session_key`].
+    pub storage_key: String,
+}
+
+pub async fn valid_bearer_token_pinned(
+    pinned: &PinnedOAuth,
+    target_base_url: &str,
+) -> Result<String> {
+    let config = load_config()?;
+    let creds = load_credentials()?;
+    let session = authorize_stored_session_pinned(&config, &creds, pinned, target_base_url)?;
+    complete_bearer_token(session, target_base_url).await
+}
+
+async fn complete_bearer_token(
+    session: AuthorizedSession,
+    target_base_url: &str,
+) -> Result<String> {
     let AuthorizedSession {
         storage_key,
         tokens,
         issuer,
         client_id,
-    } = authorize_stored_session(&config, &creds, profile_name, target_base_url)?;
+    } = session;
 
     if token_fresh(&tokens) {
         return Ok(tokens.id_token);
@@ -326,6 +368,91 @@ pub fn merge_credentials_oauth(creds: &mut CredentialsFile, name: &str, tokens: 
 mod tests {
     use super::*;
     use crate::environment::Environment;
+
+    #[test]
+    fn pinned_oauth_is_lookup_only_and_immune_to_concurrent_logins() {
+        // The scenario from review: export plans against a Local profile whose
+        // oauth_ref is absent, so planning's fallback selects the only session
+        // ("zzz-session"). A concurrent login then adds a lexicographically
+        // earlier session. Re-running selection at execution would now pick
+        // the newcomer; the pinned path must not select at all.
+        use crate::config::{ConfigFile, CredentialsFile, OAuthTokens, ProfileConfig, ProfileKind};
+        let target = crate::environment::Environment::PROD_BASE_URL;
+        let issuer = crate::environment::Environment::PROD_OAUTH_ISSUER;
+        let session = |marker: &str| OAuthTokens {
+            id_token: marker.to_string(),
+            refresh_token: None,
+            expires_at: None,
+            issuer: Some(issuer.to_string()),
+            api_origin: Some(target.to_string()),
+        };
+
+        // Planning time: one session only.
+        let mut planning_creds = CredentialsFile::default();
+        planning_creds
+            .oauth
+            .insert("zzz-session".into(), session("token-planned"));
+        let planned = crate::config::select_oauth_session_key(&planning_creds, "absent-ref", true)
+            .expect("fallback selects the only session");
+        assert_eq!(planned, "zzz-session");
+
+        // Execution time: a concurrent login added an earlier-sorting session.
+        let mut config = ConfigFile::default();
+        config.profiles.insert(
+            "local".into(),
+            ProfileConfig {
+                kind: ProfileKind::Local,
+                ..Default::default()
+            },
+        );
+        let mut exec_creds = planning_creds.clone();
+        exec_creds
+            .oauth
+            .insert("aaa-session".into(), session("token-interloper"));
+
+        // The by-name path re-selects and follows the interloper…
+        let by_name = authorize_stored_session(&config, &exec_creds, "local", target).unwrap();
+        assert_eq!(by_name.storage_key, "aaa-session");
+        // …the pinned path keeps the planned session.
+        let pinned = PinnedOAuth {
+            storage_key: planned,
+        };
+        let kept = authorize_stored_session_pinned(&config, &exec_creds, &pinned, target).unwrap();
+        assert_eq!(kept.storage_key, "zzz-session");
+        assert_eq!(kept.tokens.id_token, "token-planned");
+    }
+
+    #[test]
+    fn pinned_oauth_fails_rather_than_reselecting_when_the_session_is_gone() {
+        use crate::config::{ConfigFile, CredentialsFile, OAuthTokens, ProfileConfig, ProfileKind};
+        let target = crate::environment::Environment::PROD_BASE_URL;
+        let mut creds = CredentialsFile::default();
+        creds.oauth.insert(
+            "other-session".into(),
+            OAuthTokens {
+                id_token: "token-other".into(),
+                refresh_token: None,
+                expires_at: None,
+                issuer: Some(crate::environment::Environment::PROD_OAUTH_ISSUER.into()),
+                api_origin: Some(target.into()),
+            },
+        );
+        let mut config = ConfigFile::default();
+        config.profiles.insert(
+            "local".into(),
+            ProfileConfig {
+                kind: ProfileKind::Local,
+                ..Default::default()
+            },
+        );
+        // The planned session was deleted; another exists. Falling back here
+        // is exactly the redirection being prevented, so it must error.
+        let pinned = PinnedOAuth {
+            storage_key: "deleted-session".into(),
+        };
+        let err = authorize_stored_session_pinned(&config, &creds, &pinned, target).unwrap_err();
+        assert!(err.to_string().contains("no longer exists"));
+    }
 
     #[test]
     fn authorize_url_always_requests_consent_not_login() {

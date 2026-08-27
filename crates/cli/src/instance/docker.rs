@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::process::Stdio;
 
+use std::io::{self, IsTerminal, Write as _};
+
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
@@ -279,6 +281,26 @@ pub fn docker_install_links() -> &'static str {
 /// Fail fast when Docker CLI/daemon is unavailable (used by `am init` preflight).
 pub async fn ensure_docker_available(docker: &dyn DockerRunner) -> Result<()> {
     docker.version().await
+}
+
+/// Soft preflight: surface install links and optional retry before hard-failing.
+pub async fn ensure_docker_available_with_preflight(
+    docker: &dyn DockerRunner,
+    interactive: bool,
+) -> Result<()> {
+    if docker.version().await.is_ok() {
+        return Ok(());
+    }
+    eprintln!("\n{}\n", docker_install_links());
+    if interactive && io::stdin().is_terminal() {
+        eprint!("Press Enter after Docker is installed and running (Ctrl+C to abort)… ");
+        io::stderr().flush().ok();
+        let mut line = String::new();
+        io::stdin()
+            .read_line(&mut line)
+            .context("read docker preflight confirmation")?;
+    }
+    ensure_docker_available(docker).await
 }
 
 #[async_trait::async_trait]

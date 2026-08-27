@@ -15,8 +15,9 @@ use crate::commands::cloud_api_key::{ProvisionOutcome, ensure_connected_local_cl
 use crate::commands::connect::next_step_after_instance_start;
 use crate::commands::local_clients::{render_local_clients_card, resolve_local_clients};
 use crate::config::{
-    ENV_CORE_IMAGE, ProfileKind, jwks_url, load_config, require_project_id, resolve_core_api_key,
-    resolve_openai_api_key, store_openai_api_key,
+    ENV_CORE_IMAGE, OpenAiKeySource, ProfileKind, clear_openai_api_key, jwks_url, load_config,
+    require_project_id, resolve_core_api_key, resolve_openai_api_key,
+    resolve_openai_api_key_with_source, store_openai_api_key,
 };
 use crate::environment::{CoreImageInput, resolve_core_image};
 use crate::instance::docker::{
@@ -106,6 +107,8 @@ pub async fn run(cmd: InstanceCommand, global: &GlobalOptions) -> Result<()> {
                     show_secrets,
                     brief_output: false,
                     progress: Some(progress.as_mut()),
+                    brief_progress_id: None,
+                    allow_prompts: global.allow_prompts(false),
                 },
             )
             .await
@@ -130,12 +133,16 @@ pub async fn run(cmd: InstanceCommand, global: &GlobalOptions) -> Result<()> {
 }
 
 /// Start Core during `am init` — progress on stderr, no JSON status blob.
-pub(crate) async fn run_start_brief(
+pub(crate) async fn run_start_brief<'a>(
     global: &GlobalOptions,
     cmd: InstanceCommand,
     // INTERNAL recreate requirement, passed separately so it can never be
     // mistaken for the operator's `--replace` authority downstream.
     sync_managed: bool,
+    progress: Option<&'a mut dyn ProgressReporter>,
+    brief_progress_id: Option<&'a str>,
+    // When false, OpenAI key stdin prompts are skipped (`am init --yes`).
+    allow_prompts: bool,
 ) -> Result<bool> {
     let InstanceCommand::Start {
         image,
@@ -159,7 +166,9 @@ pub(crate) async fn run_start_brief(
             wait_secs,
             show_secrets,
             brief_output: true,
-            progress: None,
+            progress,
+            brief_progress_id,
+            allow_prompts,
         },
     )
     .await
@@ -176,18 +185,16 @@ async fn ensure_local_profile(global: &GlobalOptions) -> Result<crate::config::R
     Ok(profile)
 }
 
-fn prompt_openai_api_key(profile_name: &str, reason: &str) -> Result<String> {
+fn read_openai_api_key_from_prompt(reason: &str) -> Result<String> {
     eprintln!("{reason}");
     eprint!("Paste OPENAI_API_KEY (input hidden): ");
     io::stderr().flush().ok();
     let key = rpassword::read_password().context("read OPENAI_API_KEY")?;
     if key.trim().is_empty() {
         bail!(
-            "OPENAI_API_KEY is required — pass --openai-api-key, export OPENAI_API_KEY, or enter it at the prompt"
+            "OPENAI_API_KEY is required — enter a non-empty key at the prompt or set OPENAI_API_KEY in the environment"
         );
     }
-    store_openai_api_key(profile_name, key.trim())?;
-    message(true, "OpenAI API key saved for this profile (not printed).");
     Ok(key.trim().to_string())
 }
 
@@ -199,45 +206,66 @@ async fn ensure_openai_api_key(
     let can_prompt = interactive && io::stdin().is_terminal();
     let mut candidate = flag_override
         .filter(|s| !s.is_empty())
-        .or_else(|| resolve_openai_api_key(profile_name));
+        .map(|key| (key, OpenAiKeySource::Flag))
+        .or_else(|| resolve_openai_api_key_with_source(profile_name));
 
     if candidate.is_none() {
         if !can_prompt {
             bail!(
-                "OPENAI_API_KEY is required to start Core — export it, pass --openai-api-key, or run interactively to save it"
+                "OPENAI_API_KEY is required to start Core — set OPENAI_API_KEY in the environment or run interactively"
             );
         }
-        candidate = Some(prompt_openai_api_key(
-            profile_name,
-            "OpenAI API key required to start Core (stored in credentials.toml, mode 0600).",
-        )?);
+        candidate = Some((
+            read_openai_api_key_from_prompt(
+                "OpenAI API key required to start Core (stored in credentials.toml, mode 0600).",
+            )?,
+            OpenAiKeySource::Prompted,
+        ));
     }
 
     // Allow a couple of fresh pastes after 401/403/format failures on TTY.
     const MAX_REPROMPTS: u8 = 2;
     let mut reprompts = 0u8;
     loop {
-        let key = candidate.clone().expect("openai key candidate must be set");
+        let (key, source) = candidate.clone().expect("openai key candidate must be set");
+        message(can_prompt, "Validating OpenAI API key with api.openai.com…");
         match validate_openai_api_key(&key).await {
-            Ok(()) => return Ok(key),
+            Ok(()) => {
+                // A flag or environment value is an override for this run only.
+                // Persisting it wrote a CI secret to disk without asking.
+                if source.should_persist() {
+                    store_openai_api_key(profile_name, &key)?;
+                    message(
+                        can_prompt,
+                        "OpenAI API key saved for this profile (not printed).",
+                    );
+                }
+                return Ok(key);
+            }
             Err(err)
                 if can_prompt
                     && is_repromptable_openai_key_error(&err)
                     && reprompts < MAX_REPROMPTS =>
             {
                 reprompts += 1;
+                // Clear only the credential that was actually rejected. The old
+                // guard asked whether *any* key resolved, so an exported
+                // OPENAI_API_KEY made a bad flag delete the stored key.
+                if source.should_clear_stored() {
+                    clear_openai_api_key(profile_name)?;
+                }
                 let head = err
                     .to_string()
                     .lines()
                     .next()
                     .unwrap_or("OpenAI rejected the key")
                     .to_string();
-                candidate = Some(prompt_openai_api_key(
-                    profile_name,
-                    &format!(
+                candidate = Some((
+                    read_openai_api_key_from_prompt(&format!(
                         "{head}\nEnter a fresh key to continue (stored in credentials.toml, mode 0600)."
-                    ),
-                )?);
+                    ))?,
+                    OpenAiKeySource::Prompted,
+                ));
             }
             Err(err) => return Err(err),
         }
@@ -247,6 +275,10 @@ async fn ensure_openai_api_key(
 /// True when ensure_openai_api_key may read stdin (missing key or rejectable stored/env key).
 fn may_prompt_openai_key(interactive: bool) -> bool {
     interactive && io::stdin().is_terminal()
+}
+
+fn may_prompt_for_input(allow_prompts: bool) -> bool {
+    allow_prompts && io::stdin().is_terminal()
 }
 
 fn needs_interactive_openai_key(
@@ -282,19 +314,29 @@ struct ReplacementPlan {
 }
 
 impl ReplacementPlan {
-    fn resolve(operator_replace: bool, needs_credential_sync: bool) -> Self {
+    fn resolve(
+        operator_replace: bool,
+        needs_credential_sync: bool,
+        confirmed_managed_recreate: bool,
+    ) -> Self {
         Self {
-            recreate_managed: operator_replace || needs_credential_sync,
+            recreate_managed: operator_replace
+                || needs_credential_sync
+                || confirmed_managed_recreate,
             may_replace_foreign: operator_replace,
         }
     }
 }
 
-fn confirm_replace_foreign_container(container_name: &str, replace_flag: bool) -> Result<bool> {
+fn confirm_replace_foreign_container(
+    container_name: &str,
+    replace_flag: bool,
+    allow_prompts: bool,
+) -> Result<bool> {
     if replace_flag {
         return Ok(true);
     }
-    if !io::stdin().is_terminal() {
+    if !allow_prompts || !io::stdin().is_terminal() {
         bail!(
             "container '{container_name}' exists but was not created by `am instance` (likely a manual docker run).\n\
              Remove it: docker rm -f {container_name}\n\
@@ -309,6 +351,29 @@ fn confirm_replace_foreign_container(container_name: &str, replace_flag: bool) -
     io::stdin()
         .read_line(&mut line)
         .context("read confirmation")?;
+    Ok(matches!(line.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+/// Interactive consent to recreate a CLI-managed Core that no longer matches the active profile.
+fn confirm_recreate_mismatched_managed_container(
+    container_name: &str,
+    profile_name: &str,
+    allow_prompts: bool,
+) -> Result<bool> {
+    if !allow_prompts || !io::stdin().is_terminal() {
+        bail!(
+            "Core container profile or Cloud env does not match active CLI profile '{profile_name}' — run `am instance start --replace`"
+        );
+    }
+    eprint!(
+        "Core container '{container_name}' does not match profile '{profile_name}' (profile/Cloud env).\n\
+         Recreate it for this profile? [y/N] (--replace): "
+    );
+    io::stderr().flush().ok();
+    let mut line = String::new();
+    io::stdin()
+        .read_line(&mut line)
+        .context("read recreate confirmation")?;
     Ok(matches!(line.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
@@ -397,18 +462,58 @@ async fn core_health_probe(
     Ok(())
 }
 
-#[allow(unused_assignments)]
-async fn wait_for_core_health(
-    global: &GlobalOptions,
-    docker: &dyn DockerRunner,
-    container_name: &str,
-    // Cloud base URL for the auth-chain DIAGNOSTIC only. Never probed and
-    // never sent a credential; the probe URL is derived below.
-    cloud_base_url_for_diag: &str,
+struct CoreHealthWaitContext<'a> {
+    global: &'a GlobalOptions,
+    docker: &'a dyn DockerRunner,
+    container_name: &'a str,
+    /// Cloud base URL for the auth-chain DIAGNOSTIC only. Never probed and
+    /// never sent a credential; the probe URL is derived below.
+    cloud_base_url_for_diag: &'a str,
     timeout: Duration,
     emit_plain_ticks: bool,
-    bootstrap_core_key: Option<&str>,
+    bootstrap_core_key: Option<&'a str>,
+    brief_parent: Option<&'a str>,
+}
+
+/// Keep the failure from the deepest startup stage ever reached, and within a
+/// stage the most recent message.
+///
+/// Stages: 0 = port closed, 1 = HTTP reachable but unhealthy, 2 = authenticated
+/// health failed. A container that is still booting reports stage 0 on the
+/// first poll every single time, so preferring the *earliest* failure pinned
+/// every timeout to "port not accepting connections yet" and threw away the
+/// stage-2 auth diagnosis that says what is actually wrong. Preferring the
+/// latest failure instead was the original bug: the unconditional stage-2 probe
+/// overwrote a genuine stage-0 result. Deepest-stage-wins is correct for both:
+/// it reports how far startup got before it stopped.
+fn record_deepest_health_failure(
+    deepest: &mut Option<(u8, String)>,
+    priority: u8,
+    message: String,
+) {
+    let replace = deepest
+        .as_ref()
+        .map(|(existing, _)| priority >= *existing)
+        .unwrap_or(true);
+    if replace {
+        *deepest = Some((priority, message));
+    }
+}
+
+async fn wait_for_core_health(
+    ctx: CoreHealthWaitContext<'_>,
+    progress: &mut Option<&mut dyn ProgressReporter>,
 ) -> Result<()> {
+    let CoreHealthWaitContext {
+        global,
+        docker,
+        container_name,
+        cloud_base_url_for_diag,
+        timeout,
+        emit_plain_ticks,
+        bootstrap_core_key,
+        brief_parent,
+    } = ctx;
     // Probe what we PUBLISHED, never what the profile claims. This function
     // sends the bootstrap Core key as a bearer to whatever URL it probes, and
     // `profile.memory_base_url` derives from the Cloud API's
@@ -424,7 +529,7 @@ async fn wait_for_core_health(
 
     let deadline = tokio::time::Instant::now() + timeout;
     let mut last_progress = tokio::time::Instant::now() - Duration::from_secs(10);
-    let mut last_diag = "starting Core container".to_string();
+    let mut deepest_failure: Option<(u8, String)> = None;
 
     loop {
         if let Some(inspect) = docker.inspect(container_name).await?
@@ -442,11 +547,14 @@ async fn wait_for_core_health(
             );
         }
 
-        if tokio::net::TcpStream::connect((host, host_port))
+        let port_open = tokio::net::TcpStream::connect((host, host_port))
             .await
-            .is_err()
-        {
-            last_diag = format!("port {host}:{host_port} not accepting connections yet");
+            .is_ok();
+
+        let mut current_diag = if !port_open {
+            let message = format!("port {host}:{host_port} not accepting connections yet");
+            record_deepest_health_failure(&mut deepest_failure, 0, message.clone());
+            message
         } else if let Ok(resp) = reqwest::Client::new()
             .get(
                 local_url
@@ -457,38 +565,48 @@ async fn wait_for_core_health(
             .send()
             .await
         {
-            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-                last_diag =
-                    "Core HTTP is up (401 on unauthenticated health) — verifying auth chain"
-                        .to_string();
-            } else if resp.status().is_success() {
+            if resp.status().is_success() {
                 return Ok(());
+            }
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                "Core HTTP is up (401 on unauthenticated health) — verifying auth chain".to_string()
             } else {
-                last_diag = format!("Core returned HTTP {}", resp.status());
+                let message = format!("Core returned HTTP {}", resp.status());
+                record_deepest_health_failure(&mut deepest_failure, 1, message.clone());
+                message
             }
         } else {
-            last_diag = "Core port open but HTTP health probe failed".to_string();
-        }
+            let message = "Core port open but HTTP health probe failed".to_string();
+            record_deepest_health_failure(&mut deepest_failure, 1, message.clone());
+            message
+        };
 
-        match core_health_probe(
-            global,
-            docker,
-            container_name,
-            &local_url,
-            bootstrap_core_key,
-        )
-        .await
-        {
-            Ok(()) => return Ok(()),
-            Err(err) => {
-                last_diag = format_auth_chain_diag(
-                    cloud_base_url_for_diag,
-                    &format!("authenticated health failed: {err}"),
-                );
+        if port_open {
+            match core_health_probe(
+                global,
+                docker,
+                container_name,
+                &local_url,
+                bootstrap_core_key,
+            )
+            .await
+            {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    let message = format_auth_chain_diag(
+                        cloud_base_url_for_diag,
+                        &format!("authenticated health failed: {err}"),
+                    );
+                    current_diag = message.clone();
+                    record_deepest_health_failure(&mut deepest_failure, 2, message);
+                }
             }
         }
 
         if tokio::time::Instant::now() >= deadline {
+            let timeout_diag = deepest_failure
+                .map(|(_, message)| message)
+                .unwrap_or(current_diag);
             bail!(
                 concat!(
                     "Core health check timed out after {}s — last status: {}\n",
@@ -500,23 +618,36 @@ async fn wait_for_core_health(
                     "  then: am --base-url <tier> instance start --replace"
                 ),
                 timeout.as_secs(),
-                last_diag
+                timeout_diag
             );
         }
 
-        if emit_plain_ticks && last_progress.elapsed() >= Duration::from_secs(8) {
+        if last_progress.elapsed() >= Duration::from_secs(8) {
             let elapsed = timeout.as_secs().saturating_sub(
                 deadline
                     .saturating_duration_since(tokio::time::Instant::now())
                     .as_secs(),
             );
-            message(
-                true,
-                &format!(
-                    "Waiting for Core ({elapsed}s/{}) — {last_diag}",
-                    timeout.as_secs()
-                ),
-            );
+            let progress_diag = current_diag.as_str();
+            if brief_parent.is_some() {
+                progress_tick(
+                    progress,
+                    brief_parent,
+                    "health",
+                    &format!(
+                        "waiting for Core ({elapsed}s/{}) — {progress_diag}",
+                        timeout.as_secs()
+                    ),
+                );
+            } else if emit_plain_ticks {
+                message(
+                    true,
+                    &format!(
+                        "Waiting for Core ({elapsed}s/{}) — {progress_diag}",
+                        timeout.as_secs()
+                    ),
+                );
+            }
             last_progress = tokio::time::Instant::now();
         }
 
@@ -538,6 +669,111 @@ struct StartOptions<'a> {
     show_secrets: bool,
     brief_output: bool,
     progress: Option<&'a mut dyn ProgressReporter>,
+    /// During init (`brief_output`), tick this parent step instead of nested steps.
+    brief_progress_id: Option<&'a str>,
+    // When false, OpenAI key stdin prompts are skipped (`am init --yes`).
+    allow_prompts: bool,
+}
+
+/// Routes instance-start progress to nested steps or init parent ticks.
+fn progress_step(
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    brief_parent: Option<&str>,
+    id: &str,
+    label: &str,
+    brief_detail: &str,
+) {
+    if let Some(p) = progress.as_deref_mut() {
+        if let Some(parent) = brief_parent {
+            p.tick(parent, brief_detail);
+        } else {
+            p.start_step(id, label);
+        }
+    }
+}
+
+fn progress_tick(
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    brief_parent: Option<&str>,
+    id: &str,
+    detail: &str,
+) {
+    if let Some(p) = progress.as_deref_mut() {
+        let step = brief_parent.unwrap_or(id);
+        p.tick(step, detail);
+    }
+}
+
+fn progress_succeed(
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    brief_parent: Option<&str>,
+    id: &str,
+    detail: Option<&str>,
+) {
+    if let Some(parent) = brief_parent {
+        if let Some(d) = detail.filter(|s| !s.is_empty())
+            && let Some(p) = progress.as_deref_mut()
+        {
+            p.tick(parent, d);
+        }
+    } else if let Some(p) = progress.as_deref_mut() {
+        p.succeed(id, detail);
+    }
+}
+
+fn progress_warn(
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    brief_parent: Option<&str>,
+    id: &str,
+    detail: Option<&str>,
+) {
+    if let Some(p) = progress.as_deref_mut() {
+        let target = brief_parent.unwrap_or(id);
+        p.warn(target, detail);
+    }
+}
+
+fn progress_fail(
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    brief_parent: Option<&str>,
+    id: &str,
+    detail: Option<&str>,
+) {
+    if let Some(p) = progress.as_deref_mut() {
+        let target = brief_parent.unwrap_or(id);
+        p.fail(target, detail);
+    }
+}
+
+fn progress_pause(progress: &mut Option<&mut dyn ProgressReporter>) {
+    if let Some(p) = progress.as_deref_mut() {
+        p.pause_for_input();
+    }
+}
+
+fn progress_resume(progress: &mut Option<&mut dyn ProgressReporter>) {
+    if let Some(p) = progress.as_deref_mut() {
+        p.resume_after_input();
+    }
+}
+
+fn with_progress_paused_for_input<T>(
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    should_pause: bool,
+    op: impl FnOnce() -> T,
+) -> T {
+    if should_pause {
+        progress_pause(progress);
+    }
+    let result = op();
+    if should_pause {
+        progress_resume(progress);
+    }
+    result
+}
+
+fn progress_is_active(progress: &Option<&mut dyn ProgressReporter>) -> bool {
+    progress.is_some()
 }
 
 /// Whether an existing managed container must not be reused as-is.
@@ -567,9 +803,13 @@ async fn run_start(
     docker: &dyn DockerRunner,
     mut opts: StartOptions<'_>,
 ) -> Result<bool> {
-    if let Some(p) = opts.progress.as_deref_mut() {
-        p.start_step("credentials", "Resolve instance credentials");
-    }
+    progress_step(
+        &mut opts.progress,
+        opts.brief_progress_id,
+        "credentials",
+        "Resolve instance credentials",
+        "resolve credentials",
+    );
     let profile = ensure_local_profile(global).await?;
     docker.version().await?;
 
@@ -584,6 +824,7 @@ async fn run_start(
     let expected_jwks = jwks_url(&profile.base_url)?;
 
     let existing = docker.inspect(&config.container_name).await?;
+    let mut confirmed_managed_recreate = false;
     if let Some(inspect) = &existing
         && existing_container_blocks_start(
             inspect,
@@ -593,26 +834,52 @@ async fn run_start(
             opts.replace,
         )
     {
-        bail!(
-            "Core container profile or Cloud env does not match active CLI profile '{}' — run `am instance start --replace`",
-            profile.name
+        let may_prompt = may_prompt_for_input(opts.allow_prompts);
+        let confirmed = with_progress_paused_for_input(&mut opts.progress, may_prompt, || {
+            confirm_recreate_mismatched_managed_container(
+                &config.container_name,
+                &profile.name,
+                opts.allow_prompts,
+            )
+        })?;
+        if !confirmed {
+            bail!(
+                "leaving Core container unchanged — recreate later with `am instance start --replace`"
+            );
+        }
+        confirmed_managed_recreate = true;
+        progress_tick(
+            &mut opts.progress,
+            opts.brief_progress_id,
+            "credentials",
+            "recreate approved for profile mismatch",
         );
     }
 
-    let may_prompt = may_prompt_openai_key(!global.quiet);
     let missing_key =
-        needs_interactive_openai_key(&profile.name, &opts.openai_api_key, !global.quiet);
-    if may_prompt && let Some(p) = opts.progress.as_deref_mut() {
-        p.pause_for_input();
-        if missing_key {
-            p.tick("credentials", "OpenAI API key required below");
-        }
+        needs_interactive_openai_key(&profile.name, &opts.openai_api_key, opts.allow_prompts);
+    let pause_for_openai = may_prompt_openai_key(opts.allow_prompts) && missing_key;
+    if pause_for_openai {
+        progress_pause(&mut opts.progress);
+        progress_tick(
+            &mut opts.progress,
+            opts.brief_progress_id,
+            "credentials",
+            "OpenAI API key required below",
+        );
     }
+    progress_tick(
+        &mut opts.progress,
+        opts.brief_progress_id,
+        "credentials",
+        "validating OpenAI key",
+    );
     let openai_key =
-        ensure_openai_api_key(&profile.name, opts.openai_api_key, !global.quiet).await?;
-    if may_prompt && let Some(p) = opts.progress.as_deref_mut() {
-        p.resume_after_input();
+        ensure_openai_api_key(&profile.name, opts.openai_api_key, opts.allow_prompts).await;
+    if pause_for_openai {
+        progress_resume(&mut opts.progress);
     }
+    let openai_key = openai_key?;
 
     let shell_override = resolve_core_api_key();
     ensure_core_key_override_allowed(
@@ -623,6 +890,12 @@ async fn run_start(
     )
     .await?;
 
+    progress_tick(
+        &mut opts.progress,
+        opts.brief_progress_id,
+        "credentials",
+        "Cloud API key",
+    );
     let (api_key, cloud_key_outcome) = ensure_cloud_api_key(global, &profile).await?;
 
     let existing_for_drift = docker.inspect(&config.container_name).await?;
@@ -640,25 +913,49 @@ async fn run_start(
     let plan = ReplacementPlan::resolve(
         opts.replace,
         opts.sync_managed || cloud_key_outcome.requires_container_sync() || credentials_drifted,
+        confirmed_managed_recreate,
     );
     let needs_recreate = plan.recreate_managed;
     let core_api_key = resolve_instance_core_api_key(docker, false).await?;
     let env = build_instance_env(&profile, &api_key, &openai_key, core_api_key.clone())?;
-    if let Some(p) = opts.progress.as_deref_mut() {
-        p.succeed("credentials", Some("ready"));
-        p.start_step("container", "Create or start container");
-    }
+    progress_succeed(
+        &mut opts.progress,
+        opts.brief_progress_id,
+        "credentials",
+        Some("ready"),
+    );
+    progress_step(
+        &mut opts.progress,
+        opts.brief_progress_id,
+        "container",
+        "Create or start container",
+        "create or start container",
+    );
 
     let existing = docker.inspect(&config.container_name).await?;
 
     match &existing {
         Some(inspect) if !inspect.managed_by_cli => {
-            if confirm_replace_foreign_container(&config.container_name, plan.may_replace_foreign)?
-            {
+            let may_prompt_foreign =
+                may_prompt_for_input(opts.allow_prompts) && !plan.may_replace_foreign;
+            let should_replace =
+                with_progress_paused_for_input(&mut opts.progress, may_prompt_foreign, || {
+                    confirm_replace_foreign_container(
+                        &config.container_name,
+                        plan.may_replace_foreign,
+                        opts.allow_prompts,
+                    )
+                })?;
+            if should_replace {
                 docker.rm_force(&config.container_name).await?;
                 docker.run(&config, &env).await?;
-                if let Some(p) = opts.progress.as_deref_mut() {
-                    p.succeed("container", Some("replaced foreign container"));
+                if progress_is_active(&opts.progress) {
+                    progress_succeed(
+                        &mut opts.progress,
+                        opts.brief_progress_id,
+                        "container",
+                        Some("replaced foreign container"),
+                    );
                 } else {
                     message(
                         !global.quiet,
@@ -666,8 +963,13 @@ async fn run_start(
                     );
                 }
             } else {
-                if let Some(p) = opts.progress.as_deref_mut() {
-                    p.warn("container", Some("left unchanged"));
+                if progress_is_active(&opts.progress) {
+                    progress_warn(
+                        &mut opts.progress,
+                        opts.brief_progress_id,
+                        "container",
+                        Some("left unchanged"),
+                    );
                 } else {
                     message(!global.quiet, "Leaving existing container unchanged.");
                 }
@@ -676,8 +978,13 @@ async fn run_start(
         }
         Some(inspect) if inspect.state.is_running() && !needs_recreate => {
             if opts.brief_output {
-                if let Some(p) = opts.progress.as_deref_mut() {
-                    p.succeed("container", Some("already running"));
+                if progress_is_active(&opts.progress) {
+                    progress_succeed(
+                        &mut opts.progress,
+                        opts.brief_progress_id,
+                        "container",
+                        Some("already running"),
+                    );
                 } else {
                     message(
                         !global.quiet,
@@ -690,8 +997,13 @@ async fn run_start(
                 instance_status_report(&profile, Some(inspect), docker, global, opts.show_secrets)
                     .await?;
             emit_instance_report(global, &report, opts.show_secrets)?;
-            if let Some(p) = opts.progress.as_deref_mut() {
-                p.succeed("container", Some("already running"));
+            if progress_is_active(&opts.progress) {
+                progress_succeed(
+                    &mut opts.progress,
+                    opts.brief_progress_id,
+                    "container",
+                    Some("already running"),
+                );
             } else {
                 message(!global.quiet, "Instance already running.");
             }
@@ -700,24 +1012,39 @@ async fn run_start(
         Some(_) if needs_recreate => {
             docker.rm_force(&config.container_name).await?;
             docker.run(&config, &env).await?;
-            if let Some(p) = opts.progress.as_deref_mut() {
-                p.succeed("container", Some("recreated"));
+            if progress_is_active(&opts.progress) {
+                progress_succeed(
+                    &mut opts.progress,
+                    opts.brief_progress_id,
+                    "container",
+                    Some("recreated"),
+                );
             } else {
                 message(!global.quiet, "Recreated managed container.");
             }
         }
         Some(_) => {
             docker.start(&config.container_name).await?;
-            if let Some(p) = opts.progress.as_deref_mut() {
-                p.succeed("container", Some("started existing"));
+            if progress_is_active(&opts.progress) {
+                progress_succeed(
+                    &mut opts.progress,
+                    opts.brief_progress_id,
+                    "container",
+                    Some("started existing"),
+                );
             } else {
                 message(!global.quiet, "Started existing managed container.");
             }
         }
         None => {
             docker.run(&config, &env).await?;
-            if let Some(p) = opts.progress.as_deref_mut() {
-                p.succeed("container", Some("started new"));
+            if progress_is_active(&opts.progress) {
+                progress_succeed(
+                    &mut opts.progress,
+                    opts.brief_progress_id,
+                    "container",
+                    Some("started new"),
+                );
             } else {
                 message(!global.quiet, "Started new managed container.");
             }
@@ -725,33 +1052,50 @@ async fn run_start(
     }
 
     if opts.wait_secs > 0 {
-        let has_progress = opts.progress.is_some();
-        if let Some(p) = opts.progress.as_deref_mut() {
-            p.start_step("health", "Wait until Core healthy");
-        }
+        progress_step(
+            &mut opts.progress,
+            opts.brief_progress_id,
+            "health",
+            "Wait until Core healthy",
+            "wait until Core healthy",
+        );
         // Wizard spinner keeps ticking; plain/brief emit periodic messages.
-        let emit_plain_ticks = !has_progress && !global.quiet;
+        let emit_plain_ticks = !progress_is_active(&opts.progress) && !global.quiet;
         let health = wait_for_core_health(
-            global,
-            docker,
-            &config.container_name,
-            &profile.base_url,
-            Duration::from_secs(opts.wait_secs),
-            emit_plain_ticks,
-            Some(core_api_key.as_str()),
+            CoreHealthWaitContext {
+                global,
+                docker,
+                container_name: &config.container_name,
+                cloud_base_url_for_diag: &profile.base_url,
+                timeout: Duration::from_secs(opts.wait_secs),
+                emit_plain_ticks,
+                bootstrap_core_key: Some(core_api_key.as_str()),
+                brief_parent: opts.brief_progress_id,
+            },
+            &mut opts.progress,
         )
         .await;
         match health {
             Ok(()) => {
-                if let Some(p) = opts.progress.as_deref_mut() {
-                    p.succeed("health", Some("healthy"));
+                if progress_is_active(&opts.progress) {
+                    progress_succeed(
+                        &mut opts.progress,
+                        opts.brief_progress_id,
+                        "health",
+                        Some("healthy"),
+                    );
                 } else if !opts.brief_output {
                     message(!global.quiet, "Core is healthy.");
                 }
             }
             Err(err) => {
-                if let Some(p) = opts.progress.as_deref_mut() {
-                    p.fail("health", Some(&err.to_string()));
+                if progress_is_active(&opts.progress) {
+                    progress_fail(
+                        &mut opts.progress,
+                        opts.brief_progress_id,
+                        "health",
+                        Some(&err.to_string()),
+                    );
                 }
                 if let Ok(logs) = docker.logs_tail(&config.container_name, 20).await {
                     message(
@@ -823,14 +1167,19 @@ async fn run_restart(
         None => bail!("no managed instance '{name}' — run `am instance start`"),
     }
     if wait_secs > 0 {
+        let mut progress: Option<&mut dyn ProgressReporter> = None;
         wait_for_core_health(
-            global,
-            docker,
-            name,
-            &profile.base_url,
-            Duration::from_secs(wait_secs),
-            !global.quiet,
-            None,
+            CoreHealthWaitContext {
+                global,
+                docker,
+                container_name: name,
+                cloud_base_url_for_diag: &profile.base_url,
+                timeout: Duration::from_secs(wait_secs),
+                emit_plain_ticks: !global.quiet,
+                bootstrap_core_key: None,
+                brief_parent: None,
+            },
+            &mut progress,
         )
         .await?;
         message(!global.quiet, "Core is healthy.");
@@ -1074,7 +1423,7 @@ mod tests {
     /// `--replace` ever supplied and no prompt shown.
     #[test]
     fn credential_sync_never_authorises_replacing_a_foreign_container() {
-        let plan = ReplacementPlan::resolve(false, true);
+        let plan = ReplacementPlan::resolve(false, true, false);
 
         assert!(
             plan.recreate_managed,
@@ -1088,7 +1437,7 @@ mod tests {
 
     #[test]
     fn the_operator_flag_authorises_both() {
-        let plan = ReplacementPlan::resolve(true, false);
+        let plan = ReplacementPlan::resolve(true, false, false);
         assert!(plan.recreate_managed);
         assert!(
             plan.may_replace_foreign,
@@ -1098,7 +1447,7 @@ mod tests {
 
     #[test]
     fn neither_without_a_reason() {
-        let plan = ReplacementPlan::resolve(false, false);
+        let plan = ReplacementPlan::resolve(false, false, false);
         assert!(!plan.recreate_managed);
         assert!(!plan.may_replace_foreign);
     }
@@ -1237,9 +1586,86 @@ mod tests {
     }
 
     #[test]
+    fn foreign_container_confirm_fails_closed_without_allow_prompts() {
+        let err = confirm_replace_foreign_container("atomic-memory", false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not created by `am instance`"));
+        assert!(err.contains("am instance start --replace"));
+    }
+
+    #[test]
+    fn may_prompt_for_input_requires_allow_prompts() {
+        assert!(!may_prompt_for_input(false));
+    }
+
+    #[test]
     fn may_prompt_openai_key_requires_interactive_flag() {
         // Non-interactive (--yes / quiet) must stay fail-fast even on a TTY.
         assert!(!may_prompt_openai_key(false));
+    }
+
+    #[test]
+    fn openai_key_source_persists_only_prompted_keys() {
+        // The prompt is the only surface that tells the user the key is saved.
+        assert!(OpenAiKeySource::Prompted.should_persist());
+        // A CI runner exporting OPENAI_API_KEY must not get it written to disk,
+        // and a one-off --openai-api-key must not outlive the invocation.
+        assert!(!OpenAiKeySource::Environment.should_persist());
+        assert!(!OpenAiKeySource::Flag.should_persist());
+        // Already on disk; rewriting it is a no-op at best.
+        assert!(!OpenAiKeySource::Stored.should_persist());
+    }
+
+    #[test]
+    fn openai_key_source_clears_only_a_rejected_stored_key() {
+        // Only the credential that was actually tried and rejected may be
+        // deleted. Rejecting a flag or environment override says nothing about
+        // the stored key, which was never even sent to OpenAI.
+        assert!(OpenAiKeySource::Stored.should_clear_stored());
+        assert!(!OpenAiKeySource::Flag.should_clear_stored());
+        assert!(!OpenAiKeySource::Environment.should_clear_stored());
+        assert!(!OpenAiKeySource::Prompted.should_clear_stored());
+    }
+
+    #[test]
+    fn health_failure_keeps_deepest_stage_not_first_poll() {
+        // A booting container reports a closed port on the first poll every
+        // time. That must not outrank the auth-chain failure that follows.
+        let mut failure = None;
+        record_deepest_health_failure(&mut failure, 0, "port closed".to_string());
+        record_deepest_health_failure(&mut failure, 0, "port closed".to_string());
+        record_deepest_health_failure(&mut failure, 2, "auth chain failed".to_string());
+        assert_eq!(
+            failure.as_ref().map(|(_, m)| m.as_str()),
+            Some("auth chain failed")
+        );
+
+        // Within one stage the freshest message wins.
+        record_deepest_health_failure(&mut failure, 2, "auth chain failed (jwks)".to_string());
+        assert_eq!(
+            failure.as_ref().map(|(_, m)| m.as_str()),
+            Some("auth chain failed (jwks)")
+        );
+
+        // A shallower later probe must not undo real progress.
+        record_deepest_health_failure(&mut failure, 1, "HTTP 503".to_string());
+        assert_eq!(
+            failure.as_ref().map(|(_, m)| m.as_str()),
+            Some("auth chain failed (jwks)")
+        );
+    }
+
+    #[test]
+    fn health_failure_reports_closed_port_when_core_never_starts() {
+        // The original bug: an unconditional later probe overwrote the only
+        // honest diagnosis. If the port never opens, that is the answer.
+        let mut failure = None;
+        record_deepest_health_failure(&mut failure, 0, "port closed".to_string());
+        assert_eq!(
+            failure.as_ref().map(|(_, m)| m.as_str()),
+            Some("port closed")
+        );
     }
 
     #[test]
@@ -1322,12 +1748,13 @@ mod tests {
     fn cloud_key_tier_mismatch_hint_mentions_key_create() {
         let msg = crate::commands::cloud_api_key::ProvisionOutcome::Rotated {
             key_id: "key_x".into(),
+            key_name: "connected-local-runtime-a1b2c3d4e5f6".into(),
         }
         .operator_message()
         .unwrap();
-        assert!(msg.contains(crate::instance::AUTO_KEY_NAME));
+        assert!(msg.contains("connected-local-runtime-a1b2c3d4e5f6"));
         assert!(msg.contains("Rotated"));
-        assert!(msg.contains("quota-safe"));
+        assert!(!msg.contains("quota-safe"));
     }
 
     fn managed_inspect(state: ContainerState, profile: &str) -> ContainerInspect {
@@ -1349,7 +1776,8 @@ mod tests {
     fn cloud_key_rotated_outcome_forces_replace_sync() {
         assert!(
             ProvisionOutcome::Rotated {
-                key_id: "key_x".into()
+                key_id: "key_x".into(),
+                key_name: "connected-local-runtime-a1b2c3d4e5f6".into(),
             }
             .requires_container_sync()
         );
@@ -1425,5 +1853,157 @@ mod tests {
             "https://api.atomicstrata.ai/.well-known/jwks.json",
             false,
         ));
+    }
+
+    struct RecordingReporter {
+        steps: Vec<String>,
+        ticks: Vec<String>,
+        outcomes: Vec<String>,
+        input_events: Vec<&'static str>,
+    }
+
+    impl ProgressReporter for RecordingReporter {
+        fn start_step(&mut self, id: &str, label: &str) {
+            self.steps.push(format!("{id}:{label}"));
+        }
+        fn tick(&mut self, id: &str, detail: &str) {
+            self.ticks.push(format!("{id}:{detail}"));
+        }
+        fn pause_for_input(&mut self) {
+            self.input_events.push("pause");
+        }
+        fn resume_after_input(&mut self) {
+            self.input_events.push("resume");
+        }
+        fn succeed(&mut self, id: &str, detail: Option<&str>) {
+            self.outcomes
+                .push(format!("ok:{id}:{}", detail.unwrap_or("")));
+        }
+        fn warn(&mut self, _id: &str, _detail: Option<&str>) {}
+        fn fail(&mut self, _id: &str, _detail: Option<&str>) {}
+        fn finish(&mut self) {}
+    }
+
+    #[test]
+    fn brief_instance_progress_ticks_parent_step() {
+        let mut reporter = RecordingReporter {
+            steps: Vec::new(),
+            ticks: Vec::new(),
+            outcomes: Vec::new(),
+            input_events: Vec::new(),
+        };
+        let mut progress: Option<&mut dyn ProgressReporter> = Some(&mut reporter);
+        progress_step(
+            &mut progress,
+            Some("runtime"),
+            "credentials",
+            "Resolve instance credentials",
+            "resolve credentials",
+        );
+        progress_tick(
+            &mut progress,
+            Some("runtime"),
+            "credentials",
+            "validating OpenAI key",
+        );
+        progress_succeed(&mut progress, Some("runtime"), "credentials", Some("ready"));
+        progress_step(
+            &mut progress,
+            Some("runtime"),
+            "container",
+            "Create or start container",
+            "create or start container",
+        );
+        assert!(
+            reporter.steps.is_empty(),
+            "brief mode must not open nested steps"
+        );
+        assert_eq!(
+            reporter.ticks,
+            vec![
+                "runtime:resolve credentials".to_string(),
+                "runtime:validating OpenAI key".to_string(),
+                "runtime:ready".to_string(),
+                "runtime:create or start container".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn nested_instance_progress_uses_step_ids() {
+        let mut reporter = RecordingReporter {
+            steps: Vec::new(),
+            ticks: Vec::new(),
+            outcomes: Vec::new(),
+            input_events: Vec::new(),
+        };
+        let mut progress: Option<&mut dyn ProgressReporter> = Some(&mut reporter);
+        progress_step(
+            &mut progress,
+            None,
+            "credentials",
+            "Resolve instance credentials",
+            "unused",
+        );
+        progress_succeed(&mut progress, None, "credentials", Some("ready"));
+        assert_eq!(reporter.steps.len(), 1);
+        assert_eq!(
+            reporter.steps[0],
+            "credentials:Resolve instance credentials"
+        );
+        assert_eq!(reporter.outcomes[0], "ok:credentials:ready");
+        assert!(reporter.ticks.is_empty());
+    }
+
+    #[test]
+    fn managed_recreate_confirmation_does_not_authorise_foreign_replace() {
+        let plan = ReplacementPlan::resolve(false, false, true);
+        assert!(
+            plan.recreate_managed,
+            "confirmed managed mismatch must recreate our container",
+        );
+        assert!(
+            !plan.may_replace_foreign,
+            "managed recreate consent must not grant foreign-container authority",
+        );
+    }
+
+    #[test]
+    fn mismatched_managed_recreate_fails_closed_when_noninteractive() {
+        let err = confirm_recreate_mismatched_managed_container("atomic-memory", "tesdt", false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("does not match active CLI profile 'tesdt'"));
+        assert!(err.contains("am instance start --replace"));
+    }
+
+    #[test]
+    fn progress_pause_resumes_even_when_paused_op_fails() {
+        let mut reporter = RecordingReporter {
+            steps: Vec::new(),
+            ticks: Vec::new(),
+            outcomes: Vec::new(),
+            input_events: Vec::new(),
+        };
+        let mut progress: Option<&mut dyn ProgressReporter> = Some(&mut reporter);
+        let result: Result<(), &str> =
+            with_progress_paused_for_input(&mut progress, true, || Err("openai key rejected"));
+        assert!(result.is_err());
+        assert_eq!(reporter.input_events, vec!["pause", "resume"]);
+    }
+
+    #[test]
+    fn progress_pause_resumes_around_foreign_confirm_gate() {
+        let mut reporter = RecordingReporter {
+            steps: Vec::new(),
+            ticks: Vec::new(),
+            outcomes: Vec::new(),
+            input_events: Vec::new(),
+        };
+        let mut progress: Option<&mut dyn ProgressReporter> = Some(&mut reporter);
+        let confirmed =
+            with_progress_paused_for_input(&mut progress, true, || Ok::<bool, &str>(false));
+        assert!(!confirmed.unwrap());
+        assert_eq!(reporter.input_events, vec!["pause", "resume"]);
     }
 }

@@ -55,7 +55,8 @@
       "coverage_label": "package_protocol",
       "publish_status": "published",
       "install_type": "rust_binary_installer",
-      "public_install_command": "curl -fsSL https://get.atomicstrata.ai/install.sh | sh"
+      "public_install_command": "curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh",
+      "public_onboarding_command": "curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --init"
     },
     {
       "kind": "package",

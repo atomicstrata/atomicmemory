@@ -2,12 +2,13 @@
 
 use std::time::Duration;
 
+use am_cloud_client::MemoryClient;
 use am_core_types::{CoreIngestRequest, CoreMemoryQuery, CoreSearchRequest};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::cli::GlobalOptions;
-use crate::commands::client::memory_client;
+use crate::commands::client::{memory_client_for_profile, resolve_ctx};
 use crate::telemetry::{ActivationEvent, capture_activation};
 use crate::validation::with_operation_recovery;
 
@@ -63,20 +64,27 @@ pub async fn run_memory_smoke(
     opts: SmokeOptions,
     telemetry: Option<SmokeTelemetry>,
 ) -> Result<SmokeResult> {
-    run_memory_smoke_inner(global, opts, telemetry)
+    let profile = resolve_ctx(global)
         .await
-        .map_err(|err| with_operation_recovery(err, "Memory smoke"))
+        .context("resolve profile for smoke test")?;
+    // Building the client is where a missing or withheld credential surfaces.
+    // Returning that straight through `?` gave it only generic context, so the
+    // profile-aware playbook this function installs below never applied to the
+    // most likely failure.
+    let client = memory_client_for_profile(&profile)
+        .await
+        .map_err(|err| with_operation_recovery(err, "Memory smoke client", profile.kind))?;
+    run_memory_smoke_with_client(client, opts, telemetry)
+        .await
+        .map_err(|err| with_operation_recovery(err, "Memory smoke", profile.kind))
 }
 
-async fn run_memory_smoke_inner(
-    global: &GlobalOptions,
+async fn run_memory_smoke_with_client(
+    client: MemoryClient,
     opts: SmokeOptions,
     telemetry: Option<SmokeTelemetry>,
 ) -> Result<SmokeResult> {
     let marker = format!("am-cli-smoke-{}", uuid_like_marker());
-    let (_profile, client) = memory_client(global)
-        .await
-        .context("memory client for smoke test")?;
 
     let ingest_req = smoke_ingest_request(&marker);
 
@@ -201,6 +209,7 @@ fn uuid_like_marker() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ProfileKind;
 
     #[test]
     fn smoke_constants_are_stable() {
@@ -214,5 +223,39 @@ mod tests {
         assert_eq!(req.skip_extraction, Some(true));
         assert_eq!(req.content_class.as_deref(), Some("summary"));
         assert!(req.conversation.contains("marker-abc"));
+    }
+
+    #[test]
+    fn smoke_wires_recovery_into_client_construction() {
+        // The formatter test below passes even if run_memory_smoke never calls
+        // it. Pin the wiring: the client-construction path must carry recovery
+        // text, which is where a missing credential actually fails.
+        let src = include_str!("smoke.rs");
+        let body = src
+            .split("pub async fn run_memory_smoke(")
+            .nth(1)
+            .expect("run_memory_smoke present");
+        let body = &body[..body.find("\nasync fn ").unwrap_or(body.len())];
+        assert!(
+            body.contains("memory_client_for_profile"),
+            "client must be built from the resolved profile"
+        );
+        assert_eq!(
+            body.matches("with_operation_recovery").count(),
+            2,
+            "both client construction and the smoke run must install recovery"
+        );
+    }
+
+    #[test]
+    fn smoke_recovery_uses_client_profile_kind_without_re_resolve() {
+        let err = with_operation_recovery(
+            anyhow::anyhow!("http 401 unauthorized"),
+            "Memory smoke",
+            ProfileKind::Local,
+        );
+        let msg = err.to_string();
+        assert!(!msg.contains("am init --project"));
+        assert!(msg.contains("am instance"));
     }
 }

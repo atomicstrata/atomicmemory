@@ -7,10 +7,24 @@ Phase 2 ships prebuilt **`am`** binaries. End users install with one command;
 contributors can still build from source.
 
 ```bash
-curl -fsSL https://get.atomicstrata.ai/install.sh | sh
-. "$HOME/.atomicmemory/env"   # activate PATH in this shell (new terminals: not needed)
-am --help
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --init
 ```
+
+The installer invokes the installed binary directly for onboarding. If it adds
+`am` to PATH, open a new terminal before subsequent `am` commands or use the
+shell-specific activation command it prints. It always checks `SHA256SUMS`.
+Default `auto` mode also verifies the GitHub build attestation when `gh` is
+installed and authenticated; if `gh` is unavailable or logged out, installation
+continues with a checksum-only warning.
+
+To require provenance verification and fail before installation when GitHub
+authentication is unavailable:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | AM_VERIFY_ATTESTATION=1 sh -s -- --init
+```
+
+Authenticate first with `gh auth login`, or provide `GH_TOKEN` in automation.
 
 Canonical artifacts live on [GitHub Releases](https://github.com/atomicstrata/atomicmemory/releases)
 (checksums + build provenance). The domain above is a mirrored convenience
@@ -43,7 +57,7 @@ curl -fsSLO "${base}/am-${ver}-${target}.tar.gz"
 curl -fsSL  "${base}/SHA256SUMS" | shasum -a 256 -c --ignore-missing
 ```
 
-With GitHub CLI:
+For manual provenance verification with an authenticated GitHub CLI:
 
 ```bash
 gh attestation verify "./am-${ver}-${target}.tar.gz" \
@@ -54,22 +68,74 @@ gh attestation verify "./am-${ver}-${target}.tar.gz" \
 
 ## Quick start
 
+The onboarding installer above runs plain `am init`, whose default path is
+Hosted Cloud. It signs in, selects a managed project, reuses a working
+project-bound credential or provisions this installation's
+`am-cli-<12-hex>` key, saves the active Cloud profile, and leaves the CLI ready
+to use:
+
 ```bash
-am init
 am memory ingest "I prefer aisle seats when flying."
 ```
 
-`am init` runs browser login (OAuth), bootstraps a personal workspace when
-needed, links a local profile, and can start Core in Docker. Skip Core with
-`am init --no-instance`.
+Interactive `am init` runs browser login (OAuth), bootstraps a personal
+workspace when needed, and offers:
 
-For a Connected Local project already created in the dashboard:
+- **Hosted Cloud** — option 1/default; managed memory with no Docker or OpenAI
+  key. One project is selected automatically; multiple projects are prompted.
+- **Connected Local** — option 2; links a Local project and can start Core in
+  Docker (`--no-instance` to skip). Select it explicitly with `am init --local`.
+
+`--project <id-or-slug>` is type-aware. A Cloud project completes Hosted Cloud
+configuration; a Local project follows the existing Local workflow. `--cloud`
+and `--local` assert the expected type, and ambiguous case-insensitive slugs
+must be replaced with a unique project ID:
 
 ```bash
-am init --project <project-slug>
+am init --project <id-or-slug>
+am init --cloud --project <cloud-id>
+am init --local --project <local-id>
 ```
 
-### Manual steps (equivalent)
+Plain non-interactive `am init --yes` also follows Hosted Cloud. Local
+automation must be explicit and provide `OPENAI_API_KEY` when starting Core:
+
+```bash
+am init --yes --project <cloud-id>
+OPENAI_API_KEY=sk-... am init --local --yes
+```
+
+With no Cloud projects, interactive init opens onboarding and polls every two
+seconds for up to ten minutes, then resumes after project creation. Without a
+TTY or under `--yes`, it prints the onboarding URL and exact `am init` recovery
+command and exits nonzero instead of waiting for browser work.
+
+Hosted credentials are stored under `hosted-cloud-<project-id>`, so switching
+projects does not discard earlier secrets. A stored key is reused only when its
+Cloud origin and project binding match and `MemoryClient::health()` succeeds.
+When replacement is necessary, the CLI derives a stable 12-character lowercase
+hex suffix from a random installation ID stored in `config.toml`. It rotates
+only the exact `am-cli-<12-hex>` key for this installation and creates it when
+absent. It never rotates a legacy unsuffixed `am-cli` key or another
+installation's suffix. Non-authentication probe or key-list errors fail closed
+without rotating or creating a key.
+
+If API-key quota is full, init preserves the previous default profile, does not
+rotate or revoke unrelated keys as recovery, and prints the project dashboard
+plus exact `am key list`, `am key revoke`, and `am init --project` recovery
+commands.
+
+Hosted Cloud profiles activated by `am init` are marked `hosted_cloud_managed =
+true` in the profile config and use the saved `amc_` key. Pre-marker init
+profiles without that field still match the init credential contract
+(`api_key_ref = hosted-cloud-<project-id>` with the same `project_id`) and
+prefer the stored key. Hand-created Cloud profiles are marked
+`hosted_cloud_managed = false` and honor explicit `ATOMICMEMORY_API_KEY` exports
+even when the profile or credential ref is named `hosted-cloud-*`. A stale
+shell export is ignored for init-managed profiles unless you set
+`ATOMICMEMORY_API_KEY_FORCE=1` for a one-off override.
+
+### Connected Local manual steps (equivalent to `am init --local`)
 
 ```bash
 am auth login
@@ -82,13 +148,12 @@ local `CORE_API_KEY` into the managed container (reused from the state volume on
 later starts). Local `am memory *` / smoke prefer that persisted Core key over a
 Cloud-minted JWT.
 
-Cloud key policy for Connected Local: the CLI treats `connected-local-runtime` as
-a **singleton per project**. If a working key is already stored locally it is
-reused; otherwise an existing active key with that name is **rotated** (obvious
-stderr message) instead of creating another and burning API-key quota. Create
-only runs when no such key exists. Rotating that key invalidates the previous
-secret on every machine that shared it — prefer one operator machine, or re-run
-`am init` / `am connect --project` on other machines after a rotate.
+Cloud key policy for Connected Local uses the same installation identity. If a
+working key is already stored locally it is reused; otherwise the CLI rotates
+only `connected-local-runtime-<12-hex>` for this installation and creates it
+when absent. Legacy unsuffixed keys and other installations' suffixes are never
+automatic rotation or quota-recovery candidates. Independently configured
+machines therefore keep independent credentials.
 
 ### Token fallback
 
@@ -156,8 +221,9 @@ Run `am <command> --help` for flags.
 
 ### Host MCP integration
 
-After `am init` or Connected Local setup, wire AtomicMemory into agent hosts
-(global user config only in v1):
+After plain `am init` or `am init --local`, the selected project and API key are
+already active. Wire AtomicMemory into agent hosts (global user config only in
+v1):
 
 ```bash
 am integrate detect

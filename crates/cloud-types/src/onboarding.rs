@@ -9,7 +9,7 @@ use crate::projects::Project;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct EnsureOnboardingRequest {
     /// When true, ensure org membership but do not auto-create the default cloud project.
-    /// Used by `am init`, which creates a local project instead.
+    /// Used by `am init`, which selects an existing project or waits for browser onboarding.
     #[serde(default)]
     pub skip_default_project: bool,
 }

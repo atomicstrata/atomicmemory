@@ -11,6 +11,12 @@ pub const ENV_CORE_IMAGE: &str = "ATOMICMEMORY_CORE_IMAGE";
 /// Hostnames treated as production Cloud API endpoints (exact match, lowercase).
 pub const PROD_API_HOSTS: [&str; 1] = ["api.atomicstrata.ai"];
 
+/// Sanctioned API hostname → memory web hostname for automatic browser open.
+const SANCTIONED_MEMORY_WEB_HOSTS: [(&str, &str); 2] = [
+    ("api.atomicstrata.ai", "memory.atomicstrata.ai"),
+    ("api.dev.atomicstrata.ai", "memory.dev.atomicstrata.ai"),
+];
+
 /// Named Cloud tier — production preset only in the public CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -91,14 +97,62 @@ pub fn is_production_api_url(raw: &str) -> bool {
         .is_some_and(|host| PROD_API_HOSTS.contains(&host.as_str()))
 }
 
-/// Dashboard project overview URL for production Cloud hosts only.
-pub fn dashboard_project_url(api_base_url: &str, project_id: &str) -> Option<String> {
-    if !is_production_api_url(api_base_url) {
+/// True when the URL targets a remote Cloud API (HTTPS, not loopback).
+///
+/// Used to honor dashboard shell exports (`ATOMICMEMORY_API_URL` + `amc_` key)
+/// over a stored Local default profile for memory and MCP wiring.
+pub fn is_remote_cloud_api_url(raw: &str) -> bool {
+    let Ok(url) = parse_api_base_url(raw) else {
+        return false;
+    };
+    if url.scheme() != "https" {
+        return false;
+    }
+    match url.host_str().map(str::to_ascii_lowercase) {
+        Some(host) if host == "localhost" || host == "127.0.0.1" || host == "::1" => false,
+        Some(_) => true,
+        None => false,
+    }
+}
+
+/// Memory web app origin for sanctioned Cloud API hosts only (HTTPS, default port).
+pub fn memory_web_origin(api_base_url: &str) -> Option<String> {
+    let url = parse_api_base_url(api_base_url).ok()?;
+    if url.scheme() != "https" {
         return None;
     }
-    let normalized = parse_api_base_url(api_base_url).ok()?.to_string();
-    let memory = normalized.replace("://api.", "://memory.");
-    Some(format!("{memory}app/projects/{project_id}/overview"))
+    if url.port().is_some_and(|port| port != 443) {
+        return None;
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    let host = url.host_str()?.to_ascii_lowercase();
+    let memory_host = sanctioned_memory_web_host(&host)?;
+    Some(format!("https://{memory_host}/"))
+}
+
+fn sanctioned_memory_web_host(api_host: &str) -> Option<&'static str> {
+    SANCTIONED_MEMORY_WEB_HOSTS
+        .iter()
+        .find(|(api, _)| *api == api_host)
+        .map(|(_, memory)| *memory)
+}
+
+/// Dashboard project overview URL when the API host follows `api.<tier>…`.
+pub fn dashboard_project_url(api_base_url: &str, project_id: &str) -> Option<String> {
+    memory_web_origin(api_base_url)
+        .map(|origin| format!("{origin}app/projects/{project_id}/overview"))
+}
+
+/// Dashboard onboarding entry (create Hosted Cloud project).
+pub fn dashboard_onboarding_url(api_base_url: &str) -> Option<String> {
+    memory_web_origin(api_base_url).map(|origin| format!("{origin}app/onboarding"))
+}
+
+/// Dashboard projects list (pick among existing Hosted Cloud projects).
+pub fn dashboard_projects_url(api_base_url: &str) -> Option<String> {
+    memory_web_origin(api_base_url).map(|origin| format!("{origin}app/projects"))
 }
 
 /// Map a Cloud API base URL to Core's `CLOUD_ENV` tier label.
@@ -268,6 +322,20 @@ mod tests {
     }
 
     #[test]
+    fn is_remote_cloud_api_url_accepts_https_non_loopback() {
+        assert!(is_remote_cloud_api_url("https://api.atomicstrata.ai"));
+        assert!(is_remote_cloud_api_url("https://api.dev.atomicstrata.ai"));
+    }
+
+    #[test]
+    fn is_remote_cloud_api_url_rejects_loopback_and_cleartext() {
+        assert!(!is_remote_cloud_api_url("http://127.0.0.1:17350"));
+        assert!(!is_remote_cloud_api_url("https://127.0.0.1:17350"));
+        assert!(!is_remote_cloud_api_url("https://localhost:17350"));
+        assert!(!is_remote_cloud_api_url("http://api.atomicstrata.ai"));
+    }
+
+    #[test]
     fn is_production_api_url_requires_https() {
         // Cleartext to the production host would expose the bearer token.
         assert!(!is_production_api_url("http://api.atomicstrata.ai"));
@@ -296,12 +364,46 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_project_url_prod_only() {
+    fn memory_web_origin_rejects_cleartext_and_lookalike_hosts() {
+        assert!(memory_web_origin("http://api.atomicstrata.ai").is_none());
+        assert!(memory_web_origin("https://api.atomicstrata.ai:8443").is_none());
+        assert!(memory_web_origin("https://api.atomicstrata.ai.evil.test").is_none());
+        assert!(memory_web_origin("https://api.atomicstrata.ai@evil.test").is_none());
+        assert!(memory_web_origin("https://custom.example.com").is_none());
+    }
+
+    #[test]
+    fn memory_web_origin_accepts_sanctioned_hosts() {
+        let prod = memory_web_origin("https://api.atomicstrata.ai").unwrap();
+        assert_eq!(prod, "https://memory.atomicstrata.ai/");
+
+        let dev = memory_web_origin("https://api.dev.atomicstrata.ai").unwrap();
+        assert_eq!(dev, "https://memory.dev.atomicstrata.ai/");
+    }
+
+    #[test]
+    fn dashboard_project_url_maps_api_to_memory_host() {
         let prod = dashboard_project_url("https://api.atomicstrata.ai", "proj_1").unwrap();
         assert!(prod.contains("memory.atomicstrata.ai"));
         assert!(prod.contains("/app/projects/proj_1/overview"));
 
-        assert!(dashboard_project_url("https://api.staging.example.com", "proj_1").is_none());
+        let dev = dashboard_project_url("https://api.dev.atomicstrata.ai", "proj_2").unwrap();
+        assert!(dev.contains("memory.dev.atomicstrata.ai"));
+
+        assert!(dashboard_project_url("https://custom.example.com", "proj_1").is_none());
+    }
+
+    #[test]
+    fn dashboard_projects_url_maps_api_to_memory_host() {
+        let url = dashboard_projects_url("https://api.dev.atomicstrata.ai").unwrap();
+        assert!(url.contains("memory.dev.atomicstrata.ai/app/projects"));
+        assert!(!url.contains("/onboarding"));
+    }
+
+    #[test]
+    fn dashboard_onboarding_url_maps_api_to_memory_host() {
+        let url = dashboard_onboarding_url("https://api.dev.atomicstrata.ai").unwrap();
+        assert!(url.contains("memory.dev.atomicstrata.ai/app/onboarding"));
     }
 
     #[test]
