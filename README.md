@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/atomicstrata-atomicmemory-badge.png)](https://mseep.ai/app/atomicstrata-atomicmemory)
+
 # AtomicMemory
 
 [![CI](https://github.com/atomicstrata/atomicmemory/actions/workflows/ci.yml/badge.svg)](https://github.com/atomicstrata/atomicmemory/actions/workflows/ci.yml)
