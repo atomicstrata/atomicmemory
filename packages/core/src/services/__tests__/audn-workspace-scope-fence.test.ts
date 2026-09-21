@@ -47,7 +47,10 @@ const baseFact = {
 function makeDeps() {
   mockStoreMemory.mockResolvedValue('clarify-mem-1');
   return {
-    config: { entityGraphEnabled: false, lessonsEnabled: false, fastAudnEnabled: false, fastAudnDuplicateThreshold: 0.95 },
+    config: {
+      entityGraphEnabled: false, lessonsEnabled: false, fastAudnEnabled: false,
+      fastAudnDuplicateThreshold: 0.95, extractionPromptVariant: 'full',
+    },
     stores: {
       memory: {
         storeMemory: mockStoreMemory,
@@ -108,7 +111,7 @@ describe('AUDN workspace scope fences', () => {
       makeTraceContext(baseFact, undefined, []),
     );
 
-    expect(mockCachedResolveAUDN).toHaveBeenCalledWith(baseFact.fact, []);
+    expect(mockCachedResolveAUDN).toHaveBeenCalledWith(baseFact.fact, [], 'full');
     expect(mockStoreCanonicalFact).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ outcome: 'stored', memoryId: 'new-memory-1' });
   });

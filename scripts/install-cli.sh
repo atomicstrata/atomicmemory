@@ -43,6 +43,11 @@ is_our_am() {
   ver="$("$cmd" --version 2>/dev/null || true)"
   case "$ver" in
     am\ [0-9]* | atomicmemory\ [0-9]*) return 0 ;;
+    \{*)
+      # ATO-1844 machine-readable contract
+      printf '%s' "$ver" | grep -q '"surface"[[:space:]]*:[[:space:]]*"cli"' || return 1
+      return 0
+      ;;
   esac
   return 1
 }
@@ -103,8 +108,16 @@ assert_am_version() {
   bin="$1"
   expected_ver="$2"
   got="$("$bin" --version 2>/dev/null || true)"
-  expected="am ${expected_ver}"
-  [ "$got" = "$expected" ]
+  case "$got" in
+    \{*)
+      got_ver="$(printf '%s' "$got" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+      [ "$got_ver" = "$expected_ver" ]
+      ;;
+    *)
+      # Legacy banner during transitional installs
+      [ "$got" = "am ${expected_ver}" ]
+      ;;
+  esac
 }
 
 validate_version_string() {

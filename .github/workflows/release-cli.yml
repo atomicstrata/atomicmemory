@@ -121,6 +121,14 @@ jobs:
             exit 1
           fi
 
+      - name: Validate public version bump
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PROPOSED_VERSION="$VERSION" RELEASE_MODE=1 bash scripts/ci/validate-cli-version-bump.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
@@ -133,6 +141,9 @@ jobs:
           key: release-${{ matrix.target }}
 
       - name: Build
+        env:
+          AM_GIT_SHA: ${{ github.sha }}
+          AM_BUILD_ENV: production
         run: cargo build --release -p atomicmemory --bin am --target ${{ matrix.target }} --locked
 
       - name: Package
@@ -152,7 +163,13 @@ jobs:
           printf '%s\n' "$members" | grep -qx am
           printf '%s\n' "$members" | grep -qx LICENSE
           printf '%s\n' "$members" | grep -qx README.md
-          ! printf '%s\n' "$members" | grep -qx atomicmemory
+          # `! cmd` is exempt from errexit, so the negated form passed whether or
+          # not the file was there — the one assertion here that could never fail
+          # (SC2251). The three above abort correctly because they are not negated.
+          if printf '%s\n' "$members" | grep -qx atomicmemory; then
+            echo "::error::tarball contains an 'atomicmemory' member; expected only am, LICENSE, README.md"
+            exit 1
+          fi
           ls -l dist
 
       - name: Native smoke
@@ -168,9 +185,14 @@ jobs:
           tar -xzf "$tarball" -C "$work"
           chmod +x "$work/am"
           got="$("$work/am" --version)"
-          expected="am ${ver}"
-          if [ "$got" != "$expected" ]; then
-            echo "::error::version mismatch: expected '${expected}', got '${got}'"
+          got_ver="$(printf '%s' "$got" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+          got_sha="$(printf '%s' "$got" | sed -n 's/.*"gitSha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+          if [ "$got_ver" != "$ver" ]; then
+            echo "::error::version mismatch: expected version '${ver}', got '${got}'"
+            exit 1
+          fi
+          if [ -z "$got_sha" ]; then
+            echo "::error::CI-stamped build must report non-empty gitSha; got '${got}'"
             exit 1
           fi
           "$work/am" --help | head -n1 | grep -qi atomicmemory
@@ -242,11 +264,10 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          ver="$VERSION"
           mkdir -p dist
           cp artifacts/*.tar.gz dist/
           cp scripts/install-cli.sh dist/install.sh
-          ( cd dist && sha256sum *.tar.gz > SHA256SUMS )
+          ( cd dist && sha256sum -- *.tar.gz > SHA256SUMS )
           echo "==== SHA256SUMS ===="
           cat dist/SHA256SUMS
 
@@ -284,12 +305,14 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           TAG: ${{ steps.ver.outputs.tag }}
+          GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           payload="$(jq -n \
             --arg ver "$VERSION" \
             --arg tag "$TAG" \
-            '{event_type:"cli-release-published", client_payload:{version:$ver, tag:$tag}}')"
+            --arg sha "$GIT_SHA" \
+            '{event_type:"cli-release-published", client_payload:{version:$ver, tag:$tag, gitSha:$sha}}')"
           curl -fsSL -X POST \
             -H "Authorization: token ${MIRROR_DISPATCH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \

@@ -15,6 +15,7 @@ src/db/
     0001_baseline.sql       Frozen Phase-1 schema; never edited after shipment.
     0002_<descriptive>.sql  First post-baseline migration.
     …
+    0005_cloud_trace_outbox.sql  Shipped public name; never renumber.
   migration-api.ts          migrate() / migrationStatus() entry points.
   migrate.ts                CLI shim used by `npm run migrate`.
 ```
@@ -27,6 +28,29 @@ There is no `schema.sql` at runtime. The migrations folder, replayed in
 order against an empty database, is the schema. To get a current schema
 dump locally, replay the files against an empty database and run
 `pg_dump --schema-only`.
+
+## Hosted / enterprise history bridge
+
+Public migration names and SQL remain immutable. Fresh Core installations apply
+only the public migrations, including `0005_cloud_trace_outbox.sql`; enterprise
+DDL and placeholder migrations are not part of the package.
+
+Some existing hosted databases carry a separate migration lineage after the
+shared public predecessors. Under the migration advisory lock, the runner
+recognizes the explicitly enumerated hosted sequence and validates both its
+order and the public predecessor sequence. Only that recognized history bypasses
+`node-pg-migrate`'s index-based order check. Unknown, missing, duplicate, or
+reordered entries in that lineage fail closed.
+
+The bridge preserves all existing history rows and applies the original
+idempotent outbox SQL under its public name. This also supports a recognized
+hosted history that already recorded the outbox under the short-lived `0014`
+name. It never resets a database or installs enterprise-only schema objects.
+
+Regression tests cover the shipped public upgrade with existing outbox data,
+fresh installs, hosted histories, repeated migration calls, and rejected
+histories. The migration DAG check compares shipped names and bytes against
+`main` using the repository's actual `packages/core/src/db/migrations` path.
 
 ## Inspecting state
 

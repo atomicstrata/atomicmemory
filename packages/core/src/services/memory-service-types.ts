@@ -6,6 +6,7 @@ import { type TrustScore } from './trust-scoring.js';
 import { type ExtractedEntity, type ExtractedRelation } from './extraction.js';
 import { type MemoryNetwork } from './memory-network.js';
 import type { AUDNAction } from './extraction.js';
+import type { ExtractionPromptVariant } from './extraction-prompt-variant.js';
 import type { BeliefOperator } from './typed-belief-calculus.js';
 import { type ClaimSlotInput } from '../db/claim-repository.js';
 
@@ -387,6 +388,7 @@ export interface IngestRuntimeConfig {
   consensusExtractionRuns: number;
   extractionCacheEnabled: boolean;
   observationDateExtractionEnabled: boolean;
+  extractionPromptVariant: ExtractionPromptVariant;
   quotedEntityExtractionEnabled: boolean;
   entityGraphEnabled: boolean;
   entropyGateAlpha: number;

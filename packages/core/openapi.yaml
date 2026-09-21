@@ -7311,7 +7311,7 @@ paths:
                       - type: number
                       - type: string
                       - type: "null"
-                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation."
+                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation."
                   type: object
                 content_class:
                   description: "Optional sensitivity class of the supplied content: 'summary' (distilled, hosted-safe), 'redacted' (sensitive spans removed by the caller), or 'raw' (verbatim prompt/response/diff/source). When the deployment runs RAW_CONTENT_POLICY=reject, a verbatim write of 'raw' content — or content with no content_class at all (treated as unknown/raw) — is rejected with 422 raw_content_rejected; on extraction paths the raw transcript is instead withheld from the stored audit episode."
@@ -7535,7 +7535,7 @@ paths:
                       - type: number
                       - type: string
                       - type: "null"
-                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation."
+                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation."
                   type: object
                 content_class:
                   description: "Optional sensitivity class of the supplied content: 'summary' (distilled, hosted-safe), 'redacted' (sensitive spans removed by the caller), or 'raw' (verbatim prompt/response/diff/source). When the deployment runs RAW_CONTENT_POLICY=reject, a verbatim write of 'raw' content — or content with no content_class at all (treated as unknown/raw) — is rejected with 422 raw_content_rejected; on extraction paths the raw transcript is instead withheld from the stored audit episode."
@@ -9120,7 +9120,7 @@ paths:
                       - type: number
                       - type: string
                       - type: "null"
-                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation."
+                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation."
                   type: object
                 limit:
                   maximum: 100
@@ -9693,7 +9693,7 @@ paths:
                       - type: number
                       - type: string
                       - type: "null"
-                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation."
+                  description: "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation."
                   type: object
                 limit:
                   maximum: 100

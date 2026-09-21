@@ -28,7 +28,34 @@ export async function expectSeededRowsPreservedAcrossMigrate(
   const before = await snapshotAllSeededTables(pool);
   await migrate({ pool });
   const after = await snapshotAllSeededTables(pool);
-  expect(after).toEqual(before);
+  expect(projectSnapshotsToBeforeColumns(before, after)).toEqual(before);
+}
+
+/**
+ * Post-baseline migrations may add nullable columns. Preservation compares
+ * only the columns that existed before migrate so additive DDL does not look
+ * like row mutation.
+ */
+export function projectSnapshotsToBeforeColumns(
+  before: Awaited<ReturnType<typeof snapshotAllSeededTables>>,
+  after: Awaited<ReturnType<typeof snapshotAllSeededTables>>,
+): typeof before {
+  const projected: Record<string, { table: string; rows: Record<string, unknown>[] }> = {};
+  for (const [tableName, beforeSnap] of Object.entries(before)) {
+    const afterSnap = after[tableName as keyof typeof after];
+    const beforeKeys = beforeSnap.rows[0] ? Object.keys(beforeSnap.rows[0]) : [];
+    projected[tableName] = {
+      table: beforeSnap.table,
+      rows: afterSnap.rows.map((row) => {
+        const narrowed: Record<string, unknown> = {};
+        for (const key of beforeKeys) {
+          narrowed[key] = row[key];
+        }
+        return narrowed;
+      }),
+    };
+  }
+  return projected as typeof before;
 }
 
 export async function expectSeededForeignKeysResolvable(

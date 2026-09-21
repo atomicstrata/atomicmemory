@@ -26,8 +26,8 @@ import { MemoryService, type RetrievalResult } from '../services/memory-service.
 import type { MemoryScope, MemoryServiceDeps, RetrievalObservability } from '../services/memory-service-types.js';
 import {
   applyConfigOverride,
+  classifyOverrideKeys,
   hashEffectiveConfig,
-  summarizeOverrideKeys,
 } from '../services/retrieval-config-overlay.js';
 import {
   formatIngestResponse,
@@ -961,16 +961,16 @@ function toMemoryScope(
  * Overlay a validated body-level config_override onto the startup
  * singleton and emit the observability response headers. Returns the
  * EffectiveConfig to hand to MemoryService (or undefined when no
- * override was present — the zero-cost no-headers path).
+ * override was present, or when every submitted key was ignored).
  *
- * Headers emitted when an override is applied:
- *   X-Atomicmem-Config-Override-Applied: true
+ * Headers emitted when an override object is present:
+ *   X-Atomicmem-Config-Override-Applied: true|false (true only if a key applied)
  *   X-Atomicmem-Effective-Config-Hash:   sha256:<hex>
- *   X-Atomicmem-Config-Override-Keys:    comma-joined sorted key list
+ *   X-Atomicmem-Config-Override-Keys:    applied keys only
  *
- * Additional header, emitted only when one or more override keys do
- * not correspond to a known RuntimeConfig field on this build:
- *   X-Atomicmem-Unknown-Override-Keys:   comma-joined sorted key list
+ * Additional headers:
+ *   X-Atomicmem-Ignored-Override-Keys:   known fields that cannot take effect
+ *   X-Atomicmem-Unknown-Override-Keys:   keys that do not match RuntimeConfig
  *
  * Unknown keys are NOT rejected — the permissive schema is deliberate
  * so adding a new RuntimeConfig field in a future release doesn't
@@ -983,23 +983,34 @@ function applyRequestConfigOverride(
   override: Partial<RuntimeConfig> | undefined,
 ): MemoryServiceDeps['config'] | undefined {
   if (!override || Object.keys(override).length === 0) return undefined;
+  const classified = classifyOverrideKeys(override, new Set(Object.keys(baseConfig)));
   const effective = applyConfigOverride(baseConfig, override);
-  res.setHeader('X-Atomicmem-Config-Override-Applied', 'true');
-  res.setHeader('X-Atomicmem-Effective-Config-Hash', hashEffectiveConfig(effective));
-  res.setHeader('X-Atomicmem-Config-Override-Keys', summarizeOverrideKeys(override));
-
-  const knownKeys = new Set(Object.keys(baseConfig));
-  const unknownKeys = Object.keys(override)
-    .filter((k) => !knownKeys.has(k))
-    .sort();
-  if (unknownKeys.length > 0) {
-    res.setHeader('X-Atomicmem-Unknown-Override-Keys', unknownKeys.join(','));
+  emitConfigOverrideHeaders(res, classified, effective);
+  if (classified.unknown.length > 0) {
     console.warn(
-      `[config_override] request carried ${unknownKeys.length} unknown key(s): ${unknownKeys.join(', ')} — carried through on effective config but nothing currently reads them`,
+      `[config_override] request carried ${classified.unknown.length} unknown key(s): ${classified.unknown.join(', ')} — carried through on effective config but nothing currently reads them`,
     );
   }
+  return classified.applied.length > 0 ? effective : undefined;
+}
 
-  return effective;
+function emitConfigOverrideHeaders(
+  res: Response,
+  classified: { applied: string[]; ignored: string[]; unknown: string[] },
+  effective: RuntimeConfig,
+): void {
+  const applied = classified.applied.length > 0;
+  res.setHeader('X-Atomicmem-Config-Override-Applied', applied ? 'true' : 'false');
+  res.setHeader('X-Atomicmem-Effective-Config-Hash', hashEffectiveConfig(effective));
+  if (applied) {
+    res.setHeader('X-Atomicmem-Config-Override-Keys', classified.applied.join(','));
+  }
+  if (classified.ignored.length > 0) {
+    res.setHeader('X-Atomicmem-Ignored-Override-Keys', classified.ignored.join(','));
+  }
+  if (classified.unknown.length > 0) {
+    res.setHeader('X-Atomicmem-Unknown-Override-Keys', classified.unknown.join(','));
+  }
 }
 
 function buildRetrievalObservability(result: RetrievalResult): RetrievalObservability | undefined {

@@ -69,7 +69,7 @@ seed_release() {
   sha256sums_for_dir "$dir" >"${dir}/SHA256SUMS"
   printf 'install-cli\n' >"${dir}/install-cli.sh"
   printf 'install\n' >"${dir}/install.sh"
-  printf '{"version":"%s","tag":"cli-internal-abc","git_sha":"abc","channel":"internal"}\n' \
+  printf '{"surface":"cli","version":"%s","gitSha":"abc","env":"internal","tag":"cli-internal-abc"}\n' \
     "$ver" >"${dir}/version.json"
 }
 
@@ -88,7 +88,7 @@ seed_local_dist_same_names() {
   sha256sums_for_dir "$dir" >"${dir}/SHA256SUMS"
   printf 'install-cli\n' >"${dir}/install-cli.sh"
   printf 'install\n' >"${dir}/install.sh"
-  printf '{"version":"%s","tag":"cli-internal-abc","git_sha":"abc","channel":"internal"}\n' \
+  printf '{"surface":"cli","version":"%s","gitSha":"abc","env":"internal","tag":"cli-internal-abc"}\n' \
     "$ver" >"${dir}/version.json"
 }
 

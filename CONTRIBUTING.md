@@ -44,6 +44,44 @@ These checks always read current repository state. Some are explicit
 `cache: false` Turbo tasks; others are direct root scripts that bypass Turbo's
 cache.
 
+### CLI fresh-install smoke
+
+Installs the published `am` from the internal channel onto a machine that has
+never had it, and proves the result works — the artifact-level counterpart to
+`core-docker-smoke`. Needs an authenticated `gh` with access to
+`atomicstrata/atomicmemory-internal`; nothing else.
+
+```bash
+gh auth login                 # once
+pnpm run smoke:cli-install
+AM_INTERNAL_TAG=cli-internal-<sha> pnpm run smoke:cli-install   # pin a build
+AM_INTERNAL_TAG=cli-canary-latest pnpm run smoke:cli-install    # floating canary (dev)
+AM_SMOKE_KEEP=1 pnpm run smoke:cli-install                      # keep the sandbox to inspect
+```
+
+Install canary without the smoke harness:
+
+```bash
+tmp="$(mktemp -d)" && \
+AM_INTERNAL_TAG=cli-canary-latest gh release download cli-canary-latest \
+  --repo atomicstrata/atomicmemory-internal \
+  --pattern install.sh \
+  --dir "$tmp" \
+  && AM_INTERNAL_TAG=cli-canary-latest sh "$tmp/install.sh"
+```
+
+`$HOME` and the install directory are throwaway, so it will not disturb an `am`
+you already have installed — and it cannot be fooled by one either, because
+every check addresses the newly installed binary by absolute path. `PATH` is
+deliberately left as it is: the one check that does consult it, that sourcing
+`~/.atomicmemory/env` makes the new install win, is a stronger check when a
+competing `am` is present.
+`scripts/cli-install-smoke.sh` documents what each check catches and why the
+existing fixture tests do not cover it. It also runs daily in CI, one job per
+published target — see `.github/workflows/cli-install-smoke.yml`. A scheduled
+failure opens one self-clearing issue labelled `cli-install-smoke`; a manual
+dispatch never touches it.
+
 CI uses thin `ci:*` aliases that wrap the same Turbo tasks:
 
 ```bash

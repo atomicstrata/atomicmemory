@@ -1,0 +1,22 @@
+{
+  "cache_dir": "/tmp/am-slm-fixture/hf-home",
+  "models": [
+    {
+      "id": "Qwen/Qwen3-0.6B",
+      "ready": false,
+      "missing": ["weights"]
+    },
+    {
+      "id": "nomic-ai/nomic-embed-text-v1.5",
+      "ready": true,
+      "missing": []
+    }
+  ],
+  "adapters": [
+    {
+      "id": "am-slm-core",
+      "ready": false,
+      "missing": ["adapter"]
+    }
+  ]
+}

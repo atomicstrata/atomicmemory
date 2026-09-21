@@ -1,5 +1,7 @@
 //! AtomicMemory CLI — hosted tenancy + memory operations.
 
+#![allow(clippy::disallowed_methods)]
+
 mod agent_sanitize;
 mod argv_output;
 mod auth;
@@ -14,9 +16,11 @@ mod integrate;
 mod onboarding_runtime;
 mod output;
 mod progress;
+mod slm;
 mod telemetry;
 mod validation;
 mod verification;
+mod version;
 
 use anyhow::Result;
 use clap::Parser;
@@ -33,10 +37,34 @@ fn default_log_level(verbose: u8) -> &'static str {
     }
 }
 
+/// True when argv requests top-level `--version` / `-V` (before `--`).
+fn argv_requests_version(argv: &[String]) -> bool {
+    let mut seen_double_dash = false;
+    for arg in argv.iter().skip(1) {
+        if seen_double_dash {
+            continue;
+        }
+        if arg == "--" {
+            seen_double_dash = true;
+            continue;
+        }
+        if arg == "--version" || arg == "-V" || arg.starts_with("--version=") {
+            return true;
+        }
+    }
+    false
+}
+
 #[tokio::main]
 async fn main() {
     let started_at = std::time::Instant::now();
     let argv: Vec<String> = std::env::args().collect();
+    // Print pure JSON (no `am ` prefix). Clap's built-in version flag always
+    // prefixes the bin name, which breaks the machine-readable contract.
+    if argv_requests_version(&argv) {
+        println!("{}", version::clap_version_json());
+        return;
+    }
     let argv_agent = argv_output::detect_argv_agent(&argv);
 
     let cli = match Cli::try_parse() {
@@ -89,7 +117,13 @@ async fn main() {
         std::process::exit(2);
     }
 
-    let result = run(cli).await;
+    let result = tokio::select! {
+        result = run(cli) => result,
+        signal = tokio::signal::ctrl_c() => match signal {
+            Ok(()) => Err(anyhow::anyhow!("command cancelled; rerun the command to resume using retained datasets and downloaded cache")),
+            Err(error) => Err(anyhow::anyhow!("could not listen for cancellation: {error}")),
+        },
+    };
     telemetry::flush_telemetry().await;
     if let Err(err) = result {
         if agent_output {
@@ -123,6 +157,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Link(cmd) => commands::link::run(cmd, &cli.global).await,
         Command::Connect(cmd) => commands::connect::run(cmd, &cli.global).await,
         Command::Instance(cmd) => commands::instance::run(cmd, &cli.global).await,
+        Command::Slm(cmd) => commands::slm::run(cmd, &cli.global).await,
         Command::Migrate(cmd) => commands::migrate::run(cmd, &cli.global).await,
         Command::Integrate(opts) => commands::integrate::run(opts, &cli.global).await,
         Command::Hooks(cmd) => commands::hooks::run(cmd, &cli.global).await,
@@ -132,8 +167,6 @@ async fn run(cli: Cli) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
-
     #[test]
     fn verbose_flag_raises_the_default_log_level() {
         assert_eq!(default_log_level(0), "warn");
@@ -143,18 +176,24 @@ mod tests {
     }
 
     #[test]
-    fn version_output_uses_am_identity() {
-        let mut cmd = cli::Cli::command();
-        cmd.set_bin_name("am");
-        let output = cmd.render_version().to_string();
-        assert!(
-            output.starts_with("am "),
-            "expected version banner to start with 'am ', got: {output}"
-        );
-        assert!(
-            output.contains(env!("CARGO_PKG_VERSION")),
-            "expected version banner to include workspace version"
-        );
+    fn version_output_is_machine_readable_json_contract() {
+        assert!(argv_requests_version(&["am".into(), "--version".into()]));
+        assert!(argv_requests_version(&["am".into(), "-V".into()]));
+        assert!(!argv_requests_version(&[
+            "am".into(),
+            "--".into(),
+            "--version".into()
+        ]));
+        let line = version::clap_version_json();
+        let info: version::VersionInfo = serde_json::from_str(line)
+            .unwrap_or_else(|e| panic!("--version must be JSON: {e}; got: {line}"));
+        assert_eq!(info.surface, "cli");
+        assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
+        assert!(!info.env.is_empty());
+        // Unstamped local builds must not invent a commit SHA.
+        if option_env!("AM_GIT_SHA").is_none() {
+            assert_eq!(info.git_sha, None, "unstamped gitSha must be null/None");
+        }
     }
 
     #[test]

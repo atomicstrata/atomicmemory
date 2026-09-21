@@ -41,7 +41,7 @@ create_fake_am() {
   cat >"$path" <<EOF
 #!/bin/sh
 case "\$1" in
-  --version) printf 'am ${ver}\n'; exit 0 ;;
+  --version) printf '{"surface":"cli","version":"%s","gitSha":null,"env":"dev"}\n' "${ver}"; exit 0 ;;
   --help) printf 'AtomicMemory CLI\n'; exit 0 ;;
   --quiet) shift; exec "\$0" "\$@" ;;
   config)
@@ -111,7 +111,8 @@ start_fixture_server() {
   local target="$2"
   FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/install-cli-fixture.XXXXXX")"
   publish_fixture_tarball "$ver" "$target"
-  printf '{"version":"%s","tag":"cli-v%s"}\n' "$ver" "$ver" >"${FIXTURE_ROOT}/version.json"
+  printf '{"surface":"cli","version":"%s","gitSha":"testdeadbeef","env":"production","tag":"cli-v%s"}\n' \
+    "$ver" "$ver" >"${FIXTURE_ROOT}/version.json"
   local port
   port="$(python3 - <<'PY'
 import socket
@@ -182,13 +183,13 @@ last_line="$(tail -n 1 "$INSTALLER")"
 printf '\nCase: successful install verifies identity and version\n'
 if run_install --version 0.2.0 --bin-dir "$BIN_DIR" --no-modify-path >/dev/null; then
   got="$("$BIN_DIR/am" --version)"
-  if [ "$got" = "am 0.2.0" ]; then
-    assert "install succeeds and binary reports am 0.2.0" true
+  if printf '%s' "$got" | grep -q '"version"[[:space:]]*:[[:space:]]*"0.2.0"'; then
+    assert "install succeeds and binary reports version 0.2.0" true
   else
-    assert "install succeeds and binary reports am 0.2.0" false
+    assert "install succeeds and binary reports version 0.2.0" false
   fi
 else
-  assert "install succeeds and binary reports am 0.2.0" false
+  assert "install succeeds and binary reports version 0.2.0" false
 fi
 
 printf '\nCase: invalid version is rejected\n'
@@ -269,7 +270,8 @@ if run_install --version 0.2.0 --bin-dir "$upgrade_dir" --no-modify-path >/dev/n
   esac
   if [ -x "$upgrade_dir/am" ]; then
     got="$("$upgrade_dir/am" --version)"
-    [ "$got" = "am 0.2.0" ] && assert "failed upgrade preserves working am" true \
+    printf '%s' "$got" | grep -q '"version"[[:space:]]*:[[:space:]]*"0.2.0"' \
+      && assert "failed upgrade preserves working am" true \
       || assert "failed upgrade preserves working am" false
   else
     assert "failed upgrade preserves working am" false

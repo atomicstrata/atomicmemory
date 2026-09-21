@@ -140,6 +140,22 @@ pub fn should_rotate_after_probe(err: &CloudClientError) -> bool {
     matches!(err, CloudClientError::Auth)
 }
 
+// Both onboarding entry points must use the same fail-closed reuse gate.
+fn stored_key_probe_allows_reuse(
+    result: Result<(), CloudClientError>,
+    resolved_project: Option<&str>,
+    requested_project: &str,
+) -> Result<bool> {
+    match result {
+        Ok(()) => Ok(resolved_project == Some(requested_project)),
+        Err(err) if should_rotate_after_probe(&err) => Ok(false),
+        Err(err) => Err(err).context(
+            "verify Cloud API key (POST /v1/local/token): stored key preserved; \
+             verification failed, so setup cannot continue",
+        ),
+    }
+}
+
 pub(crate) fn is_api_key_quota_exceeded(err: &CloudClientError) -> bool {
     match err {
         CloudClientError::Status { code, body } => {
@@ -160,29 +176,20 @@ pub async fn ensure_connected_local_cloud_api_key(
     global: &GlobalOptions,
     profile: &ResolvedProfile,
 ) -> Result<(String, ProvisionOutcome)> {
+    let project_id = require_project_id(profile, None)?;
     if let Ok(key) = require_api_key(profile)
         && is_cloud_api_key(&key)
     {
-        match probe_cloud_api_key_mint(&profile.base_url, &key).await {
-            Ok(()) => return Ok((key, ProvisionOutcome::Reused)),
-            Err(err) if should_rotate_after_probe(&err) => {
-                info!(
-                    profile = %profile.name,
-                    "stored Cloud API key rejected; rotating or creating connected-local-runtime"
-                );
-            }
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    base_url = %profile.base_url,
-                    "could not verify Cloud API key against tier; continuing with stored key"
-                );
-                return Ok((key, ProvisionOutcome::Reused));
-            }
+        if stored_key_probe_allows_reuse(
+            probe_cloud_api_key_mint(&profile.base_url, &key).await,
+            profile.project_id.as_deref(),
+            &project_id,
+        )? {
+            return Ok((key, ProvisionOutcome::Reused));
         }
+        info!("stored Cloud API key rejected; provisioning this installation's credential");
     }
 
-    let project_id = require_project_id(profile, None)?;
     let (mint_profile, client) = dashboard_client(global).await?;
     if !same_origin(&mint_profile.base_url, &profile.base_url) {
         bail!(
@@ -204,7 +211,9 @@ pub async fn ensure_connected_local_cloud_api_key(
         |secret| store_api_key(&profile.name, secret, &profile.base_url, &project_id),
     )
     .await?;
-    probe_cloud_api_key_mint(&profile.base_url, &secret).await?;
+    probe_cloud_api_key_mint(&profile.base_url, &secret)
+        .await
+        .context("verify newly provisioned Cloud API key (POST /v1/local/token)")?;
     if let Some(msg) = outcome.operator_message() {
         message(!global.quiet, &msg);
     }
@@ -219,37 +228,15 @@ pub async fn ensure_connected_local_cloud_api_key_stored(
     project_id: &str,
 ) -> Result<ProvisionOutcome> {
     if let Ok((resolved, client)) = cloud_api_key_client(global).await {
-        // The client resolves the ACTIVE profile, which need not be the profile
-        // whose project this call is provisioning for. A key that mints happily
-        // for the active profile's project is still the wrong key for this one,
-        // so reuse requires the projects to agree. Selection already refuses a
-        // key whose stored project does not match its own profile; this closes
-        // the remaining gap between "the resolved profile" and "the requested
-        // project".
-        let same_project = resolved.project_id.as_deref() == Some(project_id);
-        match client.mint_local_token().await {
-            Ok(_) if same_project => return Ok(ProvisionOutcome::Reused),
-            Ok(_) => {
-                info!(
-                    profile = %profile_name,
-                    "stored Cloud API key belongs to a different project; provisioning one for this project"
-                );
-            }
-            Err(err) if should_rotate_after_probe(&err) => {
-                info!(
-                    profile = %profile_name,
-                    "stored Cloud API key rejected; rotating or creating connected-local-runtime"
-                );
-            }
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    profile = %profile_name,
-                    "Cloud API key probe failed; preserving stored key (not rotating)"
-                );
-                return Ok(ProvisionOutcome::Reused);
-            }
+        // The active profile can differ from the project being provisioned.
+        if stored_key_probe_allows_reuse(
+            client.mint_local_token().await.map(|_| ()),
+            resolved.project_id.as_deref(),
+            project_id,
+        )? {
+            return Ok(ProvisionOutcome::Reused);
         }
+        info!("stored Cloud API key cannot be reused for the requested project");
     }
 
     let (profile, client) = dashboard_client(global).await?;
@@ -350,7 +337,23 @@ where
                  Then re-run init — the CLI will rotate only this installation's '{key_name}' key when present."
             ))
         }
-        Err(err) => Err(err).context(format!("create Cloud API key '{key_name}' on {api_origin}")),
+        Err(err) => {
+            let context = cloud_key_create_context(&err, key_name, api_origin);
+            Err(err).context(context)
+        }
+    }
+}
+
+fn cloud_key_create_context(err: &CloudClientError, key_name: &str, api_origin: &str) -> String {
+    match err {
+        CloudClientError::Auth => format!(
+            "create Cloud API key '{key_name}' on {api_origin}: authentication failed — run `am auth login` and retry"
+        ),
+        CloudClientError::Forbidden { code } => format!(
+            "create Cloud API key '{key_name}' on {api_origin}: Cloud rejected key creation \
+             (403; {code}). Check project access and permissions before retrying."
+        ),
+        _ => format!("create Cloud API key '{key_name}' on {api_origin}"),
     }
 }
 
@@ -645,8 +648,43 @@ mod tests {
     }
 
     #[test]
-    fn should_rotate_after_probe_only_on_auth() {
+    fn create_key_auth_error_tells_operator_to_login() {
+        let msg = cloud_key_create_context(
+            &CloudClientError::Auth,
+            TEST_LOCAL_KEY_NAME,
+            "https://api.atomicstrata.ai/",
+        );
+        assert!(msg.contains("am auth login"));
+        assert!(msg.contains(TEST_LOCAL_KEY_NAME));
+        let other = cloud_key_create_context(
+            &CloudClientError::Timeout,
+            TEST_LOCAL_KEY_NAME,
+            "https://api.atomicstrata.ai/",
+        );
+        assert!(!other.contains("am auth login"));
+    }
+
+    #[test]
+    fn create_key_forbidden_preserves_reason_without_guessing_membership() {
+        let msg = cloud_key_create_context(
+            &CloudClientError::Forbidden {
+                code: "forbidden".into(),
+            },
+            TEST_LOCAL_KEY_NAME,
+            "https://api.atomicstrata.ai/",
+        );
+        assert!(msg.contains("forbidden"));
+        assert!(msg.contains(TEST_LOCAL_KEY_NAME));
+        assert!(!msg.contains("need org admin"));
+        assert!(!msg.contains("--token"));
+    }
+
+    #[test]
+    fn should_rotate_after_probe_only_on_invalid_credentials() {
         assert!(should_rotate_after_probe(&CloudClientError::Auth));
+        assert!(!should_rotate_after_probe(&CloudClientError::Forbidden {
+            code: "forbidden".into(),
+        }));
         assert!(!should_rotate_after_probe(&CloudClientError::Timeout));
         assert!(!should_rotate_after_probe(&CloudClientError::Network(
             "dns".into()
@@ -655,6 +693,99 @@ mod tests {
             code: 500,
             body: "error".into()
         }));
+    }
+
+    #[tokio::test]
+    async fn reuse_requires_a_selected_project_before_probing() {
+        let profile = ResolvedProfile {
+            name: "probe-test".into(),
+            base_url: "not a URL".into(),
+            kind: crate::config::ProfileKind::Cloud,
+            project_id: None,
+            memory_base_url: "not a URL".into(),
+            api_key: Some("amc_stored_secret".into()),
+            oauth: None,
+        };
+        let error = ensure_connected_local_cloud_api_key(&GlobalOptions::default(), &profile)
+            .await
+            .expect_err("reuse needs a project binding");
+        assert!(format!("{error:#}").contains("missing project"));
+    }
+
+    #[tokio::test]
+    async fn inconclusive_probe_fails_closed_and_preserves_the_stored_key() {
+        let app = axum::Router::new().route(
+            "/v1/local/token",
+            axum::routing::post(|| async {
+                (
+                    axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                    "expected an object",
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let profile = ResolvedProfile {
+            name: "probe-test".into(),
+            base_url: format!("http://{address}"),
+            kind: crate::config::ProfileKind::Cloud,
+            project_id: Some("proj_test".into()),
+            memory_base_url: format!("http://{address}"),
+            api_key: Some("amc_stored_secret".into()),
+            oauth: None,
+        };
+        let result =
+            ensure_connected_local_cloud_api_key(&GlobalOptions::default(), &profile).await;
+        server.abort();
+        let error = result.expect_err("an inconclusive mint must never be called verified reuse");
+        assert!(format!("{error:#}").contains("stored key preserved"));
+        assert_eq!(profile.api_key.as_deref(), Some("amc_stored_secret"));
+    }
+
+    #[test]
+    fn reuse_gate_rejects_uncertain_probes_even_for_a_different_project() {
+        for project in [Some("proj_test"), Some("proj_other"), None] {
+            for error in [
+                CloudClientError::NoActiveOrganization,
+                CloudClientError::Forbidden {
+                    code: "membership_required".into(),
+                },
+                CloudClientError::Forbidden {
+                    code: "insufficient_scope".into(),
+                },
+                CloudClientError::Forbidden {
+                    code: "forbidden".into(),
+                },
+                CloudClientError::Status {
+                    code: 422,
+                    body: "validation failed".into(),
+                },
+                CloudClientError::Status {
+                    code: 429,
+                    body: "rate limited".into(),
+                },
+                CloudClientError::Status {
+                    code: 503,
+                    body: "unavailable".into(),
+                },
+                CloudClientError::Network("offline".into()),
+                CloudClientError::Timeout,
+            ] {
+                assert!(stored_key_probe_allows_reuse(Err(error), project, "proj_test").is_err());
+            }
+        }
+        assert!(stored_key_probe_allows_reuse(Ok(()), Some("proj_test"), "proj_test").unwrap());
+        assert!(!stored_key_probe_allows_reuse(Ok(()), Some("proj_other"), "proj_test").unwrap());
+        assert!(!stored_key_probe_allows_reuse(Ok(()), None, "proj_test").unwrap());
+        assert!(
+            !stored_key_probe_allows_reuse(
+                Err(CloudClientError::Auth),
+                Some("proj_test"),
+                "proj_test"
+            )
+            .unwrap()
+        );
     }
 
     #[test]

@@ -6,6 +6,8 @@ management, Connected Local linking, and memory operations.
 Phase 2 ships prebuilt **`am`** binaries. End users install with one command;
 contributors can still build from source.
 
+
+Machine-readable `--version` JSON and latest-version discovery are documented in [`VERSION.md`](./VERSION.md) (ATO-1844).
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh -s -- --init
 ```
@@ -39,7 +41,7 @@ am --help
 ```
 
 This is the **CLI** (`am`): auth, org/project/key, connect, instance,
-memory, migrate, doctor, integrate (MCP), and lifecycle hooks.
+slm, memory, migrate, doctor, integrate (MCP), and lifecycle hooks.
 
 Consolidation of the npm `@atomicmemory/cli` package into `am` is **in
 progress**: `am` covers Cloud, memory, MCP integration, and lifecycle hooks,
@@ -103,7 +105,54 @@ automation must be explicit and provide `OPENAI_API_KEY` when starting Core:
 ```bash
 am init --yes --project <cloud-id>
 OPENAI_API_KEY=sk-... am init --local --yes
+am init --local --slm --yes
 ```
+
+`am init --local --slm` is the one-shot Connected Local SLM path: it creates a
+local profile, installs `am-slm` if needed, pulls Qwen + Nomic + `am-slm-core`
+(~1.7GB; `--yes` confirms), starts host Metal SLM, and starts Core Docker
+without an OpenAI key. Apple Silicon macOS only.
+
+### Provider switching and recovery
+
+Use `--provider openai|slm` with `am init --local`, `am connect --project`, or
+`am instance start`. `--slm` remains shorthand for `--provider slm`; combining
+them is an error. Omitting both reuses the project's saved provider; new
+installations use OpenAI.
+
+```bash
+am --profile local instance start --provider slm --yes
+am --profile local instance start --provider openai
+am --profile local doctor --smoke
+```
+
+Each Cloud origin, project, and provider has separate persistent data and Core
+credentials. Switching prepares the target provider before replacing the one
+active managed Core container. Switching back reopens its existing dataset;
+memories are not copied or re-embedded. Recognized legacy storage is retained;
+unidentified volumes are preserved without being assigned to a provider.
+
+Connected Local supports HTTP loopback addresses such as
+`http://127.0.0.1:17352`. Core retains its internal port; the CLI uses the
+configured host port for binding and health checks. Unsupported managed
+addresses fail before startup.
+
+Model downloads report file names, bytes, totals when available, and cache
+hits. After interruption, rerun the same command: completed cache entries stay
+in place and readiness is checked again. Quiet mode suppresses progress; JSON
+stdout contains machine-readable results.
+
+Init reports verification as `passed`, `failed`, `deliberately_skipped`, or
+`not_run`. Attempted verification failures exit nonzero even when configuration
+was saved. Follow the receipt's profile-specific recovery command. SLM
+verification exercises full extraction and retrieval, then removes its test
+memories. Cloud membership or scope errors must be corrected before retrying;
+the CLI does not rotate credentials in response to those errors.
+
+`am instance remove` preserves datasets. `am instance remove --purge-data --yes`
+deletes only the selected dataset after ownership checks.
+`am instance start --provider slm --slm-reset-data --yes` explicitly resets the
+selected SLM dataset. Neither command is needed for ordinary provider switching.
 
 With no Cloud projects, interactive init opens onboarding and polls every two
 seconds for up to ten minutes, then resumes after project creation. Without a
@@ -141,6 +190,8 @@ shell export is ignored for init-managed profiles unless you set
 am auth login
 am link local --name local --local-url http://127.0.0.1:17350
 am instance start
+# SLM instead of OpenAI (Apple Silicon):
+# am instance start --slm --yes
 ```
 
 `am instance start` auto-provisions a Cloud `amc_` key when needed and injects a
@@ -212,7 +263,8 @@ am --base-url https://api.staging.example.com \
 | `memory` | Ingest (`--mode text\|messages\|verbatim`), search, **package**, list, get, delete |
 | `hooks` | Lifecycle hooks for Codex and Claude Code (complements `integrate` MCP) |
 | `connect`, `instance`, `link` | Connected Local + Docker Core |
-| `integrate` | Install AtomicMemory MCP into Cursor, Claude Code, and Codex |
+| `slm` | Host Metal SLM runtime (`am slm install|start|models pull`); `am init --local --slm` |
+| `integrate` | Install AtomicMemory MCP into Cursor, Claude Code, Codex, and OpenCode |
 | `trace`, `usage`, `overview` | Observability |
 | `migrate` | Export/import local Core memories |
 | `doctor`, `health` | Diagnostics |
@@ -227,7 +279,7 @@ v1):
 
 ```bash
 am integrate detect
-am integrate --yes --global --host cursor --host claude-code
+am integrate --yes --global --host cursor --host claude-code --host opencode
 am integrate doctor
 am integrate uninstall --host cursor
 ```
@@ -235,6 +287,10 @@ am integrate uninstall --host cursor
 Installs set `ATOMICMEMORY_SCOPE_LOCK=true` in the generated MCP server env and
 pin `@atomicmemory/mcp-server@0.1.5`. Project-scoped configs (for example
 `.cursor/mcp.json` in a repo) are not supported yet — use global install only.
+OpenCode uses its V2 global `mcp.servers.atomicmemory` configuration under
+`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`.
+An OpenCode project-level `opencode.json` or `opencode.jsonc` takes precedence
+over this global entry; project-scoped OpenCode installs are not supported yet.
 `--dry-run` prints planned writes without mutating host files. In non-interactive
 sessions, pass `--yes` and/or explicit `--host` before mutating configs.
 Interactive wizard progress and next-step hints go to stderr; human install

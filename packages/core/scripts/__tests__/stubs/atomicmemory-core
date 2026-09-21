@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Stub Core binary for launcher lifecycle tests.
+set -euo pipefail
+
+log_path="${AM_CORE_STUB_LOG:-/tmp/am-core.stub.log}"
+printf '%s\n' "${1:-}" >> "$log_path"
+if [[ "${1:-}" == "migrate" ]]; then
+  exit "${AM_CORE_MIGRATE_EXIT:-0}"
+fi
+if [[ "${1:-}" == "start" ]]; then
+  if [[ "${AM_CORE_STUB_SLEEP:-}" == "1" ]]; then
+    sleep 60
+    exit 0
+  fi
+  exit "${AM_CORE_STUB_EXIT:-0}"
+fi
+exit 0

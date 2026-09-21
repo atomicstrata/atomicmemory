@@ -15,12 +15,13 @@
  * - Container-image publishers are explicitly enumerated: any workflow that
  *   pushes images (docker push / buildx --push / output exporters /
  *   imagetools create / docker/build-push-action) must be either a
- *   publish-*.yml release lane (covered by the invariants above) or the
- *   enumerated internal operator publisher. That publisher's workflow YAML
- *   is parsed structurally and must guard every job on the
- *   atomicmemory-internal repository, assign IMAGE_NAME exactly once at the
- *   workflow level (pinned to the private internal package), and push only
- *   via buildx --push with every --tag deriving from that pin.
+ *   publish-*.yml release lane (covered by the invariants above) or one of
+ *   the enumerated operator publishers (private GHCR internal image, or
+ *   Dev/Staging ECR). Each enumerated publisher's workflow YAML is parsed
+ *   structurally and must guard every job on the atomicmemory-internal
+ *   repository, assign IMAGE_NAME exactly once at the workflow level
+ *   (pinned to that publisher's registry path), and push only via
+ *   buildx --push with every --tag deriving from that pin.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -35,7 +36,10 @@ const CODEOWNERS_FILE = ".github/CODEOWNERS";
 const GUARD_REL_PATH = "scripts/guards/guard-npm-publish.mjs";
 const PUBLISH_WORKFLOW_FILENAME_PREFIX = "publish-";
 const INTERNAL_IMAGE_WORKFLOW_FILENAME = "internal-core-docker-image.yml";
+const ECR_DEV_STAGING_WORKFLOW_FILENAME = "core-ecr-dev-staging.yml";
 const INTERNAL_IMAGE_NAME = "ghcr.io/atomicstrata/atomicmemory-core-internal";
+const ECR_CORE_IMAGE_NAME =
+  "636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-core-enterprise";
 // The job-level `if` must equal this exactly (whitespace-normalized): a
 // compound condition (e.g. `A || B`) could satisfy a substring match while
 // still running in the mirrored public repository.
@@ -47,16 +51,47 @@ const OUTPUT_EXPORTER_RE = /(^|\s)(-o|--output)[=\s][^\n]*\b(type=registry|push=
 const OTHER_PUSH_SINKS_RE = /\b(docker\s+image\s+push|docker\s+compose\s+push|docker-compose\s+push|podman\s+(image\s+)?push|buildah\s+push|skopeo\s+(copy|sync)|crane\s+(push|cp|copy)|oras\s+push)\b/;
 // Reusable-workflow refs that publish; a job-level `uses:` of one of these
 // from outside the audited release lane would launder a publish.
-const PUBLISHING_WORKFLOW_REF_RE = /(^|\/)(publish-[^/@\s]*\.ya?ml|internal-core-docker-image\.yml)(@|$)/i;
+const PUBLISHING_WORKFLOW_REF_RE =
+  /(^|\/)(publish-[^/@\s]*\.ya?ml|internal-core-docker-image\.yml|core-ecr-dev-staging\.yml)(@|$)/i;
 const EXPRESSION_MARKER = "$" + "{{";
 const COMPOSITE_SCAN_SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".turbo", ".worktrees"]);
-// Actions the enumerated internal publisher may use; anything else (any
-// case) is a policy failure so a new action is an explicit policy change.
-const INTERNAL_ALLOWED_ACTIONS = [
-  "actions/checkout@",
-  "docker/setup-qemu-action@",
-  "docker/setup-buildx-action@",
-];
+// Enumerated operator image publishers (outside publish-*.yml). Each pin
+// IMAGE_NAME and an action allowlist; adding a publisher is an explicit
+// policy change.
+const ENUMERATED_IMAGE_PUBLISHERS = new Map([
+  [
+    INTERNAL_IMAGE_WORKFLOW_FILENAME,
+    {
+      imageName: INTERNAL_IMAGE_NAME,
+      allowedActions: [
+        "actions/checkout@",
+        "docker/setup-qemu-action@",
+        "docker/setup-buildx-action@",
+      ],
+    },
+  ],
+  [
+    ECR_DEV_STAGING_WORKFLOW_FILENAME,
+    {
+      imageName: ECR_CORE_IMAGE_NAME,
+      allowedActions: [
+        "actions/checkout@",
+        "docker/setup-buildx-action@",
+        "aws-actions/configure-aws-credentials@",
+        "aws-actions/amazon-ecr-login@",
+      ],
+    },
+  ],
+]);
+
+function enumeratedPublisherBasename(filename) {
+  const basename = filename.split("/").pop() ?? "";
+  return ENUMERATED_IMAGE_PUBLISHERS.has(basename) ? basename : null;
+}
+
+function enumeratedPublisherNames() {
+  return [...ENUMERATED_IMAGE_PUBLISHERS.keys()].join(", ");
+}
 const PUBLISHED_PACKAGE_PATHS = [
   "packages/core/package.json",
   "packages/sdk/package.json",
@@ -134,7 +169,7 @@ export function checkCompositeActionText(rawText, filename) {
     (step) => typeof step?.uses === "string" && step.uses.toLowerCase().startsWith("docker/build-push-action"),
   );
   if (pushesContainerImages(shellText) || usesPushAction) {
-    return [`${filename}: composite actions must not push container images; only publish-*.yml release lanes and ${INTERNAL_IMAGE_WORKFLOW_FILENAME} may publish.`];
+    return [`${filename}: composite actions must not push container images; only publish-*.yml release lanes and enumerated operator publishers (${enumeratedPublisherNames()}) may publish.`];
   }
   return [];
 }
@@ -184,6 +219,11 @@ export function checkImagePublisherText(rawText, filename) {
     return [`${filename}: workflow YAML is not a mapping, so image-publisher policy cannot validate it.`];
   }
 
+  const publisherBasename = enumeratedPublisherBasename(filename);
+  const publisher = publisherBasename
+    ? ENUMERATED_IMAGE_PUBLISHERS.get(publisherBasename)
+    : undefined;
+
   const jobs = Object.entries(doc.jobs ?? {});
   const runScripts = [];
   const usedActions = [];
@@ -198,17 +238,17 @@ export function checkImagePublisherText(rawText, filename) {
 
   const failuresEarly = [];
   // A job-level `uses:` of a publishing reusable workflow is itself a
-  // publish path: only publish-*.yml release lanes may call one, and the
-  // enumerated internal publisher may not delegate to reusable workflows
+  // publish path: only publish-*.yml release lanes may call one, and
+  // enumerated operator publishers may not delegate to reusable workflows
   // at all.
   for (const { jobName, ref } of jobLevelUses) {
-    if (filename.endsWith(INTERNAL_IMAGE_WORKFLOW_FILENAME)) {
-      failuresEarly.push(`${filename}: job '${jobName}' must not call a reusable workflow (uses: ${ref}); the internal image publisher defines its own steps only.`);
+    if (publisher) {
+      failuresEarly.push(`${filename}: job '${jobName}' must not call a reusable workflow (uses: ${ref}); the enumerated image publisher defines its own steps only.`);
     } else if (PUBLISHING_WORKFLOW_REF_RE.test(ref)) {
       failuresEarly.push(`${filename}: job '${jobName}' calls publishing reusable workflow ${ref}; only publish-*.yml release lanes may do that.`);
     }
   }
-  if (failuresEarly.length > 0 && !filename.endsWith(INTERNAL_IMAGE_WORKFLOW_FILENAME)) return failuresEarly;
+  if (failuresEarly.length > 0 && !publisher) return failuresEarly;
   // Docker accepts compact short-option forms (-tVALUE, -oVALUE); split them
   // so the sink and destination scans below see the canonical spaced form.
   const shellText = runScripts.join("\n").replace(/(^|[\s"'])-([to])(?=[^\s=])/gm, "$1-$2 ");
@@ -216,9 +256,9 @@ export function checkImagePublisherText(rawText, filename) {
   const usesPushAction = usedActions.some((action) => action.toLowerCase().startsWith("docker/build-push-action"));
 
   if (!pushesContainerImages(shellText) && !usesPushAction) return failuresEarly;
-  if (!filename.endsWith(INTERNAL_IMAGE_WORKFLOW_FILENAME)) {
+  if (!publisher) {
     return [
-      `${filename}: pushes container images but is neither a ${PUBLISH_WORKFLOW_FILENAME_PREFIX}*.yml release lane nor the enumerated internal image publisher (${INTERNAL_IMAGE_WORKFLOW_FILENAME}).`,
+      `${filename}: pushes container images but is neither a ${PUBLISH_WORKFLOW_FILENAME_PREFIX}*.yml release lane nor an enumerated operator image publisher (${enumeratedPublisherNames()}).`,
     ];
   }
 
@@ -233,13 +273,13 @@ export function checkImagePublisherText(rawText, filename) {
     }
   }
   // (2) Exactly one IMAGE_NAME env assignment may exist, at the workflow
-  //     level, pinned to the internal package. The parser resolves quoted
-  //     keys, flow mappings, and anchor/alias tricks before we count.
+  //     level, pinned to this publisher's registry path. The parser resolves
+  //     quoted keys, flow mappings, and anchor/alias tricks before we count.
   const assignments = collectImageNameAssignments(doc, jobs);
   const pin = assignments.length === 1 ? assignments[0] : undefined;
-  if (!pin || pin.where !== "workflow env" || pin.value !== INTERNAL_IMAGE_NAME) {
+  if (!pin || pin.where !== "workflow env" || pin.value !== publisher.imageName) {
     const found = assignments.map((a) => `${a.where}=${a.value}`).join(", ") || "none";
-    failures.push(`${filename}: must assign env IMAGE_NAME exactly once, at the workflow level, pinned to ${INTERNAL_IMAGE_NAME} (found: ${found}).`);
+    failures.push(`${filename}: must assign env IMAGE_NAME exactly once, at the workflow level, pinned to ${publisher.imageName} (found: ${found}).`);
   }
   // (3) No shell-side reassignment (IMAGE_NAME=... in run blocks or
   //     GITHUB_ENV writes).
@@ -275,8 +315,8 @@ export function checkImagePublisherText(rawText, filename) {
   // (7) Only enumerated actions may be used, so no third-party or local
   //     composite action can push on this workflow's behalf.
   for (const action of usedActions) {
-    if (!INTERNAL_ALLOWED_ACTIONS.some((allowed) => action.toLowerCase().startsWith(allowed))) {
-      failures.push(`${filename}: uses: ${action} is not in the internal image publisher's action allowlist (${INTERNAL_ALLOWED_ACTIONS.join(", ")}).`);
+    if (!publisher.allowedActions.some((allowed) => action.toLowerCase().startsWith(allowed))) {
+      failures.push(`${filename}: uses: ${action} is not in the enumerated image publisher's action allowlist (${publisher.allowedActions.join(", ")}).`);
     }
   }
   return failures;
@@ -413,6 +453,7 @@ function checkCodeownersCovers(root) {
   return [
     ...checkCodeownersText(text, PUBLISH_WORKFLOW),
     ...checkCodeownersText(text, `.github/workflows/${INTERNAL_IMAGE_WORKFLOW_FILENAME}`),
+    ...checkCodeownersText(text, `.github/workflows/${ECR_DEV_STAGING_WORKFLOW_FILENAME}`),
   ];
 }
 

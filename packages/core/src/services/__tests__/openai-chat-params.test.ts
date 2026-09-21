@@ -15,6 +15,7 @@ import {
   OPENAI_CHAT_MAX_ATTEMPTS,
   openAIChatTokenLimit,
   openAIReasoningParams,
+  openAIResponseFormat,
   openAISamplingParams,
   prefersMaxCompletionTokens,
   reasoningEffortForModel,
@@ -368,5 +369,30 @@ describe('assertOpenAIChatCompletionsModel', () => {
     for (const model of ['gpt-5.2-codex', 'gpt-5.3-codex', 'gpt-5.4-mini'] as const) {
       expect(() => assertOpenAIChatCompletionsModel(model)).not.toThrow();
     }
+  });
+});
+
+describe('openAIResponseFormat', () => {
+  it('prefers json_schema over json_object when both are requested', () => {
+    expect(openAIResponseFormat(true, {
+      name: 'core_audn',
+      strict: true,
+      schema: { type: 'object' },
+    })).toEqual({
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'core_audn',
+          strict: true,
+          schema: { type: 'object' },
+        },
+      },
+    });
+  });
+
+  it('falls back to json_object when only jsonMode is set', () => {
+    expect(openAIResponseFormat(true, undefined)).toEqual({
+      response_format: { type: 'json_object' },
+    });
   });
 });

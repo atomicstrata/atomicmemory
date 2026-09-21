@@ -13,7 +13,9 @@ pub mod write;
 
 pub use detect::{DetectReport, detect_hosts, detected_hosts};
 pub use doctor::{DoctorReport, DoctorStatus, doctor_hosts};
-pub use host::{Host, InstallScope, PROJECT_SCOPE_UNSUPPORTED, all_hosts, parse_host};
+pub use host::{
+    Host, HostConfigPaths, InstallScope, PROJECT_SCOPE_UNSUPPORTED, all_hosts, parse_host,
+};
 pub use install::{
     InstallAction, InstallReport, install_hosts, select_hosts_interactive, uninstall_hosts,
 };

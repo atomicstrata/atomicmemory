@@ -9,7 +9,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use fs4::fs_std::FileExt;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::auth::origin::check_api_key_origin;
+use crate::auth::origin::{check_api_key_origin, same_origin};
 use crate::environment::{BaseUrlInput, Environment, is_remote_cloud_api_url, resolve_base_url};
 
 pub use crate::environment::ENV_CORE_IMAGE;
@@ -839,12 +839,16 @@ pub fn local_profile_cloud_export_warning(
     resolved_base_url: &str,
     env_api_key: Option<&str>,
     local_memory_url: &str,
+    stored_profile_base_url: Option<&str>,
 ) -> Option<String> {
     if stored_kind != ProfileKind::Local {
         return None;
     }
     base_url_override.filter(|value| !value.is_empty())?;
     if !is_remote_cloud_api_url(resolved_base_url) {
+        return None;
+    }
+    if stored_profile_base_url.is_some_and(|stored| same_origin(stored, resolved_base_url)) {
         return None;
     }
     if env_api_key.is_some_and(is_cloud_api_key) {
@@ -2395,10 +2399,40 @@ api_key_ref = "hosted-cloud-proj_a"
             Environment::PROD_BASE_URL,
             None,
             "http://127.0.0.1:17350",
+            None,
         )
         .expect("expected warning");
         assert!(warning.contains("active profile is Local"));
         assert!(warning.contains("127.0.0.1:17350"));
+    }
+
+    #[test]
+    fn local_profile_cloud_export_warning_suppressed_when_pin_matches_stored_cloud() {
+        assert!(
+            super::local_profile_cloud_export_warning(
+                ProfileKind::Local,
+                Some(Environment::PROD_BASE_URL),
+                Environment::PROD_BASE_URL,
+                None,
+                "http://127.0.0.1:17350",
+                Some(Environment::PROD_BASE_URL),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn local_profile_cloud_export_warning_when_pin_differs_from_stored_cloud() {
+        let warning = super::local_profile_cloud_export_warning(
+            ProfileKind::Local,
+            Some("https://api.dest.example/"),
+            "https://api.dest.example/",
+            None,
+            "http://127.0.0.1:17350",
+            Some(Environment::PROD_BASE_URL),
+        )
+        .expect("expected warning");
+        assert!(warning.contains("active profile is Local"));
     }
 
     #[test]
@@ -2410,6 +2444,7 @@ api_key_ref = "hosted-cloud-proj_a"
                 Environment::PROD_BASE_URL,
                 Some("amc_dashboard_key"),
                 "http://127.0.0.1:17350",
+                None,
             )
             .is_none()
         );

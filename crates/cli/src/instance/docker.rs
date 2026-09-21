@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use tracing::instrument;
 
-use super::{
-    DEFAULT_CONTAINER_NAME, LOCAL_URL_LABEL, MANAGED_BY_LABEL, PROFILE_LABEL_PREFIX, VOLUME_DATA,
-    VOLUME_STATE,
-};
+use super::{DEFAULT_CONTAINER_NAME, LOCAL_URL_LABEL, MANAGED_BY_LABEL, PROFILE_LABEL_PREFIX};
 use crate::environment::{cloud_tier_from_api_url, image_has_registry};
+
+mod core_instance_id;
+mod storage_ops;
 
 /// Runtime configuration for a managed Core container.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +26,9 @@ pub struct InstanceConfig {
     pub profile_name: String,
     /// Published local Core URL baked into container labels for origin binding.
     pub local_url: String,
+    pub storage: super::storage::StorageVolumes,
+    pub provider: super::storage::Provider,
+    pub project_id: Option<String>,
 }
 
 /// Environment variables forwarded to `docker run` (values via child env, not argv).
@@ -37,6 +40,8 @@ pub struct InstanceEnv {
     pub cloud_jwks_url: String,
     /// Explicit operator override forwarded as `CORE_API_KEY` (omit for Core auto-generation).
     pub core_api_key: Option<String>,
+    /// When true, Core uses host Metal SLM (openai-compatible) instead of OpenAI.
+    pub slm: bool,
 }
 
 /// Map a Cloud API base URL to Core's `CLOUD_ENV` tier label.
@@ -54,16 +59,22 @@ pub(crate) fn inspect_stderr_means_missing(stderr: &str) -> bool {
 impl InstanceEnv {
     /// Env var names passed to Docker — values live in the child process environment.
     pub fn docker_env_names(&self) -> Vec<&'static str> {
-        let mut names = vec![
-            "OPENAI_API_KEY",
+        let mut names = Vec::new();
+        if self.slm {
+            names.extend(crate::slm::slm_docker_env_names());
+        } else {
+            names.push("OPENAI_API_KEY");
+        }
+        names.extend([
             "ATOMICMEMORY_API_KEY",
+            "ALLOWED_ORIGINS",
             "ATOMICMEMORY_API_URL",
             "CLOUD_TRACE_SYNC_ENABLED",
             "CLOUD_JWKS_URL",
             "CLOUD_ENV",
             "CLOUD_JWT_ISSUER",
             "CLOUD_JWT_AUDIENCE",
-        ];
+        ]);
         if self.core_api_key.is_some() {
             names.push("CORE_API_KEY");
         }
@@ -78,10 +89,24 @@ impl InstanceEnv {
             .trim_end_matches('/')
             .to_string();
         let mut env = HashMap::new();
-        env.insert("OPENAI_API_KEY".into(), self.openai_api_key.clone());
+        if self.slm {
+            for (k, v) in crate::slm::slm_child_env_entries() {
+                env.insert(k, v);
+            }
+        } else {
+            env.insert("OPENAI_API_KEY".into(), self.openai_api_key.clone());
+        }
         env.insert(
             "ATOMICMEMORY_API_KEY".into(),
             self.atomicmemory_api_key.clone(),
+        );
+        // Connected Local publishes Core only on loopback, so the CLI can
+        // provide the explicit CORS contract the image requires for Cloud sync.
+        env.insert(
+            "ALLOWED_ORIGINS".into(),
+            format!(
+                "http://localhost:{DEFAULT_HOST_PORT},http://{DEFAULT_BIND_HOST}:{DEFAULT_HOST_PORT}"
+            ),
         );
         env.insert("ATOMICMEMORY_API_URL".into(), api_url.clone());
         env.insert("CLOUD_TRACE_SYNC_ENABLED".into(), "true".into());
@@ -147,6 +172,7 @@ pub struct ContainerInspect {
     pub atomicmemory_api_key: Option<String>,
     /// Local Core URL label from `docker run` (`ai.atomicstrata.local-url`).
     pub local_url: Option<String>,
+    pub storage: Option<super::storage::ObservedStorage>,
 }
 
 struct InspectedEnv {
@@ -209,6 +235,9 @@ pub fn default_instance_config(profile_name: &str, image: &str) -> InstanceConfi
         host_port: DEFAULT_HOST_PORT,
         profile_name: profile_name.to_string(),
         local_url: managed_core_local_url(),
+        storage: super::storage::StorageVolumes::legacy(),
+        provider: super::storage::Provider::Openai,
+        project_id: None,
     }
 }
 
@@ -228,7 +257,7 @@ pub fn managed_core_local_url() -> String {
 pub fn build_run_argv(config: &InstanceConfig, env: &InstanceEnv) -> Vec<String> {
     let bind = format!(
         "{DEFAULT_BIND_HOST}:{}:{}",
-        config.host_port, config.host_port
+        config.host_port, DEFAULT_HOST_PORT
     );
     let mut argv = vec!["run".into(), "-d".into()];
     if image_has_registry(&config.image) {
@@ -243,9 +272,9 @@ pub fn build_run_argv(config: &InstanceConfig, env: &InstanceEnv) -> Vec<String>
         "-p".into(),
         bind,
         "-v".into(),
-        format!("{VOLUME_DATA}:/var/lib/atomicmemory/postgres"),
+        format!("{}:/var/lib/atomicmemory/postgres", config.storage.data),
         "-v".into(),
-        format!("{VOLUME_STATE}:/var/lib/atomicmemory/state"),
+        format!("{}:/var/lib/atomicmemory/state", config.storage.state),
         "--label".into(),
         MANAGED_BY_LABEL.into(),
         "--label".into(),
@@ -253,9 +282,20 @@ pub fn build_run_argv(config: &InstanceConfig, env: &InstanceEnv) -> Vec<String>
         "--label".into(),
         format!("{LOCAL_URL_LABEL}={}", config.local_url),
     ]);
+    if let Some(project_id) = &config.project_id {
+        argv.extend([
+            "--label".into(),
+            format!("ai.atomicstrata.project-id={project_id}"),
+        ]);
+    }
     for name in env.docker_env_names() {
         argv.push("--env".into());
         argv.push(name.into());
+    }
+    if env.slm {
+        for arg in crate::slm::SLM_ADD_HOST_ARGS {
+            argv.push((*arg).into());
+        }
     }
     argv.push(config.image.clone());
     argv
@@ -288,24 +328,54 @@ pub async fn ensure_docker_available_with_preflight(
     docker: &dyn DockerRunner,
     interactive: bool,
 ) -> Result<()> {
-    if docker.version().await.is_ok() {
-        return Ok(());
+    let error = match docker.version().await {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+    if !interactive || !io::stdin().is_terminal() {
+        return Err(error);
     }
-    eprintln!("\n{}\n", docker_install_links());
-    if interactive && io::stdin().is_terminal() {
-        eprint!("Press Enter after Docker is installed and running (Ctrl+C to abort)… ");
-        io::stderr().flush().ok();
-        let mut line = String::new();
-        io::stdin()
-            .read_line(&mut line)
-            .context("read docker preflight confirmation")?;
-    }
+    eprintln!("{error}");
+    eprint!("Press Enter after Docker is ready (Ctrl+C to abort)… ");
+    io::stderr().flush()?;
+    let mut line = String::new();
+    io::stdin()
+        .read_line(&mut line)
+        .context("read Docker readiness confirmation")?;
+
     ensure_docker_available(docker).await
 }
 
 #[async_trait::async_trait]
 pub trait DockerRunner: Send + Sync {
     async fn version(&self) -> Result<()>;
+    /// Ensure the selected dataset exists and is owned by this installation.
+    async fn prepare_storage(
+        &self,
+        _config: &InstanceConfig,
+        _recorded: Option<&super::storage::StorageIdentity>,
+        _live_legacy: bool,
+    ) -> Result<super::storage::StorageIdentity> {
+        bail!("dataset preparation is not supported by this Docker runner")
+    }
+    /// Revalidate existing ownership without creating or deleting any volume.
+    async fn validate_storage(
+        &self,
+        _config: &InstanceConfig,
+        _recorded: Option<&super::storage::StorageIdentity>,
+        _live_legacy: bool,
+    ) -> Result<super::storage::StorageIdentity> {
+        bail!("dataset validation is not supported by this Docker runner")
+    }
+    /// Read the selected provider state without starting its database.
+    async fn read_volume_core_api_key(&self, _name: &str, _image: &str) -> Result<Option<String>> {
+        bail!("volume key retrieval is not supported by this Docker runner")
+    }
+
+    /// Configured loopback publication for validating a stopped container before restart.
+    async fn configured_local_url(&self, _name: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
     async fn inspect(&self, name: &str) -> Result<Option<ContainerInspect>>;
     async fn run(&self, config: &InstanceConfig, env: &InstanceEnv) -> Result<String>;
     async fn start(&self, name: &str) -> Result<()>;
@@ -314,6 +384,10 @@ pub trait DockerRunner: Send + Sync {
     async fn logs_tail(&self, name: &str, tail: u32) -> Result<String>;
     async fn logs_follow(&self, name: &str, tail: u32) -> Result<()>;
     async fn volume_rm(&self, name: &str) -> Result<()>;
+    /// Read the persisted runtime identity after the caller verifies container ownership.
+    async fn read_core_instance_id(&self, _name: &str) -> Result<Option<String>> {
+        bail!("runtime identity retrieval is not supported by this Docker runner")
+    }
     /// Read Core's persisted local client key from the state volume (secrets not in argv).
     async fn read_core_api_key(&self, name: &str) -> Result<Option<String>>;
 }
@@ -337,6 +411,7 @@ impl RealDockerRunner {
     ) -> Result<(i32, String, String)> {
         let mut cmd = Command::new(&self.docker_bin);
         cmd.args(args);
+        cmd.kill_on_drop(true);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
         if let Some(env) = child_env {
@@ -357,6 +432,7 @@ impl RealDockerRunner {
     async fn exec_inherit(&self, args: &[&str]) -> Result<i32> {
         let output = Command::new(&self.docker_bin)
             .args(args)
+            .kill_on_drop(true)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
@@ -374,15 +450,62 @@ impl Default for RealDockerRunner {
 
 #[async_trait::async_trait]
 impl DockerRunner for RealDockerRunner {
+    async fn configured_local_url(&self, name: &str) -> Result<Option<String>> {
+        let (code, stdout, _) = self
+            .exec_capture(&["inspect", "--type", "container", name], None)
+            .await?;
+        if code != 0 {
+            bail!("could not inspect configured Core port; no restart was attempted");
+        }
+        let entries: Vec<serde_json::Value> =
+            serde_json::from_str(&stdout).context("parse configured Core binding")?;
+        let Some(value) = entries
+            .first()
+            .and_then(|entry| entry.pointer("/HostConfig/PortBindings/17350~1tcp"))
+        else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(None);
+        }
+        let bindings: Vec<PortBinding> =
+            serde_json::from_value(value.clone()).context("parse configured Core port")?;
+        Ok(loopback_binding(&bindings))
+    }
+    async fn prepare_storage(
+        &self,
+        config: &InstanceConfig,
+        recorded: Option<&super::storage::StorageIdentity>,
+        live_legacy: bool,
+    ) -> Result<super::storage::StorageIdentity> {
+        storage_ops::ensure(self, config, recorded, live_legacy).await
+    }
+    async fn validate_storage(
+        &self,
+        config: &InstanceConfig,
+        recorded: Option<&super::storage::StorageIdentity>,
+        live_legacy: bool,
+    ) -> Result<super::storage::StorageIdentity> {
+        storage_ops::validate(self, config, recorded, live_legacy).await
+    }
+    async fn read_volume_core_api_key(&self, name: &str, image: &str) -> Result<Option<String>> {
+        storage_ops::read_key(self, name, image).await
+    }
+
     #[instrument(skip(self))]
     async fn version(&self) -> Result<()> {
-        let (code, _, stderr) = self.exec_capture(&["version"], None).await?;
-        if code != 0 {
-            bail!(
-                "docker is not available or the daemon is not running\n{stderr}\n\
-                 {install_links}",
-                install_links = docker_install_links()
-            );
+        let output = Command::new(&self.docker_bin).arg("version").output().await;
+        match output {
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                bail!("Docker CLI is not installed. {}", docker_install_links())
+            }
+            Err(err) => {
+                return Err(err).context("could not run Docker CLI; check installation and retry");
+            }
+            Ok(output) if !output.status.success() => bail!(
+                "Docker is installed, but its daemon is unavailable. Start Docker, confirm with `docker version`, then rerun the setup command."
+            ),
+            Ok(_) => {}
         }
         Ok(())
     }
@@ -396,8 +519,7 @@ impl DockerRunner for RealDockerRunner {
             if inspect_stderr_means_missing(&stderr) {
                 return Ok(None);
             }
-            tracing::warn!(%stderr, "docker inspect failed");
-            return Ok(None);
+            bail!("Docker container inspection failed; check the daemon and retry");
         }
         let entries: Vec<InspectEntry> =
             serde_json::from_str(stdout.trim()).context("parse docker inspect JSON")?;
@@ -405,13 +527,14 @@ impl DockerRunner for RealDockerRunner {
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("docker inspect returned empty array for '{name}'"))?;
-        let labels = entry.config.labels.unwrap_or_default();
+        let labels = entry.config.labels.clone().unwrap_or_default();
         let managed = labels
             .get("ai.atomicstrata.managed-by")
             .map(|v| v == "am-cli")
             .unwrap_or(false);
         let profile_label = labels.get("ai.atomicstrata.profile").cloned();
-        let local_url = labels.get(LOCAL_URL_LABEL).cloned();
+        let local_url = inspected_binding(&entry);
+        let storage = inspected_storage(&entry, &labels);
         let env = env_from_docker_inspect(entry.config.env.as_deref());
         Ok(Some(ContainerInspect {
             name: name.to_string(),
@@ -424,6 +547,7 @@ impl DockerRunner for RealDockerRunner {
             core_api_key: env.core_api_key,
             atomicmemory_api_key: env.atomicmemory_api_key,
             local_url,
+            storage,
         }))
     }
 
@@ -515,10 +639,14 @@ impl DockerRunner for RealDockerRunner {
     #[instrument(skip(self), fields(volume = name))]
     async fn volume_rm(&self, name: &str) -> Result<()> {
         let (code, _, stderr) = self.exec_capture(&["volume", "rm", name], None).await?;
-        if code != 0 && !stderr.contains("No such volume") {
+        if code != 0 && !stderr.to_ascii_lowercase().contains("no such volume") {
             bail!("docker volume rm failed: {stderr}");
         }
         Ok(())
+    }
+
+    async fn read_core_instance_id(&self, name: &str) -> Result<Option<String>> {
+        core_instance_id::read(&self.docker_bin, name).await
     }
 
     #[instrument(skip(self), fields(container = name))]
@@ -533,8 +661,7 @@ impl DockerRunner for RealDockerRunner {
             {
                 return Ok(None);
             }
-            tracing::warn!(%stderr, "docker exec read core-api-key failed");
-            return Ok(None);
+            bail!("could not read the managed Core credential; check Docker and retry");
         }
         let key = stdout.trim().to_string();
         if key.is_empty() {
@@ -551,6 +678,92 @@ struct InspectEntry {
     state: InspectState,
     #[serde(default)]
     config: InspectConfig,
+    #[serde(default)]
+    mounts: Vec<InspectMount>,
+    #[serde(default)]
+    network_settings: InspectNetwork,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct InspectMount {
+    name: Option<String>,
+    destination: String,
+    #[serde(rename = "Type")]
+    kind: String,
+}
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct InspectNetwork {
+    #[serde(default)]
+    ports: HashMap<String, Option<Vec<PortBinding>>>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct PortBinding {
+    host_ip: String,
+    host_port: String,
+}
+
+fn inspected_binding(entry: &InspectEntry) -> Option<String> {
+    let bindings = entry.network_settings.ports.get("17350/tcp")?.as_ref()?;
+    loopback_binding(bindings)
+}
+
+fn loopback_binding(bindings: &[PortBinding]) -> Option<String> {
+    if bindings.len() != 1 || bindings[0].host_ip != DEFAULT_BIND_HOST {
+        return None;
+    }
+    let port = bindings[0]
+        .host_port
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port > 0)?;
+    Some(format!("http://127.0.0.1:{port}"))
+}
+
+fn inspected_storage(
+    entry: &InspectEntry,
+    labels: &HashMap<String, String>,
+) -> Option<super::storage::ObservedStorage> {
+    use super::storage::{ObservedStorage, Provider, StorageVolumes};
+    let env: HashMap<&str, &str> = entry
+        .config
+        .env
+        .as_ref()?
+        .iter()
+        .filter_map(|e| e.split_once('='))
+        .collect();
+    let provider = if env.get("EMBEDDING_PROVIDER") == Some(&"openai-compatible")
+        && env.get("EMBEDDING_DIMENSIONS") == Some(&"768")
+        && env.get("EMBEDDING_MODEL") == Some(&crate::slm::SLM_EMBED_MODEL)
+        && env.get("LLM_MODEL") == Some(&crate::slm::SLM_CHAT_MODEL)
+    {
+        Provider::Slm
+    } else if env.contains_key("OPENAI_API_KEY")
+        && matches!(env.get("EMBEDDING_PROVIDER"), None | Some(&"openai"))
+        && matches!(env.get("EMBEDDING_DIMENSIONS"), None | Some(&"1536"))
+    {
+        Provider::Openai
+    } else {
+        return None;
+    };
+    let named = |destination: &str| {
+        entry
+            .mounts
+            .iter()
+            .find(|m| m.kind == "volume" && m.destination == destination)?
+            .name
+            .clone()
+    };
+    Some(ObservedStorage {
+        provider,
+        volumes: StorageVolumes {
+            data: named("/var/lib/atomicmemory/postgres")?,
+            state: named("/var/lib/atomicmemory/state")?,
+        },
+        project_id: labels.get("ai.atomicstrata.project-id").cloned(),
+    })
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -634,6 +847,7 @@ mod tests {
             atomicmemory_api_url: "https://api.atomicstrata.ai".into(),
             cloud_jwks_url: "https://api.atomicstrata.ai/.well-known/jwks.json".into(),
             core_api_key: None,
+            slm: false,
         };
         let argv = build_run_argv(&config, &env);
         let bind = format!("{DEFAULT_BIND_HOST}:{DEFAULT_HOST_PORT}:{DEFAULT_HOST_PORT}");
@@ -656,6 +870,74 @@ mod tests {
 
     const DEV_IMAGE: &str = "ghcr.io/atomicstrata/atomicmemory-core:test";
     const PROD_IMAGE: &str = Environment::PROD_CORE_IMAGE;
+
+    #[cfg(unix)]
+    fn cli_env_passes_connected_local_entrypoint(slm: bool) {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos();
+        let work_dir = std::env::temp_dir().join(format!(
+            "atomicmemory-cli-entrypoint-{}-{nonce}",
+            std::process::id()
+        ));
+        let bin_dir = work_dir.join("bin");
+        fs::create_dir_all(&bin_dir).expect("create fixture bin directory");
+        let gosu = bin_dir.join("gosu");
+        fs::write(&gosu, "#!/usr/bin/env bash\nshift\nexec \"$@\"\n").expect("write fixture gosu");
+        fs::set_permissions(&gosu, fs::Permissions::from_mode(0o755))
+            .expect("make fixture gosu executable");
+
+        let mut env = test_env_for_port();
+        if slm {
+            crate::slm::apply_slm_overlay(&mut env);
+        }
+        let child_env = env.as_child_env();
+        let entrypoint = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packages/core/scripts/docker-entrypoint.sh");
+        let inherited_path = std::env::var("PATH").expect("PATH must be set");
+        let output = {
+            let mut command = Command::new("bash");
+            command
+                .arg(entrypoint)
+                .arg("true")
+                .env_clear()
+                .env("PATH", format!("{}:{inherited_path}", bin_dir.display()))
+                .env("CORE_STATE_DIR", work_dir.join("state"))
+                .env("DATABASE_URL", "postgresql://fixture.example/atomicmemory")
+                .env("ATOMICMEMORY_RUN_MIGRATIONS_ON_STARTUP", "false");
+            for name in env.docker_env_names() {
+                command.env(
+                    name,
+                    child_env
+                        .get(name)
+                        .expect("every Docker env name must have a generated value"),
+                );
+            }
+            command.output().expect("run actual Core entrypoint")
+        };
+        let _ = fs::remove_dir_all(&work_dir);
+
+        assert!(
+            output.status.success(),
+            "CLI-generated {} environment must pass the actual entrypoint:\nstdout:\n{}\nstderr:\n{}",
+            if slm { "SLM" } else { "OpenAI" },
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_generated_openai_and_slm_envs_pass_connected_local_entrypoint() {
+        cli_env_passes_connected_local_entrypoint(false);
+        cli_env_passes_connected_local_entrypoint(true);
+    }
 
     #[test]
     fn env_from_docker_inspect_parses_cloud_urls() {
@@ -720,6 +1002,7 @@ mod tests {
             cloud_jwks_url: "https://api.staging.example.com/.well-known/atomic-core/jwks.json"
                 .into(),
             core_api_key: None,
+            slm: false,
         };
         let child = env.as_child_env();
         assert_eq!(child.get("CLOUD_ENV").map(String::as_str), Some("custom"));
@@ -779,6 +1062,7 @@ mod tests {
             atomicmemory_api_url: String::new(),
             cloud_jwks_url: String::new(),
             core_api_key: None,
+            slm: false,
         };
         let argv = build_run_argv(&config, &env);
         assert!(argv.contains(&"run".to_string()));
@@ -823,6 +1107,7 @@ mod tests {
             atomicmemory_api_url: String::new(),
             cloud_jwks_url: String::new(),
             core_api_key: None,
+            slm: false,
         };
         let argv = build_run_argv(&config, &env);
         assert!(argv.contains(&"--pull".to_string()));
@@ -838,6 +1123,7 @@ mod tests {
             atomicmemory_api_url: "https://api.dev.example.com".into(),
             cloud_jwks_url: "https://api.dev.example.com/jwks.json".into(),
             core_api_key: Some("core-secret".into()),
+            slm: false,
         };
         let argv = build_run_argv(&config, &env);
         let joined = argv.join(" ");
@@ -855,6 +1141,7 @@ mod tests {
             atomicmemory_api_url: String::new(),
             cloud_jwks_url: String::new(),
             core_api_key: None,
+            slm: false,
         };
         let argv = build_run_argv(&config, &env);
         assert_eq!(argv.last().map(String::as_str), Some("my/core:v2"));
@@ -868,6 +1155,7 @@ mod tests {
             atomicmemory_api_url: "https://api.dev.example.com".into(),
             cloud_jwks_url: "https://api.dev.example.com/.well-known/atomic-core/jwks.json".into(),
             core_api_key: None,
+            slm: false,
         };
         let child = env.as_child_env();
         assert_eq!(
@@ -971,4 +1259,32 @@ mod tests {
         let runner = RealDockerRunner::new();
         runner.version().await.expect("docker version");
     }
+    #[test]
+    fn custom_host_port_maps_to_the_fixed_core_port() {
+        let mut config = default_instance_config("local", DEV_IMAGE);
+        config.host_port = 17352;
+        config.local_url = "http://127.0.0.1:17352".into();
+        let args = build_run_argv(&config, &test_env_for_port());
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["-p", "127.0.0.1:17352:17350"])
+        );
+    }
+
+    fn test_env_for_port() -> InstanceEnv {
+        InstanceEnv {
+            openai_api_key: "test".into(),
+            atomicmemory_api_key: "amc_test".into(),
+            atomicmemory_api_url: "https://api.example.com".into(),
+            cloud_jwks_url: "https://api.example.com/jwks".into(),
+            core_api_key: None,
+            slm: false,
+        }
+    }
 }
+
+#[cfg(all(test, unix))]
+mod recovery_tests;
+
+#[cfg(test)]
+mod live_storage_tests;

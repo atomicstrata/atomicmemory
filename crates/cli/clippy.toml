@@ -1,0 +1,4 @@
+disallowed-methods = [
+  { path = "reqwest::Client::builder", reason = "Cloud and OAuth HTTP clients must use crate::auth::http" },
+  { path = "reqwest::Client::new", reason = "Cloud and OAuth HTTP clients must use crate::auth::http" },
+]

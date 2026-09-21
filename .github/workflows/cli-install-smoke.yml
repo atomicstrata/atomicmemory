@@ -1,0 +1,140 @@
+name: CLI Fresh Install Smoke
+
+# Installs the published `am` from cli-internal-latest (or a dispatch-selected
+# tag such as cli-canary-latest) onto a clean runner and
+# proves it works — the artifact-level counterpart to core-docker-smoke.
+#
+# The fixture tests (scripts/__tests__/install-cli*.test.sh) drive the installer
+# with a fake gh and a fake am, so they prove installer logic and nothing about
+# the release. internal-cli-release.yml's own "Native smoke" untars the binary
+# on the machine that just built it, bypassing both installers. Neither notices
+# if cli-internal-latest is deleted, if its tarballs and version.json disagree,
+# or if the shipped binary cannot start without a Rust toolchain present.
+#
+# One job per published target, so a broken tarball is attributed to its
+# platform rather than to "the release".
+#
+# Repo guard: this file is mirrored into the public repo, and the release it
+# installs from is private. Jobs run ONLY on atomicstrata/atomicmemory-internal.
+
+on:
+  schedule:
+    # Daily. The release only changes on pushes to main, so this is watching for
+    # rot — a deleted release, a missing asset, a runner image that stops
+    # satisfying the binary — not for churn.
+    - cron: "20 6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to install (default: cli-internal-latest; use cli-canary-latest for canary)"
+        required: false
+        default: cli-internal-latest
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  install-smoke:
+    name: install-smoke ${{ matrix.target }}
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # GITHUB_TOKEN with contents:read can read this repository's own release
+      # assets, so no PAT is involved.
+      - name: Fresh install smoke
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AM_INTERNAL_TAG: ${{ inputs.tag || 'cli-internal-latest' }}
+        run: bash scripts/cli-install-smoke.sh
+
+  report:
+    name: report scheduled status
+    if: always() && github.repository == 'atomicstrata/atomicmemory-internal'
+    needs: install-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # A nightly nobody is told about is not a gate. Opens one self-clearing
+      # issue on failure and closes it on the next green run.
+      #
+      # Gated on `schedule` so a manual dispatch — which an engineer is already
+      # watching, and which may target an arbitrary tag — can neither open nor
+      # close the nightly's issue. `cancelled` is skipped because a cancelled
+      # run is not evidence either way. continue-on-error keeps a reporter fault
+      # from failing a run that actually passed, which would invert the signal
+      # this exists to protect.
+      - name: Open or close the failure issue
+        if: github.event_name == 'schedule' && needs.install-smoke.result != 'cancelled'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SMOKE_RESULT: ${{ needs.install-smoke.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: cli-install-smoke
+        run: |
+          set -euo pipefail
+          # Ask about this label rather than listing and grepping: a repo with
+          # more labels than the page size would look like it has none, and the
+          # create would then fail on a label that already exists.
+          if ! gh label list --search "$LABEL" --json name --jq '.[].name' | grep -qx "$LABEL"; then
+            gh label create "$LABEL" --color B60205 \
+              --description "Nightly fresh-install smoke for the published am CLI"
+          fi
+          existing="$(gh issue list --label "$LABEL" --state open \
+            --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [ "$SMOKE_RESULT" = "success" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" \
+                --comment "Fresh-install smoke is green again: ${RUN_URL}"
+              echo "closed #${existing}"
+            else
+              echo "green, nothing open"
+            fi
+            exit 0
+          fi
+
+          body="Nightly fresh-install smoke for \`cli-internal-latest\` reported \`${SMOKE_RESULT}\`.
+
+          Run: ${RUN_URL}
+
+          Each job installs the published \`am\` into a throwaway \$HOME on a clean
+          runner. A failure means the release as published does not install, not
+          that a test is flaky — the job list names the affected target.
+
+          This issue closes itself on the next green scheduled run."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: ${RUN_URL}"
+            echo "commented on #${existing}"
+          else
+            gh issue create --label "$LABEL" \
+              --title "Nightly CLI fresh-install smoke is failing" \
+              --body "$body"
+          fi

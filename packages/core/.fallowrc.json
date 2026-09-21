@@ -1,5 +1,9 @@
 {
   "$schema": "https://fallow.tools/schema.json",
+  "entry": [
+    "hosted/migration-history-overlay.mjs",
+    "hosted/__tests__/migration-history-overlay.test.mjs"
+  ],
   "ignorePatterns": [
     "**/one-offs/**",
     "scripts/**"
@@ -17,5 +21,13 @@
     "unused-class-members": "off",
     "duplicate-exports": "off"
   },
-  "duplicates": {}
+  "duplicates": {
+    "ignore": [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.mjs",
+      "tests/**",
+      "scripts/**"
+    ]
+  }
 }

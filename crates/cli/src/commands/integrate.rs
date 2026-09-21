@@ -1,6 +1,9 @@
 //! `am integrate` — detect, install, update, doctor, and uninstall host MCP configs.
 
+use std::env;
+use std::ffi::OsString;
 use std::io::{self, IsTerminal};
+use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
@@ -8,11 +11,12 @@ use serde::Serialize;
 
 use crate::cli::{GlobalOptions, OutputFormat};
 use crate::integrate::install::{InstallOptions, default_cwd};
+use crate::integrate::path_util::home_dir;
 use crate::integrate::spec::preflight_install_runtime;
 use crate::integrate::state::list_owned_status;
 use crate::integrate::{
-    DetectReport, DoctorReport, DoctorStatus, Host, InstallAction, InstallReport, InstallScope,
-    PROJECT_SCOPE_UNSUPPORTED, all_hosts, detect_hosts, detected_hosts, doctor_hosts,
+    DetectReport, DoctorReport, DoctorStatus, Host, HostConfigPaths, InstallAction, InstallReport,
+    InstallScope, PROJECT_SCOPE_UNSUPPORTED, all_hosts, detect_hosts, detected_hosts, doctor_hosts,
     install_hosts, parse_host, resolve_credentials, select_hosts_interactive, uninstall_hosts,
 };
 use crate::output::{emit, message};
@@ -20,7 +24,7 @@ use crate::progress::{ProgressReporter, progress_for};
 
 #[derive(Debug, Args)]
 pub struct IntegrateOptions {
-    /// Target host (repeatable): cursor, claude-code, codex
+    /// Target host (repeatable): cursor, claude-code, codex, opencode
     #[arg(long = "host", value_enum, global = true)]
     pub hosts: Vec<HostArg>,
 
@@ -54,6 +58,8 @@ pub enum HostArg {
     #[value(name = "claude-code")]
     ClaudeCode,
     Codex,
+    #[value(name = "opencode")]
+    OpenCode,
 }
 
 impl From<HostArg> for Host {
@@ -62,6 +68,7 @@ impl From<HostArg> for Host {
             HostArg::Cursor => Host::Cursor,
             HostArg::ClaudeCode => Host::ClaudeCode,
             HostArg::Codex => Host::Codex,
+            HostArg::OpenCode => Host::OpenCode,
         }
     }
 }
@@ -113,9 +120,10 @@ struct OwnedInstallRow {
 pub async fn run(opts: IntegrateOptions, global: &GlobalOptions) -> Result<()> {
     ensure_global_scope(&opts)?;
     let cwd = default_cwd()?;
+    let config_paths = resolve_host_config_paths()?;
     let scope = InstallScope::Global;
     let detect = if needs_host_detection(&opts) {
-        detect_hosts(&cwd)
+        detect_hosts(&cwd, &config_paths)
     } else {
         DetectReport {
             cwd: cwd.display().to_string(),
@@ -124,54 +132,87 @@ pub async fn run(opts: IntegrateOptions, global: &GlobalOptions) -> Result<()> {
     };
 
     match opts.command {
-        Some(IntegrateCommand::List) => return run_list(global, &detect).await,
+        Some(IntegrateCommand::List) => return run_list(global, &detect, &config_paths).await,
         Some(IntegrateCommand::Detect) => {
             let detect = filter_detect_report(&detect, &explicit_hosts(&opts));
             return run_detect(global, &detect).await;
         }
         Some(IntegrateCommand::Doctor { ref positional }) => {
-            return run_doctor(global, &opts, &cwd, scope, &detect, positional).await;
-        }
-        Some(IntegrateCommand::Uninstall { ref positional }) => {
-            return run_uninstall(global, &opts, &cwd, scope, &detect, positional).await;
-        }
-        Some(IntegrateCommand::Install { ref positional }) => {
-            return run_install(
+            return run_doctor(
                 global,
                 &opts,
                 &cwd,
+                &config_paths,
                 scope,
                 &detect,
                 positional,
-                InstallAction::Install,
             )
+            .await;
+        }
+        Some(IntegrateCommand::Uninstall { ref positional }) => {
+            return run_uninstall(
+                global,
+                &opts,
+                &cwd,
+                &config_paths,
+                scope,
+                &detect,
+                positional,
+            )
+            .await;
+        }
+        Some(IntegrateCommand::Install { ref positional }) => {
+            return run_install(InstallRunParams {
+                global,
+                opts: &opts,
+                cwd: &cwd,
+                config_paths: &config_paths,
+                scope,
+                detect: &detect,
+                positional,
+                action: InstallAction::Install,
+            })
             .await;
         }
         Some(IntegrateCommand::Update { ref positional }) => {
-            return run_install(
+            return run_install(InstallRunParams {
                 global,
-                &opts,
-                &cwd,
+                opts: &opts,
+                cwd: &cwd,
+                config_paths: &config_paths,
                 scope,
-                &detect,
+                detect: &detect,
                 positional,
-                InstallAction::Update,
-            )
+                action: InstallAction::Update,
+            })
             .await;
         }
         None => {
-            return run_install(
+            return run_install(InstallRunParams {
                 global,
-                &opts,
-                &cwd,
+                opts: &opts,
+                cwd: &cwd,
+                config_paths: &config_paths,
                 scope,
-                &detect,
-                &[],
-                InstallAction::Install,
-            )
+                detect: &detect,
+                positional: &[],
+                action: InstallAction::Install,
+            })
             .await;
         }
     }
+}
+
+fn resolve_host_config_paths() -> Result<HostConfigPaths> {
+    let xdg_config_home = valid_xdg_config_home(env::var_os("XDG_CONFIG_HOME"));
+    Ok(HostConfigPaths::new(home_dir()?, xdg_config_home))
+}
+
+fn valid_xdg_config_home(value: Option<OsString>) -> Option<PathBuf> {
+    value
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
 }
 
 fn needs_host_detection(opts: &IntegrateOptions) -> bool {
@@ -208,8 +249,12 @@ fn ensure_global_scope(opts: &IntegrateOptions) -> Result<()> {
     Ok(())
 }
 
-async fn run_list(global: &GlobalOptions, detect: &DetectReport) -> Result<()> {
-    let installs = list_owned_status(&all_hosts())?;
+async fn run_list(
+    global: &GlobalOptions,
+    detect: &DetectReport,
+    config_paths: &HostConfigPaths,
+) -> Result<()> {
+    let installs = list_owned_status(&all_hosts(), config_paths)?;
     let report = ListReport {
         supported: all_hosts().iter().map(|h| h.id()).collect(),
         detect: detect.clone(),
@@ -246,25 +291,8 @@ async fn run_detect(global: &GlobalOptions, detect: &DetectReport) -> Result<()>
     Ok(())
 }
 
-async fn run_install(
-    global: &GlobalOptions,
-    opts: &IntegrateOptions,
-    cwd: &std::path::Path,
-    scope: InstallScope,
-    detect: &DetectReport,
-    positional: &[String],
-    action: InstallAction,
-) -> Result<()> {
-    let mut progress = progress_for(global);
-    let params = InstallRunParams {
-        global,
-        opts,
-        cwd,
-        scope,
-        detect,
-        positional,
-        action,
-    };
+async fn run_install(params: InstallRunParams<'_>) -> Result<()> {
+    let mut progress = progress_for(params.global);
     let result = run_install_with_progress(params, progress.as_mut()).await;
     progress.finish();
     result
@@ -274,6 +302,7 @@ struct InstallRunParams<'a> {
     global: &'a GlobalOptions,
     opts: &'a IntegrateOptions,
     cwd: &'a std::path::Path,
+    config_paths: &'a HostConfigPaths,
     scope: InstallScope,
     detect: &'a DetectReport,
     positional: &'a [String],
@@ -301,7 +330,13 @@ async fn run_install_with_progress(
     if will_prompt {
         progress.pause_for_input();
     }
-    let hosts = resolve_hosts(params.opts, params.detect, params.positional, true)?;
+    let hosts = resolve_hosts(
+        params.opts,
+        params.detect,
+        params.config_paths,
+        params.positional,
+        true,
+    )?;
     if will_prompt {
         progress.resume_after_input();
     }
@@ -320,6 +355,7 @@ async fn run_install_with_progress(
         hosts: &hosts,
         scope: params.scope,
         cwd: params.cwd,
+        config_paths: params.config_paths,
         creds: &creds,
         force: params.opts.force,
         dry_run: params.opts.dry_run,
@@ -334,6 +370,7 @@ async fn run_doctor(
     global: &GlobalOptions,
     opts: &IntegrateOptions,
     cwd: &std::path::Path,
+    config_paths: &HostConfigPaths,
     scope: InstallScope,
     detect: &DetectReport,
     positional: &[String],
@@ -346,8 +383,8 @@ async fn run_doctor(
             "profile unavailable — running structural checks only (npx, config, ownership)",
         );
     }
-    let hosts = resolve_hosts(opts, detect, positional, false)?;
-    let report = doctor_hosts(&hosts, scope, cwd, creds);
+    let hosts = resolve_hosts(opts, detect, config_paths, positional, false)?;
+    let report = doctor_hosts(&hosts, scope, cwd, config_paths, creds);
     emit(global.output, &report, global.quiet)?;
     print_doctor_summary(global, &report);
     if report.entries.is_empty() {
@@ -364,12 +401,13 @@ async fn run_uninstall(
     global: &GlobalOptions,
     opts: &IntegrateOptions,
     cwd: &std::path::Path,
+    config_paths: &HostConfigPaths,
     scope: InstallScope,
     detect: &DetectReport,
     positional: &[String],
 ) -> Result<()> {
-    let hosts = resolve_hosts(opts, detect, positional, true)?;
-    let report = uninstall_hosts(&hosts, scope, cwd, opts.force, opts.dry_run)?;
+    let hosts = resolve_hosts(opts, detect, config_paths, positional, true)?;
+    let report = uninstall_hosts(&hosts, scope, cwd, config_paths, opts.force, opts.dry_run)?;
     emit(global.output, &report, global.quiet)?;
     for row in &report.results {
         if row.changed {
@@ -388,6 +426,7 @@ async fn run_uninstall(
 fn resolve_hosts(
     opts: &IntegrateOptions,
     detect: &DetectReport,
+    config_paths: &HostConfigPaths,
     positional: &[String],
     require_automation_guard: bool,
 ) -> Result<Vec<Host>> {
@@ -402,7 +441,7 @@ fn resolve_hosts(
         bail!("non-interactive session requires --yes and/or explicit --host");
     }
     let detected = if detect.hosts.is_empty() {
-        detected_hosts(&detect_hosts(default_cwd()?.as_path()))
+        detected_hosts(&detect_hosts(default_cwd()?.as_path(), config_paths))
     } else {
         detected_hosts(detect)
     };
@@ -607,6 +646,22 @@ mod parser_tests {
         ]);
         assert!(opts.yes);
         assert_eq!(opts.hosts.len(), 2);
+    }
+
+    #[test]
+    fn opencode_host_flag_parses() {
+        let opts = parse(&["am", "integrate", "--yes", "--global", "--host", "opencode"]);
+        assert_eq!(opts.hosts.len(), 1);
+    }
+
+    #[test]
+    fn relative_xdg_config_home_is_ignored() {
+        assert_eq!(valid_xdg_config_home(Some("config".into())), None);
+        let absolute = std::env::temp_dir().join("config");
+        assert_eq!(
+            valid_xdg_config_home(Some(absolute.clone().into_os_string())),
+            Some(absolute)
+        );
     }
 
     #[test]

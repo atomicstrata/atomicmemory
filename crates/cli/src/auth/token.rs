@@ -1,28 +1,17 @@
 //! OAuth token refresh and bearer resolution.
 
-use std::time::Duration;
-
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
-use reqwest::Client;
 use reqwest::Url;
 use serde::Deserialize;
 
 use crate::auth::claims::decode_id_token;
 use crate::auth::clerk_oauth::resolve_oauth_pair;
+use crate::auth::http;
 use crate::auth::origin::check_token_origin;
 use crate::config::{
     ConfigFile, CredentialsFile, OAuthTokens, load_config, load_credentials, update_credentials,
 };
-
-const OAUTH_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
-
-fn oauth_http_client() -> Result<Client> {
-    Client::builder()
-        .timeout(OAUTH_HTTP_TIMEOUT)
-        .build()
-        .context("build oauth http client")
-}
 
 #[derive(Debug, Deserialize)]
 pub struct OAuthMetadata {
@@ -41,7 +30,7 @@ struct TokenResponse {
 pub async fn discover_metadata(issuer: &str) -> Result<OAuthMetadata> {
     let base = issuer.trim_end_matches('/');
     let url = format!("{base}/.well-known/oauth-authorization-server");
-    let client = oauth_http_client()?;
+    let client = http::client()?;
     let meta: OAuthMetadata = client
         .get(&url)
         .send()
@@ -62,7 +51,7 @@ pub async fn exchange_code(
     redirect_uri: &str,
     verifier: &str,
 ) -> Result<OAuthTokens> {
-    let client = oauth_http_client()?;
+    let client = http::client()?;
     let resp: TokenResponse = client
         .post(token_endpoint)
         .form(&[
@@ -88,7 +77,7 @@ pub async fn refresh_tokens(
     client_id: &str,
     refresh_token: &str,
 ) -> Result<OAuthTokens> {
-    let client = oauth_http_client()?;
+    let client = http::client()?;
     let resp: TokenResponse = client
         .post(token_endpoint)
         .form(&[

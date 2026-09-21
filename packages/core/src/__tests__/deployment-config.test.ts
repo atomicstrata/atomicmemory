@@ -148,6 +148,18 @@ describe('deployment configuration', () => {
       expect(envExample).toContain('VOYAGE_DOCUMENT_MODEL');
       expect(envExample).toContain('VOYAGE_QUERY_MODEL');
     });
+
+    it('documents compact extraction as a reduced-capability opt-in', () => {
+      const envExample = readEnvExample();
+      expect(envExample).toContain('EXTRACTION_PROMPT_VARIANT');
+      expect(envExample).toContain('EXTRACTION_MAX_TOKENS');
+      expect(envExample).toContain('AUDN_MAX_TOKENS');
+      expect(envExample).toContain('assistant recommendations');
+      expect(envExample).toContain('contact-info');
+      expect(envExample).toContain('short-input');
+      expect(envExample).toContain('AUDN mutation policy');
+      expect(envExample).toContain('json_object');
+    });
   });
 
   describe('Dockerfile', () => {
@@ -191,7 +203,13 @@ describe('deployment configuration', () => {
       expect(entrypoint).toContain('persist_core_api_key');
       expect(entrypoint).toContain('is_hosted_deployment_env');
       expect(entrypoint).toContain('apply_connected_local_defaults');
-      expect(entrypoint).toContain('CLOUD_ENV');
+      expect(entrypoint).toContain('ATOMICMEMORY_API_URL is required');
+      expect(entrypoint).toContain('ALLOWED_ORIGINS is required');
+      expect(entrypoint).not.toContain('CLOUD_ENV');
+      expect(entrypoint).not.toContain('api.dev.atomicstrata.ai');
+      expect(entrypoint).not.toContain('api.staging.atomicstrata.ai');
+      expect(entrypoint).not.toContain('memory.dev.atomicstrata.ai');
+      expect(entrypoint).not.toContain('memory.staging.atomicstrata.ai');
       expect(entrypoint).toContain('LOCAL_DOCKER_STORAGE_KEY_HMAC_SECRET=');
       expect(entrypoint).toContain('production|staging');
       expect(entrypoint).toContain('CORE_API_KEY is required');
@@ -217,9 +235,12 @@ describe('deployment configuration', () => {
       expect(dockerfile).toContain('USER');
     });
 
-    it('copies tsconfig.json for tsx runtime', () => {
+    it('runs compiled distribution without copying source or tests', () => {
       const dockerfile = readDockerfile();
-      expect(dockerfile).toContain('tsconfig.json');
+      expect(dockerfile).toContain('COPY --from=builder /repo/packages/core/dist ./dist');
+      expect(dockerfile).toContain('CMD ["node", "dist/server.js"]');
+      expect(dockerfile).not.toContain('COPY packages/core/src ./src');
+      expect(dockerfile).not.toContain('./node_modules/.bin/tsx');
     });
   });
 });

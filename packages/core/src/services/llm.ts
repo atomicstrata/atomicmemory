@@ -12,6 +12,7 @@ import {
   OPENAI_CHAT_MAX_ATTEMPTS,
   openAIChatTokenLimit,
   openAIReasoningParams,
+  openAIResponseFormat,
   openAISamplingParams,
   tryApplyOpenAIRetry,
   type OpenAIRetryState,
@@ -87,6 +88,11 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   jsonMode?: boolean;
+  jsonSchema?: {
+    name: string;
+    strict?: boolean;
+    schema: Record<string, unknown>;
+  };
   seed?: number;
 }
 
@@ -217,7 +223,7 @@ class OpenAICompatibleLLM implements LLMProvider {
       ...openAISamplingParams(this.model, options.temperature, effectiveSeed),
       ...openAIChatTokenLimit(this.model, options.maxTokens, forceMaxCompletionTokens),
       ...openAIReasoningParams(this.model, forceMaxCompletionTokens),
-      ...(options.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
+      ...openAIResponseFormat(options.jsonMode, options.jsonSchema),
     });
 
     const started = performance.now();

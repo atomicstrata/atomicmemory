@@ -162,7 +162,7 @@ async function reconcileSingleMemory(
   }
 
   const decision = applyClarificationOverrides(
-    await cachedResolveAUDN(memory.content, candidates),
+    await cachedResolveAUDN(memory.content, candidates, config.extractionPromptVariant),
     memory.content,
     candidates,
     [],

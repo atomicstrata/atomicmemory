@@ -11,6 +11,7 @@
  * N× extraction API calls.
  */
 
+import type { ExtractionPromptVariant } from './extraction-prompt-variant.js';
 import { extractFacts, type ExtractedFact } from './extraction.js';
 import { cachedExtractFacts } from './extraction-cache.js';
 import { chunkedExtractFacts } from './chunked-extraction.js';
@@ -34,6 +35,7 @@ export interface ConsensusExtractionConfig {
   chunkOverlapTurns: number;
   extractionCacheEnabled: boolean;
   observationDateExtractionEnabled: boolean;
+  extractionPromptVariant: ExtractionPromptVariant;
   quotedEntityExtractionEnabled: boolean;
 }
 
@@ -86,7 +88,7 @@ function applyOptionalQuotedEntityExtraction(
 /** Run extractFacts() N times to get independent LLM samples. */
 async function runMultipleExtractions(
   conversationText: string,
-  config: Pick<ConsensusExtractionConfig, 'consensusExtractionRuns' | 'observationDateExtractionEnabled'>,
+  config: Pick<ConsensusExtractionConfig, 'consensusExtractionRuns' | 'observationDateExtractionEnabled' | 'extractionPromptVariant'>,
 ): Promise<ExtractedFact[][]> {
   const allRunFacts: ExtractedFact[][] = [];
   const options = buildExtractionOptions(config);
@@ -97,10 +99,11 @@ async function runMultipleExtractions(
 }
 
 function buildExtractionOptions(
-  config: Pick<ConsensusExtractionConfig, 'observationDateExtractionEnabled'>,
+  config: Pick<ConsensusExtractionConfig, 'observationDateExtractionEnabled' | 'extractionPromptVariant'>,
 ) {
   return {
     observationDateExtractionEnabled: config.observationDateExtractionEnabled,
+    promptVariant: config.extractionPromptVariant,
   };
 }
 

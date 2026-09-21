@@ -23,7 +23,12 @@ const MIRROR_CLI_WORKFLOW = ".github/workflows/mirror-cli-r2.yml";
 const PUBLISH_PACKAGES_WORKFLOW = ".github/workflows/publish-packages.yml";
 const PUBLISH_CORE_DOCKER_WORKFLOW = ".github/workflows/publish-core-docker.yml";
 const INTERNAL_CORE_DOCKER_WORKFLOW = ".github/workflows/internal-core-docker-image.yml";
+const CORE_ECR_DEV_STAGING_WORKFLOW = ".github/workflows/core-ecr-dev-staging.yml";
+const CLI_INSTALL_SMOKE_WORKFLOW = ".github/workflows/cli-install-smoke.yml";
+const CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW =
+  ".github/workflows/cli-public-install-smoke.yml";
 const RELEASE_PUBLISH_JOB = "publish";
+const CLI_INSTALL_SMOKE_REPORT_JOB = "report";
 const READ_ONLY_WORKFLOW_PERMISSIONS = { contents: "read" };
 const RELEASE_PUBLISH_PERMISSIONS = {
   contents: "write",
@@ -42,6 +47,18 @@ const GHCR_PUBLISH_PERMISSIONS = {
   packages: "write",
 };
 const DOCKER_PUBLISH_WORKFLOW_PERMISSIONS = GHCR_PUBLISH_PERMISSIONS;
+// ECR Dev/Staging publisher: OIDC to AWS only (no GHCR packages:write).
+const ECR_OIDC_PUBLISH_PERMISSIONS = {
+  contents: "read",
+  "id-token": "write",
+};
+// The first non-release writer in this table. It files no artifact and
+// touches no registry: it opens and closes one issue so a scheduled smoke
+// failure reaches a person. Narrowest scope that can do that.
+const NIGHTLY_REPORT_PERMISSIONS = {
+  contents: "read",
+  issues: "write",
+};
 
 // Single data-driven allow-table for every workflow that legitimately holds
 // write scopes. Anything not listed here must be read-only at both the
@@ -91,6 +108,32 @@ const RELEASE_LANE_ALLOW_TABLE = new Map([
       jobs: {},
     },
   ],
+  [
+    CORE_ECR_DEV_STAGING_WORKFLOW,
+    {
+      workflow: ECR_OIDC_PUBLISH_PERMISSIONS,
+      jobs: {},
+    },
+  ],
+  [
+    CLI_INSTALL_SMOKE_WORKFLOW,
+    {
+      workflow: READ_ONLY_WORKFLOW_PERMISSIONS,
+      jobs: { [CLI_INSTALL_SMOKE_REPORT_JOB]: NIGHTLY_REPORT_PERMISSIONS },
+    },
+  ],
+  // Same shape as the internal smoke's reporter and for the same reason: it
+  // opens and closes one issue so a scheduled failure reaches a person. The
+  // public lane needs its own entry rather than sharing one, because the table
+  // is keyed by file and an unlisted workflow is required to be read-only —
+  // which is exactly how this entry came to be written (ATO-1863).
+  [
+    CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW,
+    {
+      workflow: READ_ONLY_WORKFLOW_PERMISSIONS,
+      jobs: { [CLI_INSTALL_SMOKE_REPORT_JOB]: NIGHTLY_REPORT_PERMISSIONS },
+    },
+  ],
 ]);
 
 function checkSecrets() {
@@ -120,6 +163,7 @@ function validateWorkflowFile(filePath) {
   return [
     ...validateWorkflowPermissions(filePath, text),
     ...validateMirrorCliPromotionGuard(filePath, text),
+    ...validateReleaseCliVersionBumpGuard(filePath, text),
     ...validateWorkflowActions(filePath, lines),
   ];
 }
@@ -259,6 +303,30 @@ export function validateMirrorCliPromotionGuard(filePath, source) {
   }
 
   return [`${filePath}: must compare requested version against current version.json before promoting latest`];
+}
+
+/**
+ * release-cli.yml must validate adjacent public semver bumps before building
+ * release artifacts, so a mistagged cli-v* cannot bypass Cargo.toml alignment.
+ */
+export function validateReleaseCliVersionBumpGuard(filePath, source) {
+  if (filePath !== RELEASE_CLI_WORKFLOW) {
+    return [];
+  }
+
+  const text = workflowSourceText(source);
+  const required = [
+    /Validate public version bump/,
+    /scripts\/ci\/validate-cli-version-bump\.sh/,
+    /RELEASE_MODE=1/,
+    /PROPOSED_VERSION="\$VERSION"/,
+  ];
+
+  if (required.every((pattern) => pattern.test(text))) {
+    return [];
+  }
+
+  return [`${filePath}: must invoke scripts/ci/validate-cli-version-bump.sh with RELEASE_MODE before building`];
 }
 
 function validateWorkflowActions(filePath, lines) {

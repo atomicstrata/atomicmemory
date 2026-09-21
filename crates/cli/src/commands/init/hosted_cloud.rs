@@ -142,7 +142,7 @@ async fn provision_hosted_cloud_key(
     }) {
         match probe.health(api_origin, &stored.secret).await {
             Ok(()) => return Ok(HostedCredentialOutcome::Reused),
-            Err(CloudClientError::Auth) => {}
+            Err(CloudClientError::Auth | CloudClientError::Forbidden { .. }) => {}
             Err(err) => {
                 return Err(anyhow::anyhow!(
                     "could not verify the stored Hosted Cloud credential: {err}"

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Records initdb argv and creates a minimal cluster layout for launcher tests.
+set -euo pipefail
+
+: > "${AM_STUB_INITDB_ARGS:-/tmp/am-initdb.args}"
+for arg in "$@"; do
+  printf 'ARG %s\n' "$arg" >> "${AM_STUB_INITDB_ARGS:-/tmp/am-initdb.args}"
+done
+data=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "-D" ]]; then
+    data="$arg"
+  fi
+  if [[ "$arg" == --auth-local=trust || "$arg" == --auth-host=trust ]]; then
+    echo "initdb stub: trust auth is forbidden" >&2
+    exit 1
+  fi
+  prev="$arg"
+done
+if [[ -z "$data" ]]; then
+  echo "initdb stub: missing -D" >&2
+  exit 1
+fi
+mkdir -p "$data/conf.d"
+printf '17\n' > "$data/PG_VERSION"
+printf "# stub postgresql.conf\n" > "$data/postgresql.conf"
+printf "local all all scram-sha-256\n" > "$data/pg_hba.conf"

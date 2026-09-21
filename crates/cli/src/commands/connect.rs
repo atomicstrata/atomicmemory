@@ -24,6 +24,7 @@ use crate::instance::{
 use crate::output::{emit, message};
 
 const RECENT_TRACE_WINDOW: Duration = Duration::from_secs(15 * 60);
+const JWKS_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Which environment block `connect env` emits.
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq, Eq)]
@@ -46,6 +47,15 @@ pub struct ConnectOptions {
     /// Authenticate via OAuth device flow instead of browser login
     #[arg(long)]
     pub device: bool,
+    /// Select the Connected Local provider.
+    #[arg(long, value_enum, conflicts_with = "slm", requires = "project")]
+    pub provider: Option<crate::instance::storage::Provider>,
+    /// Use Connected Local SLM without an OpenAI key.
+    #[arg(long, requires = "project")]
+    pub slm: bool,
+    /// Accept defaults and model download without prompting.
+    #[arg(long)]
+    pub yes: bool,
     /// Skip starting Core when using `--project`
     #[arg(long)]
     pub no_instance: bool,
@@ -97,7 +107,10 @@ pub async fn run(opts: ConnectOptions, global: &GlobalOptions) -> Result<()> {
             skip_verify: opts.skip_verify,
             replace: opts.replace,
             instance_image: None,
-            interactive: !global.quiet,
+            interactive: global.allow_prompts(opts.yes),
+            slm: opts.slm,
+            provider: opts.provider,
+            slm_pull_yes: opts.yes,
         };
         return run_connect_project(&project, opts.device, &connect_opts, global).await;
     }
@@ -215,12 +228,11 @@ async fn resolve_client_key_for_env(
     profile: &crate::config::ResolvedProfile,
     _show_secrets: bool,
 ) -> Result<String> {
-    let docker = RealDockerRunner::new();
-    let state_key = read_managed_core_key(&docker, &profile.name, &profile.memory_base_url).await?;
-    if let Some(key) = state_key {
+    if let Some(key) = resolve_core_api_key() {
         return Ok(key);
     }
-    if let Some(key) = resolve_core_api_key() {
+    let docker = RealDockerRunner::new();
+    if let Some(key) = read_managed_core_key(&docker, profile).await? {
         return Ok(key);
     }
     bail!(
@@ -230,10 +242,9 @@ async fn resolve_client_key_for_env(
 
 async fn read_managed_core_key(
     docker: &dyn DockerRunner,
-    profile_name: &str,
-    destination_url: &str,
+    profile: &crate::config::ResolvedProfile,
 ) -> Result<Option<String>> {
-    read_managed_core_api_key_with(docker, profile_name, destination_url).await
+    read_managed_core_api_key_with(docker, profile).await
 }
 
 async fn run_doctor(global: &GlobalOptions) -> Result<()> {
@@ -437,12 +448,7 @@ async fn check_jwks_reachable(cloud_base_url: &str) -> DoctorCheck {
             };
         }
     };
-    let client = match reqwest::Client::builder()
-        // Cloud/CDN returns 403 when User-Agent is missing (bare reqwest default).
-        .user_agent(concat!("am/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(10))
-        .build()
-    {
+    let client = match crate::auth::http::client_with_timeout(JWKS_HTTP_TIMEOUT) {
         Ok(client) => client,
         Err(err) => {
             return DoctorCheck {
@@ -513,9 +519,7 @@ async fn check_local_client_auth(
     docker: &dyn DockerRunner,
     quiet: bool,
 ) -> DoctorCheck {
-    let state_key = read_managed_core_key(docker, &profile.name, &profile.memory_base_url)
-        .await
-        .unwrap_or(None);
+    let state_key = read_managed_core_key(docker, profile).await.unwrap_or(None);
     let info = resolve_local_clients(&profile.memory_base_url, state_key.as_deref(), !quiet);
 
     match info.provenance {

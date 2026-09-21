@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Records pg_ctl argv and start/stop/reload counts for launcher tests.
+set -euo pipefail
+
+for arg in "$@"; do
+  printf 'ARG %s\n' "$arg" >> "${AM_STUB_PGCTL_LOG:-/tmp/am-pgctl.log}"
+done
+printf '%s\n' '---' >> "${AM_STUB_PGCTL_LOG:-/tmp/am-pgctl.log}"
+
+data=""
+cmd=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "-D" ]]; then
+    data="$arg"
+  fi
+  case "$arg" in
+    start|stop|reload) cmd="$arg" ;;
+  esac
+  prev="$arg"
+done
+
+case "$cmd" in
+  start)
+    printf 'start\n' >> "${AM_STUB_PGCTL_STARTS:-/tmp/am-pgctl.starts}"
+    if [[ -n "$data" ]]; then
+      printf '1\n' > "$data/postmaster.pid"
+    fi
+    ;;
+  stop)
+    printf 'stop\n' >> "${AM_STUB_PGCTL_STOPS:-/tmp/am-pgctl.stops}"
+    if [[ -n "$data" ]]; then
+      rm -f "$data/postmaster.pid"
+    fi
+    ;;
+  reload)
+    printf 'reload\n' >> "${AM_STUB_PGCTL_RELOADS:-/tmp/am-pgctl.reloads}"
+    ;;
+esac

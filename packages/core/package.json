@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/core",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Open-source memory engine for AI applications — semantic retrieval, AUDN mutation, and contradiction-safe claim versioning.",
   "type": "module",
   "license": "Apache-2.0",
@@ -65,7 +65,7 @@
     "openapi.yaml"
   ],
   "scripts": {
-    "code-health": "fallow --no-cache --format compact --fail-on-issues",
+    "code-health": "fallow audit --base=${FALLOW_BASE_REF:-origin/main} --no-cache --format compact --fail-on-issues",
     "dev": "dotenv -e .env -- tsx watch src/server.ts",
     "start": "dotenv -e .env -- tsx src/server.ts",
     "typecheck": "tsc --noEmit",
@@ -74,9 +74,10 @@
     "generate:openapi": "tsx scripts/generate-openapi.ts",
     "check:openapi": "pnpm run generate:openapi && git diff --exit-code openapi.yaml openapi.json",
     "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs && npm run generate:openapi && npm run build",
-    "test": "dotenv -e .env.test -- vitest run --reporter verbose",
+    "test": "dotenv -e .env.test -- vitest run --reporter verbose && pnpm run test:scripts",
     "test:watch": "dotenv -e .env.test -- vitest --reporter verbose",
-    "test:deployment": "vitest run src/__tests__/deployment-config.test.ts --reporter verbose",
+    "test:scripts": "bash scripts/__tests__/run.sh",
+    "test:deployment": "vitest run src/__tests__/macos-embedded-config.test.ts src/app/__tests__/listen-host.test.ts --reporter verbose && pnpm run test:scripts",
     "test:docker-smoke": "./scripts/docker-smoke-test.sh",
     "test:schema": "tests/schema/run-schemathesis.sh",
     "migrate": "dotenv -e .env -- tsx src/db/migrate.ts",

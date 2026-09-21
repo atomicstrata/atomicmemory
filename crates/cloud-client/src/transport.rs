@@ -11,6 +11,7 @@ use crate::redact::redact_secrets;
 
 const USER_AGENT: &str = concat!("am-cloud-client/", env!("CARGO_PKG_VERSION"));
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_ERROR_BODY_BYTES: usize = 8192;
 
 #[derive(Clone)]
 pub struct HttpTransport {
@@ -31,6 +32,15 @@ impl HttpTransport {
             auth_header: format!("Bearer {}", bearer_token.into()),
             http,
         })
+    }
+
+    /// Set an explicit request deadline for operations with a larger work budget.
+    pub fn with_timeout(mut self, timeout: Duration) -> Result<Self, CloudClientError> {
+        self.http = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(timeout)
+            .build()?;
+        Ok(self)
     }
 
     pub fn base_url(&self) -> &Url {
@@ -136,28 +146,50 @@ impl HttpTransport {
                 if e.is_timeout() {
                     CloudClientError::Timeout
                 } else {
-                    CloudClientError::Network(redact_secrets(&e.to_string()))
+                    CloudClientError::Network(redact_secrets(&e.without_url().to_string()))
                 }
             })?;
 
             let status = resp.status();
-            let bytes = resp.bytes().await?;
             let elapsed_ms = started.elapsed().as_millis() as u64;
             tracing::Span::current().record("status", status.as_u16());
             tracing::Span::current().record("latency_ms", elapsed_ms);
 
             if !status.is_success() {
-                let body: serde_json::Value =
-                    serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+                // Server bodies can contain arbitrary PII. Keep them out of tracing;
+                // expose only a bounded, redacted excerpt in the returned error.
                 debug!(
                     status = status.as_u16(),
                     latency_ms = elapsed_ms,
-                    body = %redact_secrets(&body.to_string()),
                     "cloud request failed"
                 );
-                return Err(CloudClientError::from_status(status.as_u16(), body));
+                let body =
+                    read_error_body(resp)
+                        .await
+                        .map_err(|error| CloudClientError::Status {
+                            code: status.as_u16(),
+                            body: format!(
+                                "{method} {}: could not read error response: {error}",
+                                redact_secrets(path)
+                            ),
+                        })?;
+                let credential = self.auth_header.strip_prefix("Bearer ").unwrap_or("");
+                let body = if credential.is_empty() {
+                    body
+                } else {
+                    body.replace(credential, "<redacted>")
+                };
+                let error = CloudClientError::from_response_body(status.as_u16(), &body);
+                return Err(match error {
+                    CloudClientError::Status { code, body } => CloudClientError::Status {
+                        code,
+                        body: format!("{method} {}: {body}", redact_secrets(path)),
+                    },
+                    error => error,
+                });
             }
 
+            let bytes = resp.bytes().await?;
             let value: serde_json::Value = if bytes.is_empty() {
                 serde_json::Value::Null
             } else {
@@ -172,6 +204,26 @@ impl HttpTransport {
         .instrument(span)
         .await
     }
+}
+
+async fn read_error_body(mut response: reqwest::Response) -> Result<String, CloudClientError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        if error.is_timeout() {
+            CloudClientError::Timeout
+        } else {
+            CloudClientError::Network(redact_secrets(&error.without_url().to_string()))
+        }
+    })? {
+        let remaining = MAX_ERROR_BODY_BYTES - bytes.len();
+        bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+        if bytes.len() == MAX_ERROR_BODY_BYTES {
+            let mut body = String::from_utf8_lossy(&bytes).into_owned();
+            body.push_str(" … [truncated]");
+            return Ok(body);
+        }
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn normalize_base(mut url: Url) -> Url {

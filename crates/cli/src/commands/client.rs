@@ -53,17 +53,23 @@ pub fn emit_cloud_export_warning_if_needed(
     stored_kind: crate::config::ProfileKind,
     profile: &ResolvedProfile,
 ) {
+    let config = load_config().ok();
+    let stored_profile_base_url = config
+        .as_ref()
+        .and_then(|file| file.profiles.get(&profile.name))
+        .and_then(|entry| entry.base_url.as_deref());
     if let Some(warning) = local_profile_cloud_export_warning(
         stored_kind,
         global.base_url.as_deref(),
         &profile.base_url,
         std::env::var(ENV_API_KEY).ok().as_deref(),
         &profile.memory_base_url,
+        stored_profile_base_url,
     ) {
         message(!global.quiet, &warning);
     }
 
-    if let (Ok(config), Ok(creds)) = (load_config(), load_credentials()) {
+    if let (Some(config), Ok(creds)) = (config, load_credentials()) {
         let api_key_ref = config
             .profiles
             .get(&profile.name)
@@ -172,11 +178,13 @@ pub(crate) async fn memory_client_for_profile(profile: &ResolvedProfile) -> Resu
             // Prefer the managed container's persisted CORE_API_KEY over a Cloud-minted
             // JWT. Core rejects JWT for smoke / some local namespaces; reading the key
             // from state keeps ingest/search working without a shell override.
-            if let Some(core_key) =
-                crate::instance::read_managed_core_api_key(&profile.name, &profile.memory_base_url)
-                    .await
-            {
-                return MemoryClient::new(base, core_key).context("create core memory client");
+            if let Some(core_key) = crate::instance::read_managed_core_api_key(profile).await? {
+                let managed_base =
+                    crate::instance::address::ManagedAddress::parse(&profile.memory_base_url)?
+                        .url()
+                        .parse()?;
+                return MemoryClient::new(managed_base, core_key)
+                    .context("create core memory client");
             }
             // Pinned: cloud_api_key_client would resolve the active profile
             // again, so a "pinned" caller silently minted a token for whatever

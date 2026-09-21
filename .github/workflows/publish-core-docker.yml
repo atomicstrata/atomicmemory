@@ -5,6 +5,10 @@ on:
     types:
       - core-npm-published
   workflow_call:
+    secrets:
+      PUBLIC_ARTIFACT_SIGNATURES:
+        description: "Private newline-separated patterns used to validate public artifacts."
+        required: true
     inputs:
       core_version:
         description: "Published @atomicmemory/core version to build and tag."
@@ -266,6 +270,29 @@ jobs:
             exit 1
           fi
 
+      - name: Check public package and image for private identifiers
+        if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
+        env:
+          PUBLIC_ARTIFACT_SIGNATURES: ${{ secrets.PUBLIC_ARTIFACT_SIGNATURES }}
+          PACKAGE_TARBALL: ${{ steps.package.outputs.tarball }}
+          IMAGE_REFERENCE: ${{ env.IMAGE_NAME }}:${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          tarball_path="${RUNNER_TEMP}/atomicmemory-core-package.tgz"
+          curl --fail --location --retry 3 --output "${tarball_path}" "${PACKAGE_TARBALL}"
+          if [[ -z "${PUBLIC_ARTIFACT_SIGNATURES//[[:space:]]/}" ]]; then
+            echo "::error::PUBLIC_ARTIFACT_SIGNATURES must be configured for Core releases."
+            exit 64
+          fi
+          umask 077
+          signature_file="$(mktemp "${RUNNER_TEMP}/public-artifact-signatures.XXXXXX")"
+          trap 'rm -f "$signature_file"' EXIT
+          printf '%s\n' "${PUBLIC_ARTIFACT_SIGNATURES}" | sed '/^[[:space:]]*$/d' > "${signature_file}"
+          release-source/packages/core/scripts/check-public-artifacts.sh \
+            "${tarball_path}" \
+            "${IMAGE_REFERENCE}" \
+            "${signature_file}"
+
       - name: Smoke test local release image
         if: steps.package.outputs.should_publish == 'true' && steps.package.outputs.retag_latest_only != 'true' && steps.package.outputs.retag_aliases_only != 'true'
         env:
@@ -469,7 +496,7 @@ jobs:
 
           verify_tag() {
             local image_ref="$1"
-            for attempt in {1..12}; do
+            for _ in {1..12}; do
               if assert_platform "${image_ref}" linux amd64 && assert_platform "${image_ref}" linux arm64; then
                 echo "${image_ref} includes linux/amd64 and linux/arm64."
                 return 0

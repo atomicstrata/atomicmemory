@@ -80,6 +80,12 @@ pub struct InitOptions {
     /// Skip memory pipeline smoke verification at the end
     #[arg(long)]
     pub skip_verify: bool,
+    /// Start Connected Local with host Metal SLM (no OpenAI key)
+    #[arg(long)]
+    pub slm: bool,
+    /// Select the local memory provider; omitted reuses the saved provider.
+    #[arg(long, value_enum, conflicts_with = "slm")]
+    pub provider: Option<crate::instance::storage::Provider>,
 }
 
 pub async fn run(opts: InitOptions, global: &GlobalOptions) -> Result<()> {
@@ -96,6 +102,14 @@ async fn run_with_progress(
 ) -> Result<()> {
     ensure_config_initialized()?;
     let interactive = global.allow_prompts(opts.yes);
+    if opts.local && !opts.no_instance {
+        crate::instance::preflight_managed(
+            opts.local_url.as_deref(),
+            crate::instance::storage::Provider::requested(opts.provider, opts.slm)?,
+            interactive,
+        )
+        .await?;
+    }
 
     if opts.project.is_none() && !opts.local {
         validate_local_only_options(&opts, InitActivationPath::HostedCloud)?;
@@ -189,6 +203,9 @@ async fn run_with_progress(
         replace: opts.replace,
         instance_image: opts.image.clone(),
         interactive,
+        slm: opts.slm,
+        provider: opts.provider,
+        slm_pull_yes: opts.yes,
     };
 
     let mut onboarding_ctx = OnboardingContext {
@@ -228,7 +245,10 @@ async fn run_with_progress(
                 ensure_local_project_for_connect(&project)?;
                 onboarding_ctx.actx.mode = ActivationContext::local().mode;
                 if !opts.no_instance && !global.quiet {
-                    announce_connected_local_prerequisites(interactive);
+                    announce_connected_local_prerequisites(
+                        interactive,
+                        opts.slm || opts.provider == Some(crate::instance::storage::Provider::Slm),
+                    );
                 }
                 return connect_local_project(
                     project,
@@ -273,7 +293,10 @@ async fn run_with_progress(
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if !opts.no_instance && !global.quiet {
-        announce_connected_local_prerequisites(interactive);
+        announce_connected_local_prerequisites(
+            interactive,
+            opts.slm || opts.provider == Some(crate::instance::storage::Provider::Slm),
+        );
     }
 
     let cloud_siblings = cloud_projects(&all_projects);
@@ -334,6 +357,8 @@ fn validate_local_only_options(opts: &InitOptions, mode: InitActivationPath) -> 
     }
 
     let has_local_only_option = opts.no_instance
+        || opts.slm
+        || opts.provider.is_some()
         || opts.skip_verify
         || opts.replace
         || opts.image.is_some()
@@ -406,18 +431,23 @@ async fn resolve_init_project(
 }
 
 /// Printed once before Docker / OpenAI work so operators know what to prepare.
-fn announce_connected_local_prerequisites(interactive: bool) {
-    if interactive {
-        eprintln!(
-            "\nConnected Local needs Docker running and an OpenAI API key.\n\
+fn announce_connected_local_prerequisites(interactive: bool, slm: bool) {
+    eprint!("{}", connected_local_prerequisites(interactive, slm));
+}
+
+fn connected_local_prerequisites(interactive: bool, slm: bool) -> &'static str {
+    if slm {
+        return "\nConnected Local SLM needs Docker running and ~1.7GB of models (`--yes` or a prompt).\n\
              • Docker: https://docs.docker.com/desktop/\n\
-             • OpenAI: have your key ready — `am init` prompts with hidden input.\n"
-        );
+             • No OPENAI_API_KEY. Cloud login is still required for the runtime API key.\n";
+    }
+    if interactive {
+        "\nConnected Local needs Docker running and an OpenAI API key.\n\
+         • Docker: https://docs.docker.com/desktop/\n\
+         • OpenAI: have your key ready — `am init` prompts with hidden input.\n"
     } else {
-        eprintln!(
-            "\nConnected Local needs Docker running and OPENAI_API_KEY set in the environment.\n\
-             • Docker: https://docs.docker.com/desktop/\n"
-        );
+        "\nConnected Local needs Docker running and OPENAI_API_KEY set in the environment.\n\
+         • Docker: https://docs.docker.com/desktop/\n"
     }
 }
 
@@ -466,7 +496,11 @@ struct InitAuthInput<'a> {
 /// the full timeout and then failed. `--yes` was already fail-closed; the same
 /// reasoning applies whenever there is no terminal. The device flow prints a
 /// code to enter elsewhere, so it stays allowed on explicit opt-in.
-fn may_run_init_login(allow_prompts: bool, use_device: bool, stdin_is_tty: bool) -> bool {
+pub(super) fn may_run_init_login(
+    allow_prompts: bool,
+    use_device: bool,
+    stdin_is_tty: bool,
+) -> bool {
     allow_prompts && (use_device || stdin_is_tty)
 }
 
@@ -721,6 +755,30 @@ mod tests {
             _ => panic!("expected init --local"),
         }
         assert!(Cli::try_parse_from(["am", "init", "--cloud", "--local"]).is_err());
+    }
+
+    #[test]
+    fn init_local_slm_yes_parses() {
+        let cli = Cli::try_parse_from(["am", "init", "--local", "--slm", "--yes"]).unwrap();
+        match cli.command {
+            crate::cli::Command::Init(InitOptions {
+                local, slm, yes, ..
+            }) => {
+                assert!(local && slm && yes);
+            }
+            _ => panic!("expected init --local --slm --yes"),
+        }
+    }
+
+    #[test]
+    fn slm_prerequisites_omit_openai_and_name_model_download() {
+        let slm = connected_local_prerequisites(true, true);
+        assert!(slm.contains("1.7GB"));
+        assert!(slm.contains("No OPENAI_API_KEY"));
+        assert!(!slm.contains("have your key ready"));
+        let openai = connected_local_prerequisites(true, false);
+        assert!(openai.contains("OpenAI API key"));
+        assert!(!openai.contains("1.7GB"));
     }
 
     #[test]

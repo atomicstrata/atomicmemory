@@ -126,6 +126,9 @@ fn map_org_error(err: CloudClientError) -> anyhow::Error {
         CloudClientError::Auth => anyhow::anyhow!(
             "authentication failed — run `am auth login` or `am init` to refresh your session"
         ),
+        CloudClientError::Forbidden { code } => anyhow::anyhow!(
+            "Cloud forbade this org request ({code}). Refreshing login does not change your org role."
+        ),
         other => anyhow::anyhow!("{other}"),
     }
 }
@@ -150,5 +153,15 @@ mod tests {
         let orgs = vec![sample_org("solo", "Solo Org")];
         let picked = pick_org(&orgs, true).await.unwrap().unwrap();
         assert_eq!(picked.slug, "solo");
+    }
+
+    #[test]
+    fn forbidden_org_error_does_not_recommend_login() {
+        let err = map_org_error(CloudClientError::Forbidden {
+            code: "forbidden".into(),
+        });
+        let msg = err.to_string();
+        assert!(msg.contains("does not change your org role"));
+        assert!(!msg.contains("am auth login"));
     }
 }

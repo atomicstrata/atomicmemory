@@ -10423,7 +10423,7 @@
                         }
                       ]
                     },
-                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation.",
+                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation.",
                     "type": "object"
                   },
                   "content_class": {
@@ -10744,7 +10744,7 @@
                         }
                       ]
                     },
-                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation.",
+                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation.",
                     "type": "object"
                   },
                   "content_class": {
@@ -13021,7 +13021,7 @@
                         }
                       ]
                     },
-                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation.",
+                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation.",
                     "type": "object"
                   },
                   "limit": {
@@ -13844,7 +13844,7 @@
                         }
                       ]
                     },
-                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation.",
+                    "description": "Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation.",
                     "type": "object"
                   },
                   "limit": {

@@ -1,0 +1,281 @@
+name: CLI Public Install Smoke
+
+# Installs `am` the way a user does — `curl https://get.atomicstrata.ai/install.sh | sh`
+# — onto a clean runner, and proves the result works (ATO-1863).
+#
+# Its own lane rather than a matrix leg of cli-install-smoke.yml, because the
+# two watch different things and fail for different reasons. The internal lane
+# reads a private release through `gh` and says nothing about the mirror: it
+# stays green while get.atomicstrata.ai serves a 404, a stale version.json, or
+# tarballs whose checksums no longer match. That is the path every customer
+# takes, and today its breakage would be reported by one of them.
+#
+# It also reaches two things the internal channel structurally cannot:
+#
+#   * the R2 mirror serves a working install.sh and a version.json that agrees
+#     with the tarballs beside it
+#   * attestation verification actually succeeds — the `public-provenance` job
+#     runs `gh attestation verify` against the published tarball, rather than
+#     leaving it to the installer's default `auto`, which skips silently on a
+#     runner where it cannot verify and would let a release with no provenance
+#     pass as if it had been checked
+#
+# Needs no repo auth for the install itself, which is the point — if this lane
+# ever needs a token to install, users need one too, and that is the bug.
+#
+# Repo guard: this file is mirrored into the public repo. Jobs run ONLY on
+# atomicstrata/atomicmemory-internal so the mirror does not run it twice.
+
+on:
+  schedule:
+    # 06:50 UTC, half an hour after the internal lane. The mirror only changes
+    # on a release, so this watches for rot — an expired cert, a broken R2
+    # sync, a deleted object — rather than for churn.
+    - cron: "50 6 * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        # A choice, not free text. `resolve-release` fetches this URL from a
+        # repo runner before either smoke job applies the script's allowlist, so
+        # a free-text value made the resolver fetch and parse an arbitrary host
+        # and publish the result as a job output — and the run then failed
+        # anyway, because both downstream jobs refuse anything but the pinned
+        # mirror. The input promised a freedom the lane does not have.
+        #
+        # Add a line here and in cli-install-smoke.sh's allowlist together when
+        # there is a second mirror.
+        description: "Public mirror to install from"
+        required: false
+        default: https://get.atomicstrata.ai
+        type: choice
+        options:
+          - https://get.atomicstrata.ai
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Resolved once, then handed to both lanes. They run on separate runners and
+  # each fetch from the mirror themselves, so without a shared expectation a
+  # release landing mid-run leaves one installing X and the other attesting
+  # X+1 — both green, and nothing verified what was installed.
+  #
+  # No credential here: it reads a public file.
+  resolve-release:
+    name: resolve release version
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - name: Read version.json from the mirror
+        id: v
+        env:
+          BASE: ${{ inputs.base_url || 'https://get.atomicstrata.ai' }}
+        run: |
+          set -euo pipefail
+          # Retried and time-boxed. This is the fan-in for both lanes: a single
+          # transient blip here skips them both, and a skip is reported.
+          version="$(curl -fsSL --proto '=https' --tlsv1.2 \
+            --max-time 30 --retry 3 --retry-connrefused "${BASE}/version.json" \
+            | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::mirror version.json has no X.Y.Z version (got '${version}')"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "resolved ${version}" >&2
+
+  public-install-smoke:
+    needs: resolve-release
+    name: public-install-smoke ${{ matrix.target }}
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      # One job per published target: a tarball broken for one platform is
+      # attributed to that platform rather than to "the release".
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # No GH_TOKEN. This step runs install.sh, which was downloaded from a
+      # mirror and is not authenticated at the point it executes — so a
+      # compromised mirror would be handed a private-repo credential before any
+      # integrity check could matter. It is also the honest customer path: a
+      # user installing from get.atomicstrata.ai has no repo token.
+      #
+      # Provenance is verified in the separate job below, which holds the token
+      # and executes nothing it downloaded.
+      - name: Public install smoke (customer path, no credential)
+        env:
+          AM_SMOKE_MODE: install
+          AM_SMOKE_CHANNEL: public
+          AM_PUBLIC_BASE_URL: ${{ inputs.base_url || 'https://get.atomicstrata.ai' }}
+          AM_SMOKE_EXPECT_VERSION: ${{ needs.resolve-release.outputs.version }}
+          AM_SMOKE_TARGET: ${{ matrix.target }}
+        run: bash scripts/cli-install-smoke.sh
+
+  # Separate job, not a later step: a step in the job above would put the token
+  # in the same environment the downloaded installer ran in, and on Linux a
+  # child can read its parent's /proc entry — so `env -u` alone is not a
+  # boundary. A different job is.
+  public-provenance:
+    needs: resolve-release
+    name: public-provenance ${{ matrix.target }}
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Downloads the published tarball and checks who signed it, from the
+      # checked-in script. Nothing fetched from the network is executed here,
+      # which is the property that lets this job hold a credential at all.
+      - name: Verify release provenance
+        env:
+          AM_SMOKE_MODE: provenance
+          AM_SMOKE_CHANNEL: public
+          AM_PUBLIC_BASE_URL: ${{ inputs.base_url || 'https://get.atomicstrata.ai' }}
+          AM_SMOKE_EXPECT_VERSION: ${{ needs.resolve-release.outputs.version }}
+          AM_SMOKE_TARGET: ${{ matrix.target }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/cli-install-smoke.sh
+
+  report:
+    name: report scheduled status
+    if: always() && github.repository == 'atomicstrata/atomicmemory-internal'
+    needs: [resolve-release, public-install-smoke, public-provenance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # A nightly nobody is told about is not a gate. Same shape as the internal
+      # lane: one self-clearing issue, its own label so the two cannot close
+      # each other's.
+      #
+      # Gated on `schedule` so a dispatch — which an engineer is watching, and
+      # which may point at an arbitrary mirror — neither opens nor closes it.
+      #
+      # Every job in `needs` is graded. Grading only the install half would let
+      # a provenance failure — the half that actually checks signatures — pass
+      # the night in silence, which is the failure this lane exists to catch.
+      - name: Open or close the failure issue
+        if: >-
+          github.event_name == 'schedule'
+          && needs.resolve-release.result != 'cancelled'
+          && needs.public-install-smoke.result != 'cancelled'
+          && needs.public-provenance.result != 'cancelled'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RESOLVE_RESULT: ${{ needs.resolve-release.result }}
+          INSTALL_RESULT: ${{ needs.public-install-smoke.result }}
+          PROVENANCE_RESULT: ${{ needs.public-provenance.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: cli-public-install-smoke
+        run: |
+          set -euo pipefail
+          if ! gh label list --search "$LABEL" --json name --jq '.[].name' | grep -qx "$LABEL"; then
+            gh label create "$LABEL" --color B60205 \
+              --description "Nightly fresh-install smoke for the PUBLIC am CLI channel"
+          fi
+          existing="$(gh issue list --label "$LABEL" --state open \
+            --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [ "$RESOLVE_RESULT" = "success" ] \
+            && [ "$INSTALL_RESULT" = "success" ] \
+            && [ "$PROVENANCE_RESULT" = "success" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" \
+                --comment "Public install smoke is green again: ${RUN_URL}"
+              echo "closed #${existing}"
+            else
+              echo "green, nothing open"
+            fi
+            exit 0
+          fi
+
+          if [ "$RESOLVE_RESULT" != "success" ]; then
+            DIAGNOSIS="**Neither smoke lane ran.** \`resolve-release\` did not
+          succeed, so both lanes were skipped and nothing about the mirror's
+          install path or its signatures was tested by this run. Check the
+          resolver job first: it reads ${RUN_URL} for \`version.json\`. This is a
+          fan-in failure, not evidence about the customer path."
+          else
+            DIAGNOSIS="A failure here means the path users take is broken — the
+          mirror is not serving a working install.sh, version.json disagrees with
+          the tarballs beside it, a checksum does not verify, or the published
+          tarball is not signed by the release workflow. It is not a flaky test,
+          and it is customer-visible."
+          fi
+
+          body="Nightly fresh-install smoke for the **public** channel is not green.
+
+          | lane | result |
+          | --- | --- |
+          | resolve release version | \`${RESOLVE_RESULT}\` |
+          | public-install-smoke | \`${INSTALL_RESULT}\` |
+          | public-provenance | \`${PROVENANCE_RESULT}\` |
+
+          Run: ${RUN_URL}
+
+          \`public-install-smoke\` runs the install command from the README
+          against https://get.atomicstrata.ai on a clean runner, with no repo
+          credential and no attestation check — deliberately the path a user
+          without \`gh\` is on. Provenance is checked separately by
+          \`public-provenance\`, which holds the token and executes nothing it
+          downloaded.
+
+          ${DIAGNOSIS}
+
+          The job list names the affected target. This issue closes itself on the
+          next green scheduled run."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: ${RUN_URL}"
+            echo "commented on #${existing}"
+          else
+            gh issue create --label "$LABEL" \
+              --title "Nightly PUBLIC CLI install smoke is failing" \
+              --body "$body"
+          fi

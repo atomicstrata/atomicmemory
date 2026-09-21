@@ -18,12 +18,25 @@ fn find_prefix_ignore_ascii_case(haystack: &str, prefix: &str, from: usize) -> O
     })
 }
 
-/// Strip bearer tokens and `amc_*` keys from a string for safe logging/display.
+/// Redact bearer tokens, API keys, JWTs, secret assignments, and email addresses.
 pub fn redact_secrets(input: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(input) {
+        Ok(mut value) => {
+            redact_fields(&mut value);
+            redact_text(&value.to_string())
+        }
+        Err(_) if input.trim_start().starts_with(['{', '[']) => {
+            "malformed or truncated JSON error response".into()
+        }
+        Err(_) => redact_text(input),
+    }
+}
+
+fn redact_text(input: &str) -> String {
     let mut out = input.to_string();
     // Prefixes are ASCII, so matching is case-insensitive over ASCII only and
     // every match index lands on a char boundary.
-    for prefix in ["Bearer ", "amc_"] {
+    for prefix in ["Bearer ", "amc_", "eyJ"] {
         let mut search_from = 0;
         while let Some(idx) = find_prefix_ignore_ascii_case(&out, prefix, search_from) {
             let token_start = idx + prefix.len();
@@ -37,12 +50,162 @@ pub fn redact_secrets(input: &str) -> String {
             search_from = token_start + REDACTED.len();
         }
     }
-    out
+    redact_assignments(&mut out);
+    out.split_inclusive(char::is_whitespace)
+        .map(|word| {
+            if word.contains('@') {
+                format!("{REDACTED}{}", &word[word.trim_end().len()..])
+            } else {
+                word.to_string()
+            }
+        })
+        .collect()
+}
+
+fn redact_assignments(out: &mut String) {
+    for name in [
+        "access_token",
+        "refresh_token",
+        "api_key",
+        "secret",
+        "password",
+        "authorization",
+        "cookie",
+    ] {
+        let mut from = 0;
+        while let Some(index) = find_prefix_ignore_ascii_case(out, name, from) {
+            let after_name = index + name.len();
+            from = after_name;
+            let tail = out[after_name..].trim_start_matches(['\"', '\'', ' ']);
+            if !tail.starts_with([':', '=']) {
+                continue;
+            }
+            let value = tail[1..].trim_start();
+            let quote = value.chars().next().filter(|c| matches!(c, '\"' | '\''));
+            let value = if quote.is_some() { &value[1..] } else { value };
+            let start = out.len() - value.len();
+            let end = value
+                .find(|c: char| match quote {
+                    Some(quote) => c == quote,
+                    None => c.is_whitespace() || matches!(c, '\"' | '\'' | ',' | '}' | ';'),
+                })
+                .map_or(out.len(), |length| start + length);
+            out.replace_range(start..end, REDACTED);
+            from = start + REDACTED.len();
+        }
+    }
+}
+
+/// Bound user-visible server diagnostics and redact structured secret fields.
+pub(crate) fn error_excerpt(input: &str) -> String {
+    const MAX_ERROR_CHARS: usize = 1024;
+    let redacted = redact_secrets(input);
+    let mut excerpt: String = redacted.chars().take(MAX_ERROR_CHARS).collect();
+    if redacted.chars().count() > MAX_ERROR_CHARS {
+        excerpt.push_str(" … [truncated]");
+    }
+    excerpt
+}
+
+fn redact_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (name, value) in fields {
+                let name = name
+                    .chars()
+                    .filter(|ch| !matches!(ch, '_' | '-'))
+                    .collect::<String>()
+                    .to_ascii_lowercase();
+                if [
+                    "apikey",
+                    "token",
+                    "secret",
+                    "password",
+                    "authorization",
+                    "cookie",
+                    "email",
+                ]
+                .iter()
+                .any(|part| name.contains(part))
+                {
+                    *value = serde_json::Value::String(REDACTED.into());
+                } else {
+                    redact_fields(value);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(redact_fields),
+        _ => {}
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_redactor_protects_structured_subprocess_diagnostics() {
+        let input = r#"{"error":{"api\u004bey":["private-key",{"value":"another-key"}]},"message":"failed"}"#;
+        let redacted = redact_secrets(input);
+        assert!(!redacted.contains("private-key"), "{redacted}");
+        assert!(!redacted.contains("another-key"), "{redacted}");
+        let value: serde_json::Value = serde_json::from_str(&redacted).unwrap();
+        assert_eq!(value["error"]["apiKey"], REDACTED);
+        assert_eq!(value["message"], "failed");
+    }
+
+    #[test]
+    fn redacts_api_key_fields_before_rendering_nested_values() {
+        let input = r#"{
+            "message":"quota exceeded",
+            "apiKey":"camel-secret",
+            "nested":[
+                {"API_KEY":["array-secret",{"value":"nested-secret"}]},
+                {"api-key":{"value":"object-secret"}},
+                {"a_p-i_K-e_y":123456789},
+                {"api\u004bey":true}
+            ]
+        }"#;
+        let excerpt = error_excerpt(input);
+        for secret in [
+            "camel-secret",
+            "array-secret",
+            "nested-secret",
+            "object-secret",
+            "123456789",
+        ] {
+            assert!(!excerpt.contains(secret), "leaked {secret}: {excerpt}");
+        }
+        let value: serde_json::Value = serde_json::from_str(&excerpt).unwrap();
+        assert_eq!(value["message"], "quota exceeded");
+        assert_eq!(value["apiKey"], REDACTED);
+        for (index, key) in ["API_KEY", "api-key", "a_p-i_K-e_y", "apiKey"]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(value["nested"][index][key], REDACTED);
+        }
+    }
+
+    #[test]
+    fn redacts_secrets_in_truncated_json_and_plain_text() {
+        for input in [
+            r#"{"access_token":"private-token", "incomplete":"#,
+            "upstream ACCESS_TOKEN = private-token",
+            "upstream password = \"private-token multi-word-secret\" rejected",
+            "rejected eyJhbGciOiJIUzI1NiJ9.payload.signature for person@example.test",
+        ] {
+            let excerpt = error_excerpt(input);
+            for secret in [
+                "private-token",
+                "multi-word-secret",
+                "payload.signature",
+                "person@example.test",
+            ] {
+                assert!(!excerpt.contains(secret), "leaked {secret}: {excerpt}");
+            }
+        }
+    }
 
     #[test]
     fn redacts_bearer_token() {

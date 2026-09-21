@@ -75,14 +75,10 @@ jobs:
             echo "manifest_json<<EOF_MANIFEST"
             echo "${MANIFEST}"
             echo "EOF_MANIFEST"
-          } >>"${GITHUB_OUTPUT}"
-          {
             echo "public_sha=${public_sha}"
             echo "publish=${publish}"
             echo "core_selected=${core_selected}"
             echo "core_version=${core_version}"
-          } >>"${GITHUB_OUTPUT}"
-          {
             echo "selected_summary<<EOF_SUMMARY"
             echo "${summary}"
             echo "EOF_SUMMARY"
@@ -117,7 +113,7 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Verify checked-out package versions match manifest
         run: |
           set -euo pipefail
@@ -144,6 +140,31 @@ jobs:
         run: pnpm run package-metadata
       - name: pack-dry-run for the whole workspace
         run: pnpm run pack-dry-run
+      - name: Check selected Core public artifacts for private identifiers
+        if: needs.manifest.outputs.core_selected == 'true'
+        env:
+          PUBLIC_ARTIFACT_SIGNATURES: ${{ secrets.PUBLIC_ARTIFACT_SIGNATURES }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PUBLIC_ARTIFACT_SIGNATURES//[[:space:]]/}" ]]; then
+            echo "::error::PUBLIC_ARTIFACT_SIGNATURES must be configured for Core releases."
+            exit 64
+          fi
+          umask 077
+          signature_file="$(mktemp "${RUNNER_TEMP}/public-artifact-signatures.XXXXXX")"
+          trap 'rm -f "$signature_file"' EXIT
+          printf '%s\n' "${PUBLIC_ARTIFACT_SIGNATURES}" | sed '/^[[:space:]]*$/d' > "${signature_file}"
+          package_dir="${RUNNER_TEMP}/atomicmemory-core-package"
+          image_ref="atomicmemory-core:public-leak-check"
+          mkdir -p "${package_dir}"
+          (cd packages/core && npm pack --ignore-scripts --pack-destination "${package_dir}")
+          package_tarball="$(find "${package_dir}" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "${package_tarball}"
+          docker build --file packages/core/Dockerfile --tag "${image_ref}" .
+          packages/core/scripts/check-public-artifacts.sh \
+            "${package_tarball}" \
+            "${image_ref}" \
+            "${signature_file}"
       - name: per-selected-package npm pack --dry-run
         run: |
           set -euo pipefail
@@ -183,7 +204,7 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Require npm >= 11.5.1 for Trusted Publishing
         run: |
           set -euo pipefail
@@ -232,7 +253,7 @@ jobs:
       - name: Verify each selected npm package is visible and pinned to public_sha
         run: |
           set -euo pipefail
-          while IFS=$'\t' read -r name version path registry; do
+          while IFS=$'\t' read -r name version _path registry; do
             if [[ "${registry}" != "npm" ]]; then
               continue
             fi
@@ -255,6 +276,8 @@ jobs:
     needs: [manifest, verify-npm]
     if: needs.manifest.outputs.publish == 'true' && needs.manifest.outputs.core_selected == 'true'
     uses: ./.github/workflows/publish-core-docker.yml
+    secrets:
+      PUBLIC_ARTIFACT_SIGNATURES: ${{ secrets.PUBLIC_ARTIFACT_SIGNATURES }}
     permissions:
       contents: read
       packages: write

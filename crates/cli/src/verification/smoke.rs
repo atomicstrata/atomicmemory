@@ -1,4 +1,4 @@
-//! Ephemeral ingest → search → delete round-trip for onboarding verification.
+//! Ephemeral extraction/ingest → embedding search → cleanup for onboarding verification.
 
 use std::time::Duration;
 
@@ -6,23 +6,22 @@ use am_cloud_client::MemoryClient;
 use am_core_types::{CoreIngestRequest, CoreMemoryQuery, CoreSearchRequest};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
+use tokio::time::Instant;
 
 use crate::cli::GlobalOptions;
 use crate::commands::client::{memory_client_for_profile, resolve_ctx};
+use crate::config::ProfileKind;
 use crate::telemetry::{ActivationEvent, capture_activation};
 use crate::validation::with_operation_recovery;
 
+/// Dedicated local-admin namespace for ephemeral CLI verification.
 pub const SMOKE_USER_ID: &str = "am-cli-smoke";
+/// Source tag used to isolate smoke retrieval.
 pub const SMOKE_SOURCE_SITE: &str = "am-cli-smoke";
 
-/// Backoff between search attempts while waiting for the ingested marker.
-///
-/// Ingest and search are separate calls, and indexing is not guaranteed to be
-/// synchronous, so a single immediate search can miss a memory that is about to
-/// become retrievable. Bounded retry keeps the check honest — it still fails
-/// when retrieval is genuinely broken — without failing onboarding on ordinary
-/// indexing lag. Total added wait is under four seconds, and the entire retry
-/// loop shares one `SmokeOptions::timeout` deadline.
+const FULL_SMOKE_TIMEOUT: Duration = Duration::from_secs(120);
+const CLEANUP_RESERVE: Duration = Duration::from_secs(15);
+/// Bounded indexing-lag retries share the ingest/retrieval operation deadline.
 const SEARCH_RETRY_DELAYS: [Duration; 4] = [
     Duration::from_millis(250),
     Duration::from_millis(500),
@@ -30,23 +29,50 @@ const SEARCH_RETRY_DELAYS: [Duration; 4] = [
     Duration::from_millis(2000),
 ];
 
+/// Successful pipeline evidence, emitted only after every cleanup succeeds.
 #[derive(Debug, Clone, Serialize)]
 pub struct SmokeResult {
     pub verified: bool,
+    pub mode: SmokeMode,
+    pub facts_extracted: i32,
     pub ingest_trace_id: Option<String>,
     pub memory_ids_cleaned: Vec<String>,
     pub marker: String,
 }
 
+/// Pipeline exercised by an onboarding smoke.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SmokeMode {
+    /// Existing OpenAI-compatible verbatim ingest and embedding retrieval.
+    Quick,
+    /// SLM extraction followed by embedding retrieval.
+    FullExtraction,
+}
+
+/// Deadline and pipeline selected by the command boundary.
 #[derive(Debug, Clone, Copy)]
 pub struct SmokeOptions {
+    /// Total operation budget, including the reserved cleanup window.
     pub timeout: Duration,
+    pub mode: SmokeMode,
 }
 
 impl Default for SmokeOptions {
     fn default() -> Self {
         Self {
             timeout: Duration::from_secs(45),
+            mode: SmokeMode::Quick,
+        }
+    }
+}
+
+impl SmokeOptions {
+    /// Full extraction with a bounded budget for local model inference.
+    pub fn full_extraction() -> Self {
+        Self {
+            timeout: FULL_SMOKE_TIMEOUT,
+            mode: SmokeMode::FullExtraction,
         }
     }
 }
@@ -58,7 +84,7 @@ pub struct SmokeTelemetry {
     pub props: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-/// Create a tagged ephemeral memory, retrieve it, then delete all residue.
+/// Create a tagged ephemeral memory, retrieve it, then delete all known residue.
 pub async fn run_memory_smoke(
     global: &GlobalOptions,
     opts: SmokeOptions,
@@ -67,16 +93,34 @@ pub async fn run_memory_smoke(
     let profile = resolve_ctx(global)
         .await
         .context("resolve profile for smoke test")?;
-    // Building the client is where a missing or withheld credential surfaces.
-    // Returning that straight through `?` gave it only generic context, so the
-    // profile-aware playbook this function installs below never applied to the
-    // most likely failure.
-    let client = memory_client_for_profile(&profile)
-        .await
-        .map_err(|err| with_operation_recovery(err, "Memory smoke client", profile.kind))?;
+    let client = memory_client_for_profile(&profile).await.map_err(|err| {
+        smoke_recovery(
+            err,
+            "Memory smoke client",
+            profile.kind,
+            &profile.name,
+            opts.mode,
+        )
+    })?;
     run_memory_smoke_with_client(client, opts, telemetry)
         .await
-        .map_err(|err| with_operation_recovery(err, "Memory smoke", profile.kind))
+        .map_err(|err| smoke_recovery(err, "Memory smoke", profile.kind, &profile.name, opts.mode))
+}
+
+fn smoke_recovery(
+    err: anyhow::Error,
+    operation: &str,
+    kind: ProfileKind,
+    profile: &str,
+    mode: SmokeMode,
+) -> anyhow::Error {
+    if mode == SmokeMode::Quick {
+        return with_operation_recovery(err, operation, kind);
+    }
+    let profile = super::receipt::shell_argument(profile);
+    anyhow::anyhow!(
+        "{operation} failed: {err:#}\n\nCheck the selected profile's SLM extraction and embedding services, then run `am --profile {profile} doctor --smoke`."
+    )
 }
 
 async fn run_memory_smoke_with_client(
@@ -84,13 +128,21 @@ async fn run_memory_smoke_with_client(
     opts: SmokeOptions,
     telemetry: Option<SmokeTelemetry>,
 ) -> Result<SmokeResult> {
-    let marker = format!("am-cli-smoke-{}", uuid_like_marker());
-
-    let ingest_req = smoke_ingest_request(&marker);
-
-    let ingest = tokio::time::timeout(opts.timeout, client.ingest_quick(&ingest_req))
-        .await
-        .context("smoke ingest timed out")??;
+    let deadline = Instant::now() + opts.timeout;
+    // Reserve cleanup time inside the single overall budget so failed or timed-out
+    // retrieval still gets a bounded chance to remove all known ingested records.
+    let pipeline_deadline = deadline - CLEANUP_RESERVE.min(opts.timeout / 4);
+    let client = client.with_timeout(opts.timeout)?;
+    let marker = format!("am-cli-smoke-{}", uuid::Uuid::now_v7());
+    let ingest_req = smoke_ingest_request(&marker, opts.mode);
+    let ingest = tokio::time::timeout_at(pipeline_deadline, async {
+        match opts.mode {
+            SmokeMode::Quick => client.ingest_quick(&ingest_req).await,
+            SmokeMode::FullExtraction => client.ingest(&ingest_req).await,
+        }
+    })
+    .await
+    .context("smoke ingest timed out; storage may have occurred without a response")??;
 
     if let Some(tel) = telemetry.as_ref() {
         capture_activation(
@@ -99,15 +151,59 @@ async fn run_memory_smoke_with_client(
             tel.no_telemetry,
         );
     }
-
-    let mut memory_ids = ingest.stored_memory_ids.clone();
-    if memory_ids.is_empty() && !ingest.updated_memory_ids.is_empty() {
-        memory_ids = ingest.updated_memory_ids.clone();
+    let mut memory_ids = Vec::new();
+    for id in ingest
+        .stored_memory_ids
+        .iter()
+        .chain(&ingest.updated_memory_ids)
+    {
+        if !memory_ids.contains(id) {
+            memory_ids.push(id.clone());
+        }
     }
+    let retrieval = if opts.mode == SmokeMode::FullExtraction && ingest.facts_extracted <= 0 {
+        Err(anyhow::anyhow!(
+            "smoke extraction failed — no facts extracted"
+        ))
+    } else if memory_ids.is_empty() {
+        Err(anyhow::anyhow!(
+            "smoke ingest returned no memory IDs; extraction and cleanup cannot be verified"
+        ))
+    } else {
+        tokio::time::timeout_at(
+            pipeline_deadline,
+            retrieve_marker(&client, &marker, &memory_ids, opts.mode),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("smoke search timed out"))
+        .and_then(|result| result)
+    };
+    let cleanup = cleanup_memories(&client, &memory_ids, deadline).await;
+    let cleaned = match (retrieval, cleanup) {
+        (Ok(()), Ok(cleaned)) => cleaned,
+        (Err(retrieval), Ok(_)) => return Err(retrieval),
+        (Ok(()), Err(cleanup)) => return Err(cleanup),
+        (Err(retrieval), Err(cleanup)) => bail!("{retrieval:#}; {cleanup:#}"),
+    };
+    Ok(SmokeResult {
+        verified: true,
+        mode: opts.mode,
+        facts_extracted: ingest.facts_extracted,
+        ingest_trace_id: ingest.ingest_trace_id,
+        memory_ids_cleaned: cleaned,
+        marker,
+    })
+}
 
+async fn retrieve_marker(
+    client: &MemoryClient,
+    marker: &str,
+    memory_ids: &[String],
+    mode: SmokeMode,
+) -> Result<()> {
     let search_req = CoreSearchRequest {
         user_id: SMOKE_USER_ID.into(),
-        query: marker.clone(),
+        query: marker.into(),
         limit: Some(5),
         threshold: None,
         token_budget: None,
@@ -122,88 +218,73 @@ async fn run_memory_smoke_with_client(
         namespace_scope: None,
         config_override: None,
     };
-
-    // One overall deadline for the whole retry loop. A per-attempt timeout
-    // would let a slow-but-alive backend consume timeout × attempts (minutes)
-    // where a single attempt used to fail at `opts.timeout`; the backoff
-    // schedule exists for indexing lag, not for a degraded backend.
-    let retrieval: Result<bool> = tokio::time::timeout(opts.timeout, async {
-        let mut attempt = 0usize;
-        loop {
-            let search = client.search_fast(&search_req).await?;
-
-            if search
-                .memories
-                .iter()
-                .any(|hit| hit.memory.content.contains(&marker))
-            {
-                return Ok(true);
-            }
-
-            let Some(delay) = SEARCH_RETRY_DELAYS.get(attempt) else {
-                return Ok(false);
-            };
-            tokio::time::sleep(*delay).await;
-            attempt += 1;
+    let mut attempt = 0usize;
+    loop {
+        // Fast search still embeds the query; it omits only optional LLM stages.
+        let search = client.search_fast(&search_req).await?;
+        if search.memories.iter().any(|hit| {
+            memory_ids.contains(&hit.memory.id)
+                && (mode == SmokeMode::FullExtraction || hit.memory.content.contains(marker))
+        }) {
+            return Ok(());
         }
-    })
-    .await
-    .map_err(|_| anyhow::anyhow!("smoke search timed out"))
-    .and_then(|result| result);
+        let Some(delay) = SEARCH_RETRY_DELAYS.get(attempt) else {
+            bail!("smoke verification failed — ingested memory not retrieved");
+        };
+        tokio::time::sleep(*delay).await;
+        attempt += 1;
+    }
+}
 
-    // Clean up before reporting the outcome. The ingested memory exists
-    // whether or not retrieval worked, so returning the verification error
-    // first would leave the smoke marker behind in the user's Core.
+async fn cleanup_memories(
+    client: &MemoryClient,
+    memory_ids: &[String],
+    deadline: Instant,
+) -> Result<Vec<String>> {
     let query = CoreMemoryQuery {
         user_id: SMOKE_USER_ID.into(),
         workspace_id: None,
         agent_id: None,
     };
-
     let mut cleaned = Vec::new();
-    for id in &memory_ids {
-        if client.delete_memory(id, &query).await.is_ok() {
-            cleaned.push(id.clone());
+    let mut failures = Vec::new();
+    for id in memory_ids {
+        match tokio::time::timeout_at(deadline, client.delete_memory(id, &query)).await {
+            Ok(Ok(result)) if result.deleted => cleaned.push(id.clone()),
+            Ok(Ok(_)) => failures.push(format!("{id}: deletion was not confirmed")),
+            Ok(Err(err)) => failures.push(format!("{id}: {err}")),
+            Err(_) => failures.push(format!("{id}: cleanup timed out")),
         }
     }
-
-    let found = retrieval?;
-    if !found {
-        bail!("smoke verification failed — memory not retrieved (search returned no marker match)");
+    if !failures.is_empty() {
+        bail!(
+            "smoke cleanup failed; remaining memory IDs: {}",
+            failures.join("; ")
+        );
     }
-
-    Ok(SmokeResult {
-        verified: found,
-        ingest_trace_id: ingest.ingest_trace_id,
-        memory_ids_cleaned: cleaned,
-        marker,
-    })
+    Ok(cleaned)
 }
 
-fn smoke_ingest_request(marker: &str) -> CoreIngestRequest {
+fn smoke_ingest_request(marker: &str, mode: SmokeMode) -> CoreIngestRequest {
+    let quick = mode == SmokeMode::Quick;
     CoreIngestRequest {
         user_id: SMOKE_USER_ID.into(),
         source_site: SMOKE_SOURCE_SITE.into(),
-        conversation: format!("CLI onboarding smoke marker: {marker}"),
+        conversation: if quick {
+            format!("CLI onboarding smoke marker: {marker}")
+        } else {
+            format!("My preferred project codename is {marker}. Please remember this preference.")
+        },
         agent_id: None,
         workspace_id: None,
         session_id: Some(SMOKE_USER_ID.into()),
         source_url: None,
         metadata: None,
-        skip_extraction: Some(true),
-        content_class: Some("summary".into()),
+        skip_extraction: Some(quick),
+        content_class: quick.then(|| "summary".into()),
         visibility: None,
         config_override: None,
     }
-}
-
-fn uuid_like_marker() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{nanos:x}")
 }
 
 #[cfg(test)]
@@ -219,43 +300,28 @@ mod tests {
 
     #[test]
     fn smoke_ingest_request_stamps_verbatim_content_class() {
-        let req = smoke_ingest_request("marker-abc");
+        let req = smoke_ingest_request("marker-abc", SmokeMode::Quick);
         assert_eq!(req.skip_extraction, Some(true));
         assert_eq!(req.content_class.as_deref(), Some("summary"));
         assert!(req.conversation.contains("marker-abc"));
     }
 
     #[test]
-    fn smoke_wires_recovery_into_client_construction() {
-        // The formatter test below passes even if run_memory_smoke never calls
-        // it. Pin the wiring: the client-construction path must carry recovery
-        // text, which is where a missing credential actually fails.
-        let src = include_str!("smoke.rs");
-        let body = src
-            .split("pub async fn run_memory_smoke(")
-            .nth(1)
-            .expect("run_memory_smoke present");
-        let body = &body[..body.find("\nasync fn ").unwrap_or(body.len())];
-        assert!(
-            body.contains("memory_client_for_profile"),
-            "client must be built from the resolved profile"
-        );
-        assert_eq!(
-            body.matches("with_operation_recovery").count(),
-            2,
-            "both client construction and the smoke run must install recovery"
-        );
-    }
-
-    #[test]
-    fn smoke_recovery_uses_client_profile_kind_without_re_resolve() {
-        let err = with_operation_recovery(
-            anyhow::anyhow!("http 401 unauthorized"),
+    fn full_extraction_recovery_uses_selected_profile_without_openai_advice() {
+        let err = smoke_recovery(
+            anyhow::anyhow!("authentication failed"),
             "Memory smoke",
             ProfileKind::Local,
+            "local project",
+            SmokeMode::FullExtraction,
         );
         let msg = err.to_string();
-        assert!(!msg.contains("am init --project"));
-        assert!(msg.contains("am instance"));
+        assert!(msg.contains("am --profile 'local project' doctor --smoke"));
+        assert!(msg.contains("SLM"));
+        assert!(!msg.contains("OPENAI_API_KEY"));
     }
 }
+
+#[cfg(test)]
+#[path = "smoke_http_tests.rs"]
+mod http_tests;

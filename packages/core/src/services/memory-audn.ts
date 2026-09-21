@@ -96,7 +96,11 @@ export async function resolveAndExecuteAudn(
     return resolveAndExecuteTbc(deps, ctx, filteredCandidates, candidateIds, supersededTargets, requireTraceContext(traceContext));
   }
 
-  const rawDecision = await timed('ingest.fact.audn', () => cachedResolveAUDN(fact.fact, filteredCandidates));
+  const rawDecision = await timed('ingest.fact.audn', () => cachedResolveAUDN(
+    fact.fact,
+    filteredCandidates,
+    deps.config.extractionPromptVariant,
+  ));
   let decision = applyClarificationOverrides(rawDecision, fact.fact, filteredCandidates, fact.keywords, fact.type);
   if (deps.config.entityGraphEnabled && deps.stores.entity) {
     decision = await applyEntityScopedDedup(deps, decision, userId, fact.entities);

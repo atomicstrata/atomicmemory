@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Stub postgres executable so require_runtime_layout succeeds.
+exit 0

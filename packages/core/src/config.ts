@@ -24,7 +24,9 @@ import {
 } from './storage/providers/filecoin/config.js';
 import { parseCloudJwtConfig } from './cloud/jwt-config.js';
 import { parseCloudTraceSyncConfig } from './cloud/trace-sync-config.js';
-import { optionalEnv, parsePositiveIntEnv, parseStrictBoolEnv } from './cloud/env.js';
+import { optionalEnv, parseBoundedPositiveIntEnv, parsePositiveIntEnv, parseStrictBoolEnv } from './cloud/env.js';
+import type { ExtractionPromptVariant } from './services/extraction-prompt-variant.js';
+import { parseExtractionPromptVariant } from './services/extraction-prompt-variant.js';
 import type { CloudJwtConfig, CloudTraceSyncConfig } from './cloud/types.js';
 export type { CloudJwtConfig, CloudTraceSyncConfig } from './cloud/types.js';
 
@@ -126,6 +128,11 @@ export interface RuntimeConfig {
    */
   storageKeyHmacSecret: string;
   port: number;
+  /**
+   * Optional bind address. Unset keeps Node's all-interfaces default
+   * (hosted/Docker). The macOS launcher sets `127.0.0.1`.
+   */
+  listenHost?: string;
   retrievalProfile: RetrievalProfileName;
   retrievalProfileSettings: RetrievalProfile;
   maxSearchResults: number;
@@ -191,6 +198,18 @@ export interface RuntimeConfig {
   consensusExtractionEnabled: boolean;
   consensusExtractionRuns: number;
   observationDateExtractionEnabled: boolean;
+  /** `compact` selects shorter extraction/AUDN prompts for SLM latency tuning (reduced capability). */
+  extractionPromptVariant: ExtractionPromptVariant;
+  /** Decode cap for extraction LLM calls (default 4096, max 8192). */
+  extractionMaxTokens: number;
+  /** Decode cap for AUDN LLM calls (default 2048, max 4096). */
+  audnMaxTokens: number;
+  /**
+   * When true, AUDN sends OpenAI-strict `json_schema` (`core_audn`).
+   * Required for am-local-slm + `AM_SLM_CORE_JSON_SCHEMA=1` so json_object
+   * is not rewritten to the extraction grammar. Leave false for Groq.
+   */
+  audnJsonSchema: boolean;
   quotedEntityExtractionEnabled: boolean;
   entropyGateEnabled: boolean;
   entropyGateThreshold: number;
@@ -1294,6 +1313,7 @@ export const config: RuntimeConfig = {
   coreTestScopeAllowPattern: parseRegexEnv('CORE_TEST_SCOPE_ALLOW_PATTERN'),
   storageKeyHmacSecret: parseStorageKeyHmacSecret(requireEnv('STORAGE_KEY_HMAC_SECRET')),
   port: parseInt(process.env.PORT ?? '17350', 10),
+  listenHost: optionalEnv('LISTEN_HOST')?.trim() || undefined,
   retrievalProfile,
   retrievalProfileSettings,
   maxSearchResults: retrievalProfileSettings.maxSearchResults,
@@ -1368,6 +1388,10 @@ export const config: RuntimeConfig = {
   consensusExtractionEnabled: (optionalEnv('CONSENSUS_EXTRACTION_ENABLED') ?? 'false') === 'true',
   consensusExtractionRuns: parseInt(optionalEnv('CONSENSUS_EXTRACTION_RUNS') ?? '3', 10),
   observationDateExtractionEnabled: (optionalEnv('OBSERVATION_DATE_EXTRACTION_ENABLED') ?? 'false') === 'true',
+  extractionPromptVariant: parseExtractionPromptVariant(optionalEnv('EXTRACTION_PROMPT_VARIANT')),
+  extractionMaxTokens: parseBoundedPositiveIntEnv('EXTRACTION_MAX_TOKENS', 4096, 8192),
+  audnMaxTokens: parseBoundedPositiveIntEnv('AUDN_MAX_TOKENS', 2048, 4096),
+  audnJsonSchema: parseStrictBoolEnv('AUDN_JSON_SCHEMA', false),
   quotedEntityExtractionEnabled: (optionalEnv('QUOTED_ENTITY_EXTRACTION_ENABLED') ?? 'false') === 'true',
   entropyGateEnabled: (optionalEnv('ENTROPY_GATE_ENABLED') ?? 'false') === 'true',
   entropyGateThreshold: parseFloat(optionalEnv('ENTROPY_GATE_THRESHOLD') ?? '0.35'),
@@ -1574,6 +1598,7 @@ export const SUPPORTED_RUNTIME_CONFIG_FIELDS = [
   'databaseUrl', 'openaiApiKey', 'coreApiKey', 'trustedProxyMode',
   'coreAdminApiKey',
   'coreTestScopeAllowPattern', 'storageKeyHmacSecret', 'port',
+  'listenHost',
   // Provider / model selection (startup config)
   'embeddingProvider', 'embeddingModel', 'embeddingDimensions',
   'embeddingApiUrl', 'embeddingApiKey',
@@ -1628,7 +1653,9 @@ export const INTERNAL_POLICY_CONFIG_FIELDS = [
   'chunkedExtractionEnabled', 'chunkedExtractionFallbackEnabled',
   'chunkSizeTurns', 'chunkOverlapTurns',
   'consensusExtractionEnabled', 'consensusExtractionRuns',
-  'observationDateExtractionEnabled', 'quotedEntityExtractionEnabled',
+  'observationDateExtractionEnabled', 'extractionPromptVariant',
+  'extractionMaxTokens', 'audnMaxTokens', 'audnJsonSchema',
+  'quotedEntityExtractionEnabled',
   'entropyGateEnabled', 'entropyGateThreshold', 'entropyGateAlpha',
   // Affinity clustering
   'affinityClusteringThreshold', 'affinityClusteringMinSize',

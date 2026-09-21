@@ -21,6 +21,11 @@ const trackedEnvNames = [
   'ANTHROPIC_API_KEY',
   'CODEX_AUTH_PATH',
   'CODEX_HOME',
+  'EXTRACTION_PROMPT_VARIANT',
+  'EXTRACTION_MAX_TOKENS',
+  'AUDN_MAX_TOKENS',
+  'AUDN_JSON_SCHEMA',
+  'LISTEN_HOST',
 ] as const;
 const originalEnv = Object.fromEntries(
   trackedEnvNames.map((name) => [name, process.env[name]]),
@@ -124,6 +129,91 @@ describe('config env loading', () => {
 
     await expect(import('../config.js')).rejects.toThrow(
       'CORE_TEST_SCOPE_ALLOW_PATTERN must be a valid JavaScript regular expression',
+    );
+  });
+
+  it('defaults EXTRACTION_PROMPT_VARIANT to full', async () => {
+    delete process.env.EXTRACTION_PROMPT_VARIANT;
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.extractionPromptVariant).toBe('full');
+  });
+
+  it('accepts compact EXTRACTION_PROMPT_VARIANT exactly', async () => {
+    process.env.EXTRACTION_PROMPT_VARIANT = 'compact';
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.extractionPromptVariant).toBe('compact');
+  });
+
+  it.each(['Compact', 'compact ', 'comapct'])(
+    'rejects invalid EXTRACTION_PROMPT_VARIANT value %s',
+    async (value) => {
+      process.env.EXTRACTION_PROMPT_VARIANT = value;
+      vi.resetModules();
+      await expect(import('../config.js')).rejects.toThrow(
+        "EXTRACTION_PROMPT_VARIANT must be 'full' or 'compact'",
+      );
+    },
+  );
+
+  it('loads bounded decode token caps from the environment', async () => {
+    process.env.EXTRACTION_MAX_TOKENS = '768';
+    process.env.AUDN_MAX_TOKENS = '128';
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.extractionMaxTokens).toBe(768);
+    expect(config.audnMaxTokens).toBe(128);
+  });
+
+  it.each(['oops', '0', '-1', '128junk', '1.5', '1e3'])(
+    'rejects invalid AUDN_MAX_TOKENS value %s',
+    async (value) => {
+      process.env.AUDN_MAX_TOKENS = value;
+      vi.resetModules();
+      await expect(import('../config.js')).rejects.toThrow('AUDN_MAX_TOKENS must be a positive integer');
+    },
+  );
+
+  it('rejects AUDN_MAX_TOKENS above the documented upper bound', async () => {
+    process.env.AUDN_MAX_TOKENS = '999999999';
+    vi.resetModules();
+    await expect(import('../config.js')).rejects.toThrow('AUDN_MAX_TOKENS must be at most 4096');
+  });
+
+  it('defaults AUDN_JSON_SCHEMA to false', async () => {
+    delete process.env.AUDN_JSON_SCHEMA;
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.audnJsonSchema).toBe(false);
+  });
+
+  it('accepts AUDN_JSON_SCHEMA=true exactly', async () => {
+    process.env.AUDN_JSON_SCHEMA = 'true';
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.audnJsonSchema).toBe(true);
+  });
+
+  it('leaves listenHost unset when LISTEN_HOST is absent', async () => {
+    delete process.env.LISTEN_HOST;
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.listenHost).toBeUndefined();
+  });
+
+  it('loads LISTEN_HOST from the environment', async () => {
+    process.env.LISTEN_HOST = '127.0.0.1';
+    vi.resetModules();
+    const { config } = await import('../config.js');
+    expect(config.listenHost).toBe('127.0.0.1');
+  });
+
+  it.each(['TRUE', '1', 'yes'])('rejects invalid AUDN_JSON_SCHEMA value %s', async (value) => {
+    process.env.AUDN_JSON_SCHEMA = value;
+    vi.resetModules();
+    await expect(import('../config.js')).rejects.toThrow(
+      "AUDN_JSON_SCHEMA must be 'true' or 'false'",
     );
   });
 });

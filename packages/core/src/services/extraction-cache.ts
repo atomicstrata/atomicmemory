@@ -17,6 +17,10 @@ import {
   type ExtractedFact,
   type ExistingMemory,
 } from './extraction.js';
+import type { ExtractionPromptVariant } from './extraction-prompt-variant.js';
+
+/** Bump when cache identity inputs change (prompt contract, token caps, normalizers). */
+export const EXTRACTION_CACHE_CONTRACT = 'v3';
 
 function hashInput(parts: string[]): string {
   return createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 16);
@@ -45,7 +49,12 @@ export async function cachedExtractFacts(
 ): Promise<ExtractedFact[]> {
   if (!config.extractionCacheEnabled) return extractFacts(conversationText, options);
 
-  const key = `extract-${hashInput([conversationText, JSON.stringify(options)])}`;
+  const key = `extract-${hashInput([
+    conversationText,
+    JSON.stringify(options),
+    EXTRACTION_CACHE_CONTRACT,
+    String(config.extractionMaxTokens),
+  ])}`;
   const filePath = cacheFilePath(key);
   const cached = readCache<ExtractedFact[]>(filePath);
   if (cached) return cached;
@@ -58,16 +67,26 @@ export async function cachedExtractFacts(
 export async function cachedResolveAUDN(
   newFact: string,
   existingMemories: ExistingMemory[],
+  promptVariant: ExtractionPromptVariant,
 ): Promise<AUDNDecision> {
-  if (!config.extractionCacheEnabled) return resolveAUDN(newFact, existingMemories);
+  if (!config.extractionCacheEnabled) {
+    return resolveAUDN(newFact, existingMemories, promptVariant);
+  }
 
   const memoriesKey = JSON.stringify(existingMemories.map((m) => ({ id: m.id, content: m.content, similarity: m.similarity })));
-  const key = `audn-${hashInput([newFact, memoriesKey])}`;
+  const key = `audn-${hashInput([
+    newFact,
+    memoriesKey,
+    promptVariant,
+    EXTRACTION_CACHE_CONTRACT,
+    String(config.audnMaxTokens),
+    String(config.audnJsonSchema),
+  ])}`;
   const filePath = cacheFilePath(key);
   const cached = readCache<AUDNDecision>(filePath);
   if (cached) return cached;
 
-  const result = await resolveAUDN(newFact, existingMemories);
+  const result = await resolveAUDN(newFact, existingMemories, promptVariant);
   writeCache(filePath, result);
   return result;
 }

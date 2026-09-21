@@ -5,23 +5,24 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::integrate::codex_edit::{
     merge_codex_mcp, read_codex_document, remove_or_restore_codex_mcp, serialize_codex_entry,
     write_codex_document,
 };
-use crate::integrate::host::{Host, InstallScope};
+use crate::integrate::host::{Host, HostConfigPaths, InstallScope};
 use crate::integrate::spec::{
     IntegrateCredentials, codex_mcp_table, json_mcp_server, preflight_install_runtime,
 };
 use crate::integrate::state::{
-    assert_install_allowed, assert_uninstall_allowed, clear_install, clear_stale_record_if_needed,
-    fingerprint_json_entry, fingerprint_toml_entry, record_install,
+    assert_install_allowed, assert_uninstall_allowed, clear_install, clear_install_for_host,
+    clear_stale_record_if_needed, fingerprint_json_entry, fingerprint_toml_entry,
+    load_record_for_host, managed_config_path, record_install, validated_config_path,
 };
 use crate::integrate::write::{
-    backup_host_config, current_json_entry, merge_json_mcp, read_json_file,
-    remove_or_restore_json_mcp, restore_host_config, write_secure_file,
+    backup_host_config, current_json_entry, ensure_single_opencode_entry, merge_json_mcp,
+    opencode_entry_count, read_host_json_file, remove_or_restore_json_mcp, render_json_host_config,
+    restore_host_config, write_secure_file,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -55,6 +56,7 @@ pub struct InstallOptions<'a> {
     pub hosts: &'a [Host],
     pub scope: InstallScope,
     pub cwd: &'a Path,
+    pub config_paths: &'a HostConfigPaths,
     pub creds: &'a IntegrateCredentials,
     pub force: bool,
     pub dry_run: bool,
@@ -76,7 +78,7 @@ pub fn install_hosts(opts: &InstallOptions<'_>) -> Result<InstallReport> {
                 }
                 Err(err) => {
                     partial_failure = true;
-                    let path = host.config_path(opts.scope, opts.cwd);
+                    let path = managed_config_path(opts.config_paths, *host, opts.scope, opts.cwd);
                     results.push(HostInstallResult {
                         host: *host,
                         scope: opts.scope,
@@ -95,8 +97,9 @@ pub fn install_hosts(opts: &InstallOptions<'_>) -> Result<InstallReport> {
                 results.push(HostInstallResult {
                     host: *host,
                     scope: opts.scope,
-                    path: host
-                        .config_path(opts.scope, opts.cwd)
+                    path: opts
+                        .config_paths
+                        .config_path(*host, opts.scope, opts.cwd)
                         .map(|p| p.display().to_string())
                         .unwrap_or_default(),
                     action: opts.action,
@@ -126,39 +129,59 @@ struct HostPlan {
     path: std::path::PathBuf,
     changed: bool,
     adopt_only: bool,
-    merged_json: Option<Value>,
+    rendered_json: Option<String>,
     codex_doc: Option<toml_edit::DocumentMut>,
     new_fingerprint: String,
     prior_entry: Option<String>,
 }
 
 fn plan_host(host: Host, opts: &InstallOptions<'_>) -> Result<HostPlan> {
-    let path = host.config_path(opts.scope, opts.cwd)?;
+    let path = validated_config_path(opts.config_paths, host, opts.scope, opts.cwd)?;
     match host {
-        Host::Cursor | Host::ClaudeCode => plan_json_host(host, opts, &path),
+        Host::Cursor | Host::ClaudeCode | Host::OpenCode => plan_json_host(host, opts, &path),
         Host::Codex => plan_codex_host(host, opts, &path),
     }
 }
 
 fn plan_json_host(host: Host, opts: &InstallOptions<'_>, path: &Path) -> Result<HostPlan> {
-    let existing = read_json_file(path)?;
-    let current = current_json_entry(&existing);
+    if host == Host::OpenCode {
+        ensure_single_opencode_entry(path)?;
+    }
+    let existing = read_host_json_file(path, host)?;
+    let current = current_json_entry(&existing, host);
     let current_fp = current.as_ref().map(fingerprint_json_entry).transpose()?;
-    let owned = is_owned(path, current_fp.as_deref())?;
-    assert_install_allowed(path, current_fp.as_deref(), opts.force)?;
+    let record = load_record_for_host(path, host, opts.scope)?;
+    let owned = record
+        .as_ref()
+        .zip(current_fp.as_deref())
+        .is_some_and(|(record, current)| record.entry_fingerprint == current);
+    assert_install_allowed(host, opts.scope, path, current_fp.as_deref(), opts.force)?;
     let entry = json_mcp_server(opts.creds, host);
     let effective_force = opts.force || owned;
-    let (merged, changed) = merge_json_mcp(&existing, &entry, effective_force)?;
+    let (merged, changed) = merge_json_mcp(&existing, &entry, host, effective_force)?;
     let new_fp = fingerprint_json_entry(&entry)?;
-    let adopt_only = !changed && opts.force && !owned && current.is_some();
+    let record_moved = record
+        .as_ref()
+        .is_some_and(|record| Path::new(&record.config_path) != path);
+    let adopt_only =
+        !changed && ((opts.force && !owned && current.is_some()) || (owned && record_moved));
+    let rendered_json = changed
+        .then(|| render_json_host_config(path, host, &merged))
+        .transpose()?;
     let prior_entry = if changed {
         if owned {
-            crate::integrate::state::load_record(path)?.and_then(|r| r.prior_entry)
+            record
+                .as_ref()
+                .and_then(|record| record.prior_entry.clone())
         } else {
             current.as_ref().and_then(|v| serde_json::to_string(v).ok())
         }
     } else if adopt_only {
-        current.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        if owned {
+            record.and_then(|record| record.prior_entry)
+        } else {
+            current.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        }
     } else {
         None
     };
@@ -167,7 +190,7 @@ fn plan_json_host(host: Host, opts: &InstallOptions<'_>, path: &Path) -> Result<
         path: path.to_path_buf(),
         changed,
         adopt_only,
-        merged_json: Some(merged),
+        rendered_json,
         codex_doc: None,
         new_fingerprint: new_fp,
         prior_entry,
@@ -179,7 +202,7 @@ fn plan_codex_host(host: Host, opts: &InstallOptions<'_>, path: &Path) -> Result
     let current = crate::integrate::codex_edit::current_codex_entry(&doc);
     let current_fp = current.as_ref().map(fingerprint_toml_entry).transpose()?;
     let owned = is_owned(path, current_fp.as_deref())?;
-    assert_install_allowed(path, current_fp.as_deref(), opts.force)?;
+    assert_install_allowed(host, opts.scope, path, current_fp.as_deref(), opts.force)?;
     let entry = codex_mcp_table(opts.creds, host);
     let effective_force = opts.force || owned;
     let changed = merge_codex_mcp(&mut doc, entry.clone(), effective_force)?;
@@ -201,7 +224,7 @@ fn plan_codex_host(host: Host, opts: &InstallOptions<'_>, path: &Path) -> Result
         path: path.to_path_buf(),
         changed,
         adopt_only,
-        merged_json: None,
+        rendered_json: None,
         codex_doc: Some(doc),
         new_fingerprint: new_fp,
         prior_entry,
@@ -263,9 +286,8 @@ fn execute_plan(plan: HostPlan, opts: &InstallOptions<'_>) -> Result<HostInstall
     let backup = backup_host_config(&plan.path)?;
     let backup_path = backup.as_deref();
     let write_result = (|| -> Result<()> {
-        if let Some(merged) = &plan.merged_json {
-            let rendered = serde_json::to_string_pretty(merged).context("serialize JSON")?;
-            write_secure_file(&plan.path, &format!("{rendered}\n"))?;
+        if let Some(rendered) = &plan.rendered_json {
+            write_secure_file(&plan.path, rendered)?;
         } else if let Some(doc) = &plan.codex_doc {
             write_codex_document(&plan.path, doc)?;
         }
@@ -328,13 +350,14 @@ pub fn uninstall_hosts(
     hosts: &[Host],
     scope: InstallScope,
     cwd: &Path,
+    config_paths: &HostConfigPaths,
     force: bool,
     dry_run: bool,
 ) -> Result<InstallReport> {
     let mut results = Vec::new();
     let mut partial_failure = false;
     for host in hosts {
-        match uninstall_host(*host, scope, cwd, force, dry_run) {
+        match uninstall_host(*host, scope, cwd, config_paths, force, dry_run) {
             Ok(row) => {
                 if row.error.is_some() {
                     partial_failure = true;
@@ -405,10 +428,11 @@ fn uninstall_host(
     host: Host,
     scope: InstallScope,
     cwd: &Path,
+    config_paths: &HostConfigPaths,
     force: bool,
     dry_run: bool,
 ) -> Result<HostInstallResult> {
-    let path = host.config_path(scope, cwd)?;
+    let path = validated_config_path(config_paths, host, scope, cwd)?;
     if !path.exists() {
         return Ok(uninstall_row(
             host,
@@ -418,7 +442,9 @@ fn uninstall_host(
         ));
     }
     match host {
-        Host::Cursor | Host::ClaudeCode => uninstall_json_host(host, scope, &path, force, dry_run),
+        Host::Cursor | Host::ClaudeCode | Host::OpenCode => {
+            uninstall_json_host(host, scope, &path, force, dry_run)
+        }
         Host::Codex => uninstall_codex_host(host, scope, &path, force, dry_run),
     }
 }
@@ -430,10 +456,12 @@ fn uninstall_json_host(
     force: bool,
     dry_run: bool,
 ) -> Result<HostInstallResult> {
-    let existing = read_json_file(path)?;
-    let current = current_json_entry(&existing);
+    let existing = read_host_json_file(path, host)?;
+    let current = current_json_entry(&existing, host);
+    let hidden_opencode_entries =
+        host == Host::OpenCode && current.is_none() && opencode_entry_count(path)? > 0;
     let current_fp = current.as_ref().map(fingerprint_json_entry).transpose()?;
-    if current.is_none() {
+    if current.is_none() && !hidden_opencode_entries {
         return Ok(uninstall_row(
             host,
             scope,
@@ -441,7 +469,17 @@ fn uninstall_json_host(
             stale_uninstall_outcome(path, dry_run, None)?,
         ));
     }
-    let restore = assert_uninstall_allowed(path, current_fp.as_deref(), force)?;
+    let restore = if hidden_opencode_entries {
+        if !force {
+            bail!(
+                "OpenCode config contains a hidden duplicate `{}` entry — pass --force to remove every duplicate",
+                crate::integrate::host::MCP_SERVER_NAME
+            );
+        }
+        None
+    } else {
+        assert_uninstall_allowed(host, scope, path, current_fp.as_deref(), force)?
+    };
     if dry_run {
         return Ok(uninstall_row(
             host,
@@ -458,7 +496,8 @@ fn uninstall_json_host(
     }
     let backup = backup_host_config(path)?;
     let backup_path = backup.as_deref();
-    let (merged, removed) = remove_or_restore_json_mcp(&existing, restore.as_deref())?;
+    let (merged, removed) = remove_or_restore_json_mcp(&existing, host, restore.as_deref())?;
+    let removed = removed || hidden_opencode_entries;
     if !removed {
         return Ok(uninstall_row(
             host,
@@ -473,9 +512,9 @@ fn uninstall_json_host(
             },
         ));
     }
-    let rendered = serde_json::to_string_pretty(&merged).context("serialize JSON")?;
-    write_secure_file(path, &format!("{rendered}\n"))?;
-    if let Err(err) = clear_install(path) {
+    let rendered = render_json_host_config(path, host, &merged)?;
+    write_secure_file(path, &rendered)?;
+    if let Err(err) = clear_install_for_host(path, host, scope) {
         restore_host_config(path, backup_path)?;
         return Ok(uninstall_row(
             host,
@@ -522,7 +561,7 @@ fn uninstall_codex_host(
             stale_uninstall_outcome(path, dry_run, None)?,
         ));
     }
-    let restore = assert_uninstall_allowed(path, current_fp.as_deref(), force)?;
+    let restore = assert_uninstall_allowed(host, scope, path, current_fp.as_deref(), force)?;
     if dry_run {
         return Ok(uninstall_row(
             host,
@@ -700,7 +739,7 @@ pub fn select_hosts_interactive(
         bail!("non-interactive session requires --yes and/or explicit --host");
     }
     if yes && detected.is_empty() {
-        bail!("no hosts detected — pass --host cursor|claude-code|codex");
+        bail!("no hosts detected — pass --host cursor|claude-code|codex|opencode");
     }
     if detected.is_empty() {
         eprintln!("No hosts auto-detected. Select hosts to configure:");
@@ -724,6 +763,7 @@ mod tests {
     use crate::config::ProfileKind;
     use crate::integrate::all_hosts;
     use crate::integrate::spec::json_mcp_server;
+    use serde_json::Value;
     use serde_json::json;
 
     #[test]
@@ -842,7 +882,7 @@ mod tests {
         };
         let entry = json_mcp_server(&creds, Host::Cursor);
         let existing = json!({ "mcpServers": { "atomicmemory": entry.clone() } });
-        let (_, changed) = merge_json_mcp(&existing, &entry, false).unwrap();
+        let (_, changed) = merge_json_mcp(&existing, &entry, Host::Cursor, false).unwrap();
         assert!(!changed);
     }
 
@@ -851,7 +891,7 @@ mod tests {
         let prior = json!({ "command": "legacy" });
         let existing = json!({ "mcpServers": { "atomicmemory": { "command": "npx" } } });
         let (merged, changed) =
-            remove_or_restore_json_mcp(&existing, Some(&prior.to_string())).unwrap();
+            remove_or_restore_json_mcp(&existing, Host::Cursor, Some(&prior.to_string())).unwrap();
         assert!(changed);
         assert_eq!(merged["mcpServers"]["atomicmemory"], prior);
     }
@@ -873,10 +913,12 @@ mod tests {
         std::fs::write(&path, serde_json::to_string_pretty(&existing).unwrap()).unwrap();
 
         let hosts = [Host::Cursor];
+        let config_paths = HostConfigPaths::new(dir.path().into(), None);
         let opts = InstallOptions {
             hosts: &hosts,
             scope: InstallScope::Global,
             cwd: dir.path(),
+            config_paths: &config_paths,
             creds: &creds,
             force: true,
             dry_run: false,

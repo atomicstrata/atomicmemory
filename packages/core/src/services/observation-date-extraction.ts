@@ -6,6 +6,7 @@
  */
 
 import type { ExtractedFact } from './extraction.js';
+import type { ExtractionPromptVariant } from './extraction-prompt-variant.js';
 import {
   annotateRelativeTemporalText,
   extractRelativeTemporalAnchors,
@@ -14,6 +15,8 @@ import { extractSessionTimestamp, parseSessionDate } from './session-date.js';
 
 export interface ExtractionOptions {
   observationDateExtractionEnabled?: boolean;
+  /** `compact` selects shorter SLM-oriented prompts (default-off, reduced capability). */
+  promptVariant?: ExtractionPromptVariant;
 }
 
 export function buildExtractionUserMessage(

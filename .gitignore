@@ -6,6 +6,8 @@ node_modules/
 dist/
 build/
 lib/
+!packages/core/scripts/lib/
+!packages/core/scripts/lib/**
 /target/
 *.tsbuildinfo
 

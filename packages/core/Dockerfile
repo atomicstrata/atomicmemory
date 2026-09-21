@@ -3,12 +3,9 @@
 #   1) `turbo prune --docker` produces an `out/` tree with only @atomicmemory/core
 #      and its workspace dependencies (manifests + lockfile in `out/json`,
 #      source in `out/full`).
-#   2) Installer stage installs prod deps from the pruned lockfile — this layer
-#      is cached as long as manifests and lockfile don't change.
-#   3) Builder stage runs `pnpm deploy --prod` to produce a self-contained
-#      `/deploy` tree (flat node_modules + package.json).
-#   4) Runtime image is pgvector + Node + the deployed package + TypeScript
-#      source for tsx.
+#   2) Builder installs the pruned workspace, compiles Core, then produces a
+#      self-contained production dependency tree in `/deploy`.
+#   3) Runtime copies only compiled production files, never the source/tests.
 
 FROM node:22-slim AS node-base
 
@@ -23,27 +20,23 @@ COPY . .
 RUN pnpm dlx turbo@2.9.14 prune @atomicmemory/core --docker
 
 # ---------------------------------------------------------------------------
-# Stage 2 — installer: production deps only
+# Stage 2 — builder: compile Core and deploy production dependencies
 # ---------------------------------------------------------------------------
-FROM node:22-slim AS installer
+FROM node:22-slim AS builder
 ENV CI=1 HUSKY=0
 RUN corepack enable
 WORKDIR /repo
 COPY --from=pruner /repo/out/json/ ./
 COPY --from=pruner /repo/out/pnpm-lock.yaml ./pnpm-lock.yaml
-RUN pnpm install --frozen-lockfile --filter @atomicmemory/core --prod --ignore-scripts
-
-# ---------------------------------------------------------------------------
-# Stage 3 — builder: add full source and deploy a flat tree to /deploy
-# ---------------------------------------------------------------------------
-FROM installer AS builder
+RUN pnpm install --frozen-lockfile --filter @atomicmemory/core --ignore-scripts
 COPY --from=pruner /repo/out/full/ ./
-RUN pnpm deploy --filter @atomicmemory/core --prod /deploy
+RUN pnpm --filter @atomicmemory/core build \
+  && pnpm deploy --filter @atomicmemory/core --prod /deploy
 
 # ---------------------------------------------------------------------------
-# Stage 4 — runtime: pgvector + Node + deployed package
+# Stage 3 — runtime base: pgvector + Node + compiled Core
 # ---------------------------------------------------------------------------
-FROM pgvector/pgvector:pg17
+FROM pgvector/pgvector:pg17 AS runtime-base
 
 WORKDIR /app
 
@@ -60,12 +53,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /deploy/node_modules ./node_modules
 COPY --from=builder /deploy/package.json ./package.json
 
-# Source / scripts / tsconfig — runtime uses tsx against src/, not prebuilt dist/.
-COPY packages/core/src ./src
+# Compile output excludes test files by tsconfig.build.json.
+COPY --from=builder /repo/packages/core/dist ./dist
 COPY packages/core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
-COPY packages/core/tsconfig.json ./tsconfig.json
 # The committed OpenAPI spec — loaded eagerly at startup by src/app/openapi-spec.ts
-# (`../../openapi.json` -> /app/openapi.json) and served at GET /openapi.json.
+# (`../../openapi.json` from dist/app -> /app/openapi.json) and served at GET /openapi.json.
 # Without this the container crashes on boot with ENOENT.
 COPY packages/core/openapi.json ./openapi.json
 COPY packages/core/openapi.yaml ./openapi.yaml
@@ -90,5 +82,15 @@ ENV EMBEDDED_POSTGRES_DB=atomicmemory
 
 EXPOSE 17350
 
+# ECR-only stage: retain private hosted compatibility outside public npm/GHCR.
+FROM runtime-base AS hosted-runtime
+COPY packages/core/hosted/migration-history-overlay.mjs /app/private/migration-history-overlay.mjs
+COPY packages/core/hosted/docker-entrypoint.sh /app/private/docker-entrypoint.sh
+RUN chmod +x /app/private/docker-entrypoint.sh
+ENTRYPOINT ["/app/private/docker-entrypoint.sh"]
+CMD ["node", "dist/server.js"]
+
+# Public default stage: no private overlay, source tree, or test tree.
+FROM runtime-base AS public-runtime
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
-CMD ["./node_modules/.bin/tsx", "src/server.ts"]
+CMD ["node", "dist/server.js"]

@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   validateMirrorCliPromotionGuard,
+  validateReleaseCliVersionBumpGuard,
   validateWorkflowPermissions,
 } from "../../security/security-compliance.mjs";
 
@@ -22,6 +23,9 @@ const WORKFLOW = ".github/workflows/release-cli.yml";
 const INTERNAL_WORKFLOW = ".github/workflows/internal-cli-release.yml";
 const MIRROR_WORKFLOW = ".github/workflows/mirror-cli-r2.yml";
 const NON_EXEMPT_WORKFLOW = ".github/workflows/ci.yml";
+const CLI_INSTALL_SMOKE_WORKFLOW = ".github/workflows/cli-install-smoke.yml";
+const CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW =
+  ".github/workflows/cli-public-install-smoke.yml";
 
 function readWorkflowText() {
   return readFileSync(WORKFLOW, "utf8");
@@ -33,6 +37,10 @@ function readMirrorWorkflowText() {
 
 function readInternalWorkflowText() {
   return readFileSync(INTERNAL_WORKFLOW, "utf8");
+}
+
+function readCliInstallSmokeWorkflowText() {
+  return readFileSync(CLI_INSTALL_SMOKE_WORKFLOW, "utf8");
 }
 
 test("release-cli keeps publish-only write permissions", () => {
@@ -235,4 +243,147 @@ test("mirror-cli fails when the monotonic promotion guard is removed", () => {
   );
   const failures = validateMirrorCliPromotionGuard(MIRROR_WORKFLOW, mutated);
   assert.ok(failures.some((failure) => /must compare requested version against current version\.json/.test(failure)));
+});
+
+test("release-cli keeps the public version bump guard", () => {
+  const failures = validateReleaseCliVersionBumpGuard(WORKFLOW, readWorkflowText());
+  assert.deepEqual(failures, []);
+});
+
+test("release-cli fails when the version bump guard is removed", () => {
+  const mutated = readWorkflowText().replace(
+    /\n\s+- name: Validate public version bump[\s\S]*?validate-cli-version-bump\.sh\n/,
+    "\n",
+  );
+  const failures = validateReleaseCliVersionBumpGuard(WORKFLOW, mutated);
+  assert.ok(
+    failures.some((failure) => /must invoke scripts\/ci\/validate-cli-version-bump\.sh/.test(failure)),
+  );
+});
+
+// cli-install-smoke is the one entry in the allow-table that is not a release
+// lane. Its reporter needs issues: write to file a nightly failure, so these
+// pin that the exemption stays exactly that wide and no wider.
+test("cli-install-smoke keeps issue reporting as its only write scope", () => {
+  const failures = validateWorkflowPermissions(
+    CLI_INSTALL_SMOKE_WORKFLOW,
+    readCliInstallSmokeWorkflowText(),
+  );
+  assert.deepEqual(failures, []);
+});
+
+test("cli-install-smoke fails when the report job gains contents write", () => {
+  const mutated = readCliInstallSmokeWorkflowText().replace(
+    "      contents: read\n      issues: write",
+    "      contents: write\n      issues: write",
+  );
+  const failures = validateWorkflowPermissions(CLI_INSTALL_SMOKE_WORKFLOW, mutated);
+  assert.ok(failures.some((failure) => /job report/.test(failure)));
+});
+
+test("cli-install-smoke fails when the install job gains write permissions", () => {
+  const doc = readCliInstallSmokeWorkflowText();
+  const anchor = "  install-smoke:\n";
+  const mutated = doc.replace(anchor, anchor + "    permissions:\n      contents: write\n");
+  assert.notEqual(mutated, doc);
+  const failures = validateWorkflowPermissions(CLI_INSTALL_SMOKE_WORKFLOW, mutated);
+  assert.ok(
+    failures.some((failure) => /job install-smoke must not request write permissions/.test(failure)),
+  );
+});
+
+test("cli-install-smoke fails when workflow-level write permissions appear", () => {
+  const mutated = readCliInstallSmokeWorkflowText().replace(
+    "permissions:\n  contents: read",
+    "permissions: write-all",
+  );
+  const failures = validateWorkflowPermissions(CLI_INSTALL_SMOKE_WORKFLOW, mutated);
+  assert.ok(
+    failures.some((failure) => /workflow permissions must be exactly contents: read/.test(failure)),
+  );
+});
+
+// The public smoke is the second non-release writer, and it earned its entry by
+// failing this check first: an unlisted workflow must be read-only, so adding
+// the lane without adding the table row is caught rather than assumed. These
+// pin that its exemption is exactly as wide as the internal one (ATO-1863).
+function readCliPublicInstallSmokeWorkflowText() {
+  return readFileSync(CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW, "utf8");
+}
+
+test("cli-public-install-smoke keeps issue reporting as its only write scope", () => {
+  const failures = validateWorkflowPermissions(
+    CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW,
+    readCliPublicInstallSmokeWorkflowText(),
+  );
+  assert.deepEqual(failures, []);
+});
+
+test("cli-public-install-smoke fails when the report job gains contents write", () => {
+  const mutated = readCliPublicInstallSmokeWorkflowText().replace(
+    "      contents: read\n      issues: write",
+    "      contents: write\n      issues: write",
+  );
+  const failures = validateWorkflowPermissions(
+    CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW,
+    mutated,
+  );
+  assert.ok(failures.some((failure) => /job report/.test(failure)));
+});
+
+test("cli-public-install-smoke fails when the smoke job gains write permissions", () => {
+  const doc = readCliPublicInstallSmokeWorkflowText();
+  const anchor = "  public-install-smoke:\n";
+  const mutated = doc.replace(
+    anchor,
+    anchor + "    permissions:\n      contents: write\n",
+  );
+  assert.notEqual(mutated, doc);
+  const failures = validateWorkflowPermissions(
+    CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW,
+    mutated,
+  );
+  assert.ok(
+    failures.some((failure) =>
+      /job public-install-smoke must not request write permissions/.test(failure),
+    ),
+  );
+});
+
+test("cli-public-install-smoke fails when workflow-level write permissions appear", () => {
+  const mutated = readCliPublicInstallSmokeWorkflowText().replace(
+    "permissions:\n  contents: read",
+    "permissions: write-all",
+  );
+  const failures = validateWorkflowPermissions(
+    CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW,
+    mutated,
+  );
+  assert.ok(
+    failures.some((failure) =>
+      /workflow permissions must be exactly contents: read/.test(failure),
+    ),
+  );
+});
+
+const CORE_ECR_WORKFLOW = ".github/workflows/core-ecr-dev-staging.yml";
+
+test("core-ecr-dev-staging keeps OIDC publish permissions only", () => {
+  const text = readFileSync(CORE_ECR_WORKFLOW, "utf8");
+  const failures = validateWorkflowPermissions(CORE_ECR_WORKFLOW, text);
+  assert.deepEqual(failures, []);
+});
+
+test("core-ecr-dev-staging fails when packages:write is added", () => {
+  const text = readFileSync(CORE_ECR_WORKFLOW, "utf8");
+  const mutated = text.replace(
+    "permissions:\n  contents: read\n  id-token: write",
+    "permissions:\n  contents: read\n  id-token: write\n  packages: write",
+  );
+  const failures = validateWorkflowPermissions(CORE_ECR_WORKFLOW, mutated);
+  assert.ok(
+    failures.some((failure) =>
+      /workflow permissions must be exactly contents: read, id-token: write/.test(failure),
+    ),
+  );
 });

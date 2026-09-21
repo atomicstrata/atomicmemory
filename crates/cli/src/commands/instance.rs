@@ -10,7 +10,7 @@ use reqwest::Url;
 use serde::Serialize;
 
 use crate::cli::GlobalOptions;
-use crate::commands::client::{memory_client, resolve_ctx};
+use crate::commands::client::resolve_ctx;
 use crate::commands::cloud_api_key::{ProvisionOutcome, ensure_connected_local_cloud_api_key};
 use crate::commands::connect::next_step_after_instance_start;
 use crate::commands::local_clients::{render_local_clients_card, resolve_local_clients};
@@ -20,14 +20,15 @@ use crate::config::{
     resolve_openai_api_key_with_source, store_openai_api_key,
 };
 use crate::environment::{CoreImageInput, resolve_core_image};
+use crate::instance::address::ManagedAddress;
 use crate::instance::docker::{
-    ContainerInspect, ContainerState, DEFAULT_BIND_HOST, DEFAULT_HOST_PORT, DockerRunner,
-    InstanceEnv, RealDockerRunner, default_instance_config, managed_core_local_url, tail_lines,
+    ContainerInspect, ContainerState, DEFAULT_BIND_HOST, DockerRunner, InstanceEnv,
+    RealDockerRunner, default_instance_config, tail_lines,
 };
+use crate::instance::storage::{Provider, RuntimeStore};
 use crate::instance::{
     DEFAULT_CONTAINER_NAME, DEFAULT_WAIT_SECS, HEALTH_POLL_INTERVAL_SECS, MAX_FAILURE_LOG_LINES,
-    VOLUME_DATA, VOLUME_STATE, managed_core_cloud_env_mismatch, managed_core_profile_mismatch,
-    resolve_instance_core_api_key,
+    managed_core_cloud_env_mismatch, managed_core_profile_mismatch,
 };
 use crate::output::{emit, message};
 use crate::progress::{ProgressReporter, progress_for};
@@ -43,6 +44,15 @@ pub enum InstanceCommand {
         /// OpenAI API key for Core (overrides env and stored profile secret)
         #[arg(long, env = "OPENAI_API_KEY")]
         openai_api_key: Option<String>,
+        /// Use Connected Local SLM (host Metal runtime) instead of OpenAI
+        #[arg(long)]
+        slm: bool,
+        /// Select the local provider; omitted reuses the saved provider.
+        #[arg(long, value_enum, conflicts_with = "slm")]
+        provider: Option<crate::instance::storage::Provider>,
+        /// Reset only the selected SLM dataset (requires --yes)
+        #[arg(long)]
+        slm_reset_data: bool,
         /// Recreate an existing CLI-managed container
         #[arg(long)]
         replace: bool,
@@ -52,6 +62,9 @@ pub enum InstanceCommand {
         /// Show raw `CORE_API_KEY` in output (default: redacted)
         #[arg(long)]
         show_secrets: bool,
+        /// Confirm downloads or an explicit SLM reset without prompting
+        #[arg(long)]
+        yes: bool,
     },
     /// Stop the managed Core container
     Stop,
@@ -90,9 +103,13 @@ pub async fn run(cmd: InstanceCommand, global: &GlobalOptions) -> Result<()> {
         InstanceCommand::Start {
             image,
             openai_api_key,
+            slm,
+            provider,
+            slm_reset_data,
             replace,
             wait_secs,
             show_secrets,
+            yes,
         } => {
             let mut progress = progress_for(global);
             let result = run_start(
@@ -101,6 +118,9 @@ pub async fn run(cmd: InstanceCommand, global: &GlobalOptions) -> Result<()> {
                 StartOptions {
                     image,
                     openai_api_key,
+                    slm,
+                    provider,
+                    slm_reset_data,
                     replace,
                     sync_managed: false,
                     wait_secs,
@@ -108,7 +128,8 @@ pub async fn run(cmd: InstanceCommand, global: &GlobalOptions) -> Result<()> {
                     brief_output: false,
                     progress: Some(progress.as_mut()),
                     brief_progress_id: None,
-                    allow_prompts: global.allow_prompts(false),
+                    allow_prompts: global.allow_prompts(yes),
+                    slm_pull_yes: yes,
                 },
             )
             .await
@@ -147,9 +168,13 @@ pub(crate) async fn run_start_brief<'a>(
     let InstanceCommand::Start {
         image,
         openai_api_key,
+        slm,
+        provider,
+        slm_reset_data,
         replace,
         wait_secs,
         show_secrets,
+        yes,
     } = cmd
     else {
         anyhow::bail!("run_start_brief expects InstanceCommand::Start");
@@ -161,6 +186,9 @@ pub(crate) async fn run_start_brief<'a>(
         StartOptions {
             image,
             openai_api_key,
+            slm,
+            provider,
+            slm_reset_data,
             replace,
             sync_managed,
             wait_secs,
@@ -169,6 +197,7 @@ pub(crate) async fn run_start_brief<'a>(
             progress,
             brief_progress_id,
             allow_prompts,
+            slm_pull_yes: yes,
         },
     )
     .await
@@ -178,7 +207,7 @@ async fn ensure_local_profile(global: &GlobalOptions) -> Result<crate::config::R
     let profile = resolve_ctx(global).await?;
     if profile.kind != ProfileKind::Local {
         bail!(
-            "instance commands require a local profile — run `am link local` or `am config profile add --kind local`"
+            "instance commands require a local profile — run `am init --local` (or `am init --local --slm`) or `am link local`"
         );
     }
     require_project_id(&profile, None)?;
@@ -328,6 +357,15 @@ impl ReplacementPlan {
     }
 }
 
+/// Whether the managed Core container must be recreated on this start.
+///
+/// `--slm` always forces recreate so the LLM_*/EMBEDDING_* overlay is applied
+/// via `docker.run`. An already-running OpenAI-backed Core would otherwise hit
+/// the "already running" early return and keep the prior provider env.
+fn needs_managed_recreate(plan: ReplacementPlan, slm: bool) -> bool {
+    plan.recreate_managed || slm
+}
+
 fn confirm_replace_foreign_container(
     container_name: &str,
     replace_flag: bool,
@@ -397,35 +435,8 @@ fn build_instance_env(
         atomicmemory_api_url: profile.base_url.clone(),
         cloud_jwks_url: jwks,
         core_api_key: Some(core_api_key),
+        slm: false,
     })
-}
-
-async fn ensure_core_key_override_allowed(
-    docker: &dyn DockerRunner,
-    container_name: &str,
-    shell_override: Option<&str>,
-    replace: bool,
-) -> Result<()> {
-    let Some(shell_key) = shell_override.filter(|k| !k.is_empty()) else {
-        return Ok(());
-    };
-    let inspect = docker.inspect(container_name).await?;
-    let Some(inspect) = inspect else {
-        return Ok(());
-    };
-    if !inspect.managed_by_cli || !inspect.state.is_running() {
-        return Ok(());
-    }
-    if let Some(persisted) = docker.read_core_api_key(container_name).await?
-        && persisted != shell_key
-        && !replace
-    {
-        bail!(
-            "CORE_API_KEY override differs from the running container's persisted key.\n\
-             Recreate with override: CORE_API_KEY=<secret> am instance start --replace"
-        );
-    }
-    Ok(())
 }
 
 fn format_auth_chain_diag(cloud_base_url: &str, detail: &str) -> String {
@@ -435,7 +446,7 @@ fn format_auth_chain_diag(cloud_base_url: &str, detail: &str) -> String {
 }
 
 async fn core_health_probe(
-    global: &GlobalOptions,
+    _global: &GlobalOptions,
     docker: &dyn DockerRunner,
     container_name: &str,
     local_url: &Url,
@@ -456,8 +467,9 @@ async fn core_health_probe(
             .context("create inspect core memory client")?;
         client.health().await.context("inspect env core health")?;
     } else {
-        let (_p, client) = memory_client(global).await?;
-        client.health().await.context("memory client core health")?;
+        bail!(
+            "managed Core has no persisted credential; rerun instance start for the selected profile"
+        );
     }
     Ok(())
 }
@@ -469,6 +481,7 @@ struct CoreHealthWaitContext<'a> {
     /// Cloud base URL for the auth-chain DIAGNOSTIC only. Never probed and
     /// never sent a credential; the probe URL is derived below.
     cloud_base_url_for_diag: &'a str,
+    address: &'a ManagedAddress,
     timeout: Duration,
     emit_plain_ticks: bool,
     bootstrap_core_key: Option<&'a str>,
@@ -509,22 +522,15 @@ async fn wait_for_core_health(
         docker,
         container_name,
         cloud_base_url_for_diag,
+        address,
         timeout,
         emit_plain_ticks,
         bootstrap_core_key,
         brief_parent,
     } = ctx;
-    // Probe what we PUBLISHED, never what the profile claims. This function
-    // sends the bootstrap Core key as a bearer to whatever URL it probes, and
-    // `profile.memory_base_url` derives from the Cloud API's
-    // `project.local_url` - so parsing it here handed the key to any host a
-    // project record named, on every default `am instance start`, bypassing
-    // the container-label guard entirely (that guard runs on the read path,
-    // not on this probe). No profile parameter, so it cannot come back.
-    let local_url = managed_core_local_url()
-        .parse::<Url>()
-        .context("parse derived local_url for health check")?;
-    let host_port = DEFAULT_HOST_PORT;
+    // The caller supplies the address used to publish this container, never a remote profile target.
+    let local_url = Url::parse(&address.url())?;
+    let host_port = address.port();
     let host = DEFAULT_BIND_HOST;
 
     let deadline = tokio::time::Instant::now() + timeout;
@@ -664,6 +670,11 @@ struct StartOptions<'a> {
     sync_managed: bool,
     image: Option<String>,
     openai_api_key: Option<String>,
+    /// Connected Local SLM mode (host Metal runtime; no OpenAI key required).
+    slm: bool,
+    provider: Option<crate::instance::storage::Provider>,
+    /// Delete Core data volumes before SLM start when embedding dims conflict.
+    slm_reset_data: bool,
     replace: bool,
     wait_secs: u64,
     show_secrets: bool,
@@ -673,6 +684,38 @@ struct StartOptions<'a> {
     brief_progress_id: Option<&'a str>,
     // When false, OpenAI key stdin prompts are skipped (`am init --yes`).
     allow_prompts: bool,
+    /// Confirm the ~1.7GB SLM model download without prompting.
+    slm_pull_yes: bool,
+}
+
+async fn bootstrap_host_slm(
+    slm_paths: &crate::slm::SlmPaths,
+    confirm: crate::slm::BootstrapConfirm,
+    progress: &mut Option<&mut dyn ProgressReporter>,
+    brief_id: Option<&str>,
+) -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .context("build SLM HTTP client")?;
+    let should_pause = confirm.allow_prompt && !confirm.yes;
+    if should_pause {
+        progress_pause(progress);
+    }
+    let result = crate::slm::bootstrap_managed_slm(
+        &client,
+        slm_paths,
+        confirm,
+        crate::slm::DEFAULT_SLM_PORT,
+        Duration::from_secs(90),
+        |step| progress_tick(progress, brief_id, "credentials", step),
+    )
+    .await;
+    if should_pause {
+        progress_resume(progress);
+    }
+    result.context("start managed am-slm before Core")?;
+    Ok(())
 }
 
 /// Routes instance-start progress to nested steps or init parent ticks.
@@ -801,6 +844,29 @@ fn existing_container_blocks_start(
 async fn run_start(
     global: &GlobalOptions,
     docker: &dyn DockerRunner,
+    opts: StartOptions<'_>,
+) -> Result<bool> {
+    let provider = Provider::requested(opts.provider, opts.slm)?;
+    let profile = ensure_local_profile(global).await?;
+    let name = profile.name.as_str();
+    let retry = provider
+        .map(|p| crate::instance::storage::provider_command(name, p))
+        .unwrap_or_else(|| {
+            format!(
+                "am --profile '{}' instance start",
+                name.replace('\'', "'\\''")
+            )
+        });
+    run_start_inner(global, docker, opts)
+        .await
+        .with_context(|| {
+            format!("Core setup did not finish; retained datasets are preserved. Retry: {retry}")
+        })
+}
+
+async fn run_start_inner(
+    global: &GlobalOptions,
+    docker: &dyn DockerRunner,
     mut opts: StartOptions<'_>,
 ) -> Result<bool> {
     progress_step(
@@ -820,10 +886,37 @@ async fn run_start(
         config_core_image: config_file.core_image.as_deref(),
     })
     .value;
-    let config = default_instance_config(&profile.name, &resolved_image);
+    let address = ManagedAddress::parse(&profile.memory_base_url)?;
+    let mut config = default_instance_config(&profile.name, &resolved_image);
+    config.host_port = address.port();
+    config.local_url = address.url();
+    config.project_id = profile.project_id.clone();
     let expected_jwks = jwks_url(&profile.base_url)?;
 
+    let mut registry = RuntimeStore::open()?;
     let existing = docker.inspect(&config.container_name).await?;
+    let requested = Provider::requested(opts.provider, opts.slm)?;
+    let provider = registry.provider(&profile, requested, existing.as_ref())?;
+    let volumes = registry.select(&profile, provider, existing.as_ref())?;
+    config.provider = provider;
+    config.storage = volumes;
+    let use_slm = provider == Provider::Slm;
+    if opts.slm_reset_data && (!use_slm || !opts.slm_pull_yes) {
+        bail!(
+            "--slm-reset-data requires the SLM provider and --yes; ordinary provider switching preserves all data"
+        );
+    }
+    if use_slm && crate::slm::current_target().is_none() {
+        bail!("Connected Local SLM requires Apple Silicon macOS");
+    }
+    let binding_matches = existing
+        .as_ref()
+        .is_some_and(|i| i.local_url.as_deref() == Some(config.local_url.as_str()));
+    if !binding_matches {
+        let listener = std::net::TcpListener::bind((DEFAULT_BIND_HOST, config.host_port))
+            .context("managed Core port is occupied; choose a free --local-url port and retry")?;
+        drop(listener);
+    }
     let mut confirmed_managed_recreate = false;
     if let Some(inspect) = &existing
         && existing_container_blocks_start(
@@ -856,39 +949,72 @@ async fn run_start(
         );
     }
 
-    let missing_key =
-        needs_interactive_openai_key(&profile.name, &opts.openai_api_key, opts.allow_prompts);
-    let pause_for_openai = may_prompt_openai_key(opts.allow_prompts) && missing_key;
-    if pause_for_openai {
-        progress_pause(&mut opts.progress);
+    // Resolve foreign ownership before model preparation or any removal.
+    if existing.as_ref().is_some_and(|i| !i.managed_by_cli) && !opts.replace {
+        bail!(
+            "container 'atomic-memory' is not CLI-managed; use --replace to authorize replacement (volumes are preserved)"
+        );
+    }
+    let live_legacy = crate::instance::storage::owned_storage(&profile, existing.as_ref())
+        .is_some_and(|storage| storage.provider == provider && storage.volumes == config.storage);
+    // Capture the outgoing legacy pair before switching to another provider, while
+    // its container still proves ownership. The registry commit precedes removal.
+    if let Some(outgoing) = crate::instance::storage::owned_storage(&profile, existing.as_ref()) {
+        let mut outgoing_config = config.clone();
+        outgoing_config.provider = outgoing.provider;
+        outgoing_config.storage = outgoing.volumes.clone();
+        let identity = docker
+            .validate_storage(
+                &outgoing_config,
+                registry.identity(&profile, outgoing.provider)?,
+                true,
+            )
+            .await?;
+        registry.record_identity(&profile, outgoing.provider, &outgoing.volumes, identity)?;
+    }
+    docker
+        .validate_storage(&config, registry.identity(&profile, provider)?, live_legacy)
+        .await?;
+
+    let slm_paths = crate::slm::default_slm_paths()?;
+    let openai_key = if use_slm {
         progress_tick(
             &mut opts.progress,
             opts.brief_progress_id,
             "credentials",
-            "OpenAI API key required below",
+            if opts.slm {
+                "Connected Local SLM (no OpenAI key)"
+            } else {
+                "preserving Connected Local SLM (768-dim volumes)"
+            },
         );
-    }
-    progress_tick(
-        &mut opts.progress,
-        opts.brief_progress_id,
-        "credentials",
-        "validating OpenAI key",
-    );
-    let openai_key =
-        ensure_openai_api_key(&profile.name, opts.openai_api_key, opts.allow_prompts).await;
-    if pause_for_openai {
-        progress_resume(&mut opts.progress);
-    }
-    let openai_key = openai_key?;
-
-    let shell_override = resolve_core_api_key();
-    ensure_core_key_override_allowed(
-        docker,
-        &config.container_name,
-        shell_override.as_deref(),
-        opts.replace,
-    )
-    .await?;
+        String::new()
+    } else {
+        let missing_key =
+            needs_interactive_openai_key(&profile.name, &opts.openai_api_key, opts.allow_prompts);
+        let pause_for_openai = may_prompt_openai_key(opts.allow_prompts) && missing_key;
+        if pause_for_openai {
+            progress_pause(&mut opts.progress);
+            progress_tick(
+                &mut opts.progress,
+                opts.brief_progress_id,
+                "credentials",
+                "OpenAI API key required below",
+            );
+        }
+        progress_tick(
+            &mut opts.progress,
+            opts.brief_progress_id,
+            "credentials",
+            "validating OpenAI key",
+        );
+        let openai_key =
+            ensure_openai_api_key(&profile.name, opts.openai_api_key, opts.allow_prompts).await;
+        if pause_for_openai {
+            progress_resume(&mut opts.progress);
+        }
+        openai_key?
+    };
 
     progress_tick(
         &mut opts.progress,
@@ -915,9 +1041,83 @@ async fn run_start(
         opts.sync_managed || cloud_key_outcome.requires_container_sync() || credentials_drifted,
         confirmed_managed_recreate,
     );
-    let needs_recreate = plan.recreate_managed;
-    let core_api_key = resolve_instance_core_api_key(docker, false).await?;
-    let env = build_instance_env(&profile, &api_key, &openai_key, core_api_key.clone())?;
+    let dataset_matches = existing
+        .as_ref()
+        .and_then(|i| i.storage.as_ref())
+        .is_some_and(|s| s.provider == provider && s.volumes == config.storage);
+    let needs_recreate = needs_managed_recreate(
+        plan,
+        !dataset_matches || !binding_matches || opts.slm_reset_data,
+    );
+    if use_slm {
+        bootstrap_host_slm(
+            &slm_paths,
+            crate::slm::BootstrapConfirm {
+                yes: opts.slm_pull_yes,
+                allow_prompt: may_prompt_for_input(opts.allow_prompts),
+            },
+            &mut opts.progress,
+            opts.brief_progress_id,
+        )
+        .await?;
+    }
+    let identity = docker
+        .prepare_storage(&config, registry.identity(&profile, provider)?, live_legacy)
+        .await?;
+    registry.record_identity(&profile, provider, &config.storage, identity)?;
+    let core_api_key = crate::instance::credentials::resolve_dataset_key(
+        docker,
+        &config,
+        opts.slm_reset_data,
+        resolve_core_api_key(),
+        opts.replace,
+    )
+    .await?;
+    let mut env = build_instance_env(&profile, &api_key, &openai_key, core_api_key.clone())?;
+    if use_slm {
+        crate::slm::apply_slm_overlay(&mut env);
+    }
+    // Commit the target before the swap; interruption resumes this selection, never an implicit fallback.
+    registry.save()?;
+    message(
+        !global.quiet && global.output != crate::cli::OutputFormat::Json,
+        &format!(
+            "Using {} at {}. Data: {}. State: {}. Other provider data is preserved.",
+            provider.as_str(),
+            config.local_url,
+            config.storage.data,
+            config.storage.state
+        ),
+    );
+    if let Some(previous) = existing.as_ref().and_then(|i| i.storage.as_ref())
+        && previous.provider != provider
+    {
+        message(
+            !global.quiet && global.output != crate::cli::OutputFormat::Json,
+            &format!(
+                "Switch back: {}",
+                crate::instance::storage::provider_command(&profile.name, previous.provider)
+            ),
+        );
+    }
+    if opts.slm_reset_data {
+        docker
+            .validate_storage(&config, registry.identity(&profile, provider)?, live_legacy)
+            .await?;
+        if let Some(current) = &existing
+            && current
+                .storage
+                .as_ref()
+                .is_some_and(|s| s.volumes == config.storage)
+        {
+            docker.rm_force(&config.container_name).await?;
+        }
+        docker.volume_rm(&config.storage.data).await?;
+        docker.volume_rm(&config.storage.state).await?;
+        let identity = docker.prepare_storage(&config, None, false).await?;
+        registry.record_identity(&profile, provider, &config.storage, identity)?;
+        registry.save()?;
+    }
     progress_succeed(
         &mut opts.progress,
         opts.brief_progress_id,
@@ -977,37 +1177,12 @@ async fn run_start(
             }
         }
         Some(inspect) if inspect.state.is_running() && !needs_recreate => {
-            if opts.brief_output {
-                if progress_is_active(&opts.progress) {
-                    progress_succeed(
-                        &mut opts.progress,
-                        opts.brief_progress_id,
-                        "container",
-                        Some("already running"),
-                    );
-                } else {
-                    message(
-                        !global.quiet,
-                        &format!("Core already running at {}", profile.memory_base_url),
-                    );
-                }
-                return Ok(true);
-            }
-            let report =
-                instance_status_report(&profile, Some(inspect), docker, global, opts.show_secrets)
-                    .await?;
-            emit_instance_report(global, &report, opts.show_secrets)?;
-            if progress_is_active(&opts.progress) {
-                progress_succeed(
-                    &mut opts.progress,
-                    opts.brief_progress_id,
-                    "container",
-                    Some("already running"),
-                );
-            } else {
-                message(!global.quiet, "Instance already running.");
-            }
-            return Ok(true);
+            progress_succeed(
+                &mut opts.progress,
+                opts.brief_progress_id,
+                "container",
+                Some("already running"),
+            );
         }
         Some(_) if needs_recreate => {
             docker.rm_force(&config.container_name).await?;
@@ -1067,6 +1242,7 @@ async fn run_start(
                 docker,
                 container_name: &config.container_name,
                 cloud_base_url_for_diag: &profile.base_url,
+                address: &address,
                 timeout: Duration::from_secs(opts.wait_secs),
                 emit_plain_ticks,
                 bootstrap_core_key: Some(core_api_key.as_str()),
@@ -1124,11 +1300,48 @@ async fn run_start(
     Ok(true)
 }
 
+fn ensure_selected_instance(
+    profile: &crate::config::ResolvedProfile,
+    inspect: &ContainerInspect,
+) -> Result<()> {
+    if !inspect.managed_by_cli
+        || managed_core_profile_mismatch(inspect, &profile.name)
+        || managed_core_cloud_env_mismatch(
+            inspect,
+            &profile.base_url,
+            &jwks_url(&profile.base_url)?,
+        )
+    {
+        bail!(
+            "the active Core belongs to another profile or installation; select its profile before changing it"
+        );
+    }
+    match inspect
+        .storage
+        .as_ref()
+        .and_then(|s| s.project_id.as_deref())
+    {
+        Some(id) if profile.project_id.as_deref() == Some(id) => {}
+        Some(_) => bail!("active Core belongs to another project"),
+        None => {
+            let key = crate::config::require_api_key(profile)?;
+            if inspect.atomicmemory_api_key.as_deref() != Some(key.as_str()) {
+                bail!(
+                    "legacy Core project ownership cannot be proven with the selected profile's credential"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn run_stop(global: &GlobalOptions, docker: &dyn DockerRunner) -> Result<()> {
+    let _registry = RuntimeStore::open()?;
     let profile = ensure_local_profile(global).await?;
     docker.version().await?;
     let name = DEFAULT_CONTAINER_NAME;
     if let Some(inspect) = docker.inspect(name).await? {
+        ensure_selected_instance(&profile, &inspect)?;
         if !inspect.managed_by_cli {
             bail!("container '{name}' is not managed by `am instance`");
         }
@@ -1156,7 +1369,22 @@ async fn run_restart(
     let profile = ensure_local_profile(global).await?;
     docker.version().await?;
     let name = DEFAULT_CONTAINER_NAME;
+    let _registry = RuntimeStore::open()?;
     let inspect = docker.inspect(name).await?;
+    let current = inspect
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("no managed instance; run am instance start"))?;
+    ensure_selected_instance(&profile, current)?;
+    let configured_url = if current.state.is_running() {
+        current.local_url.clone()
+    } else {
+        docker.configured_local_url(name).await?
+    };
+    let expected_address = ManagedAddress::parse(configured_url.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "container has no trusted loopback binding; recreate with am instance start"
+        )
+    })?)?;
     match inspect {
         Some(i) if i.managed_by_cli => {
             docker.stop(name).await?;
@@ -1166,6 +1394,19 @@ async fn run_restart(
         Some(_) => bail!("container '{name}' is not managed by `am instance`"),
         None => bail!("no managed instance '{name}' — run `am instance start`"),
     }
+    let restarted = docker
+        .inspect(name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Core container disappeared after restart"))?;
+    ensure_selected_instance(&profile, &restarted)?;
+    let address = ManagedAddress::parse(restarted.local_url.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "restarted Core has no published loopback port; run am instance start to recover"
+        )
+    })?)?;
+    if address != expected_address {
+        bail!("Core publication changed during restart; refusing to send credentials");
+    }
     if wait_secs > 0 {
         let mut progress: Option<&mut dyn ProgressReporter> = None;
         wait_for_core_health(
@@ -1174,6 +1415,7 @@ async fn run_restart(
                 docker,
                 container_name: name,
                 cloud_base_url_for_diag: &profile.base_url,
+                address: &address,
                 timeout: Duration::from_secs(wait_secs),
                 emit_plain_ticks: !global.quiet,
                 bootstrap_core_key: None,
@@ -1239,35 +1481,97 @@ async fn run_remove(
     purge_data: bool,
     yes: bool,
 ) -> Result<()> {
-    let profile = ensure_local_profile(global).await?;
-    docker.version().await?;
-    let name = DEFAULT_CONTAINER_NAME;
-
-    if let Some(inspect) = docker.inspect(name).await?
-        && !inspect.managed_by_cli
-    {
-        bail!("container '{name}' is not managed by `am instance`");
-    }
-
-    docker.rm_force(name).await?;
-    message(!global.quiet, "Container removed.");
-
+    // Authorization and selected-dataset resolution precede every destructive call.
     if purge_data {
         validate_purge_confirmed(yes)?;
-        docker.volume_rm(VOLUME_DATA).await?;
-        docker.volume_rm(VOLUME_STATE).await?;
-        message(!global.quiet, "Named volumes removed.");
+    }
+    let profile = ensure_local_profile(global).await?;
+    let mut registry = RuntimeStore::open()?;
+    docker.version().await?;
+    let name = DEFAULT_CONTAINER_NAME;
+    let current = docker.inspect(name).await?;
+    let volumes = remove_selected_dataset(
+        &profile,
+        docker,
+        &mut registry,
+        current.as_ref(),
+        purge_data,
+    )
+    .await?;
+    if purge_data {
+        message(
+            !global.quiet,
+            "Selected provider dataset removed; other datasets preserved.",
+        );
     } else {
         message(
             !global.quiet,
             &format!(
-                "Data volumes preserved ({VOLUME_DATA}, {VOLUME_STATE}). CORE_API_KEY persists in {VOLUME_STATE} until `--purge-data --yes`."
+                "Container removed. Data preserved in {} and {}.",
+                volumes.data, volumes.state
             ),
         );
     }
 
     let report = instance_status_report(&profile, None, docker, global, false).await?;
     emit_instance_report(global, &report, false)
+}
+
+async fn remove_selected_dataset(
+    profile: &crate::config::ResolvedProfile,
+    docker: &dyn DockerRunner,
+    registry: &mut RuntimeStore,
+    current: Option<&ContainerInspect>,
+    purge_data: bool,
+) -> Result<crate::instance::storage::StorageVolumes> {
+    let name = DEFAULT_CONTAINER_NAME;
+    if let Some(inspect) = current {
+        ensure_selected_instance(profile, inspect)?;
+    }
+    let selected = registry.selected_dataset(profile)?;
+    let (provider, volumes) = match selected {
+        Some(selected) => selected,
+        None => {
+            let observed =
+                crate::instance::storage::owned_storage(profile, current).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no proven dataset for this profile; no container or volumes were removed"
+                    )
+                })?;
+            let provider = observed.provider;
+            (provider, registry.select(profile, provider, current)?)
+        }
+    };
+    let live_legacy = crate::instance::storage::owned_storage(profile, current)
+        .is_some_and(|storage| storage.provider == provider && storage.volumes == volumes);
+    if let Some(inspect) = current {
+        if !inspect
+            .storage
+            .as_ref()
+            .is_some_and(|s| s.provider == provider && s.volumes == volumes)
+        {
+            bail!(
+                "active container does not match the selected dataset; run am instance start before removing it"
+            );
+        }
+    }
+    let mut config = default_instance_config(&profile.name, "");
+    config.provider = provider;
+    config.storage = volumes.clone();
+    let identity = docker
+        .validate_storage(&config, registry.identity(profile, provider)?, live_legacy)
+        .await?;
+    registry.record_identity(profile, provider, &config.storage, identity)?;
+    // Keep adopted identity durable before removing its only live ownership witness.
+    registry.save()?;
+    if current.is_some() {
+        docker.rm_force(name).await?;
+    }
+    if purge_data {
+        docker.volume_rm(&volumes.data).await?;
+        docker.volume_rm(&volumes.state).await?;
+    }
+    Ok(volumes)
 }
 
 fn validate_purge_confirmed(yes: bool) -> Result<()> {
@@ -1293,6 +1597,7 @@ struct ContainerStatus {
     image: String,
     managed_by_cli: bool,
     profile_label: Option<String>,
+    storage: Option<crate::instance::storage::ObservedStorage>,
 }
 
 fn emit_instance_report(
@@ -1301,7 +1606,7 @@ fn emit_instance_report(
     show_secrets: bool,
 ) -> Result<()> {
     emit(global.output, report, global.quiet)?;
-    if !global.quiet {
+    if !global.quiet && global.output != crate::cli::OutputFormat::Json {
         message(
             true,
             &render_local_clients_card(&report.local_clients, show_secrets),
@@ -1312,14 +1617,14 @@ fn emit_instance_report(
 
 async fn read_profile_core_key(
     docker: &dyn DockerRunner,
-    profile_name: &str,
+    profile: &crate::config::ResolvedProfile,
     inspect: Option<&ContainerInspect>,
 ) -> Option<String> {
     let inspect = inspect?;
     if !inspect.managed_by_cli || !inspect.state.is_running() {
         return None;
     }
-    if inspect.profile_label.as_deref() != Some(profile_name) {
+    if ensure_selected_instance(profile, inspect).is_err() || inspect.local_url.is_none() {
         return None;
     }
     docker
@@ -1333,7 +1638,7 @@ async fn instance_status_report(
     profile: &crate::config::ResolvedProfile,
     inspect: Option<&ContainerInspect>,
     docker: &dyn DockerRunner,
-    global: &GlobalOptions,
+    _global: &GlobalOptions,
     show_secrets: bool,
 ) -> Result<InstanceStatusReport> {
     let container = inspect.map(|i| ContainerStatus {
@@ -1341,31 +1646,38 @@ async fn instance_status_report(
         image: i.image.clone(),
         managed_by_cli: i.managed_by_cli,
         profile_label: i.profile_label.clone(),
+        storage: i.storage.clone(),
     });
 
-    let core_health = match memory_client(global).await {
-        Ok((_p, client)) => match client.health().await {
-            Ok(_) => Some("ok".into()),
-            Err(e) => Some(format!("error: {e}")),
-        },
-        Err(e) => Some(format!("unavailable: {e}")),
+    let state_key = read_profile_core_key(docker, profile, inspect).await;
+    let local_url = inspect
+        .filter(|i| ensure_selected_instance(profile, i).is_ok())
+        .and_then(|i| i.local_url.clone())
+        .unwrap_or_else(|| profile.memory_base_url.clone());
+    let core_health = match (&state_key, ManagedAddress::parse(&local_url)) {
+        (Some(key), Ok(address)) => {
+            let client =
+                am_cloud_client::MemoryClient::new(Url::parse(&address.url())?, key.clone())?;
+            Some(match client.health().await {
+                Ok(_) => "ok".into(),
+                Err(err) => format!("error: {err}"),
+            })
+        }
+        _ => Some("unavailable: no matching running managed Core".into()),
     };
-
-    let state_key = read_profile_core_key(docker, &profile.name, inspect).await;
     // Raw secrets depend on --show-secrets and nothing else. A `reveal_on_start`
     // override meant an ordinary `am instance start` printed the persisted
     // CORE_API_KEY, a usable bearer token, into terminals and captured logs
     // while the flag advertised that secrets were redacted without it.
     let reveal = show_secrets;
-    let local_clients =
-        resolve_local_clients(&profile.memory_base_url, state_key.as_deref(), reveal);
+    let local_clients = resolve_local_clients(&local_url, state_key.as_deref(), reveal);
 
     Ok(InstanceStatusReport {
         profile: profile.name.clone(),
         container_name: DEFAULT_CONTAINER_NAME.to_string(),
         container,
         core_health,
-        local_url: profile.memory_base_url.clone(),
+        local_url,
         local_clients,
     })
 }
@@ -1452,6 +1764,24 @@ mod tests {
         assert!(!plan.may_replace_foreign);
     }
 
+    #[test]
+    fn slm_forces_recreate_even_when_container_already_running() {
+        // No --replace, no credential sync, no profile mismatch — but --slm.
+        let plan = ReplacementPlan::resolve(false, false, false);
+        assert!(
+            !plan.recreate_managed,
+            "baseline plan alone must not recreate"
+        );
+        assert!(
+            needs_managed_recreate(plan, true),
+            "--slm must force recreate so overlay env is applied via docker.run"
+        );
+        assert!(
+            !needs_managed_recreate(plan, false),
+            "without --slm, a quiet plan must keep the already-running early return"
+        );
+    }
+
     /// The startup health probe must authenticate against the URL we
     /// PUBLISHED, never one the profile supplies.
     ///
@@ -1496,7 +1826,7 @@ mod tests {
             "the health path must not read the profile's local URL; it sends a bearer key",
         );
         assert!(
-            body.contains("managed_core_local_url()"),
+            body.contains("address.url()"),
             "the probe URL must come from the published binding",
         );
     }
@@ -1540,6 +1870,7 @@ mod tests {
             atomicmemory_api_url: "https://api.dev.example.com".into(),
             cloud_jwks_url: "https://api.dev.example.com/.well-known/atomic-core/jwks.json".into(),
             core_api_key: Some("generated-core-key".into()),
+            slm: false,
         }
     }
 
@@ -1552,9 +1883,13 @@ mod tests {
             crate::cli::Command::Instance(InstanceCommand::Start {
                 image,
                 openai_api_key,
+                slm: false,
+                provider: None,
+                slm_reset_data: false,
                 replace,
                 wait_secs,
                 show_secrets,
+                yes: false,
             }) => {
                 assert!(image.is_none());
                 assert!(openai_api_key.is_none());
@@ -1563,6 +1898,20 @@ mod tests {
                 assert!(!show_secrets);
             }
             _ => panic!("expected instance start"),
+        }
+    }
+
+    #[test]
+    fn instance_start_slm_yes_parses() {
+        use crate::cli::Cli;
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["am", "instance", "start", "--slm", "--yes"]).unwrap();
+        match cli.command {
+            crate::cli::Command::Instance(InstanceCommand::Start { slm, yes, .. }) => {
+                assert!(slm);
+                assert!(yes);
+            }
+            _ => panic!("expected instance start --slm --yes"),
         }
     }
 
@@ -1759,6 +2108,7 @@ mod tests {
 
     fn managed_inspect(state: ContainerState, profile: &str) -> ContainerInspect {
         ContainerInspect {
+            storage: None,
             name: "atomic-memory".into(),
             image: "ghcr.io/atomicstrata/atomicmemory-core:latest".into(),
             state,
@@ -1770,6 +2120,25 @@ mod tests {
             core_api_key: None,
             atomicmemory_api_key: None,
         }
+    }
+
+    #[test]
+    fn legacy_lifecycle_gate_requires_matching_project_credential() {
+        let profile = crate::config::ResolvedProfile {
+            name: "local-test".into(),
+            base_url: "https://api.atomicstrata.ai".into(),
+            kind: crate::config::ProfileKind::Cloud,
+            project_id: Some("new-project".into()),
+            memory_base_url: "http://127.0.0.1:17350".into(),
+            api_key: Some("amc_new_project".into()),
+            oauth: None,
+        };
+        let mut inspect = managed_inspect(ContainerState::Running, &profile.name);
+        inspect.cloud_jwks_url = Some(jwks_url(&profile.base_url).unwrap());
+        inspect.atomicmemory_api_key = Some("amc_previous_project".into());
+        assert!(ensure_selected_instance(&profile, &inspect).is_err());
+        inspect.atomicmemory_api_key = profile.api_key.clone();
+        assert!(ensure_selected_instance(&profile, &inspect).is_ok());
     }
 
     #[test]
@@ -2007,3 +2376,7 @@ mod tests {
         assert_eq!(reporter.input_events, vec!["pause", "resume"]);
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "instance_removal_tests.rs"]
+mod removal_tests;

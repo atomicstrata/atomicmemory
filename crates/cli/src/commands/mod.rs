@@ -4,6 +4,7 @@ pub mod auth;
 pub mod client;
 pub mod cloud_api_key;
 pub mod config_cmd;
+#[deny(clippy::disallowed_methods)]
 pub mod connect;
 pub mod connect_project;
 pub mod doctor_cmd;
@@ -19,5 +20,6 @@ pub mod memory;
 pub mod migrate;
 pub mod org;
 pub mod project;
+pub mod slm;
 pub mod trace;
 pub mod usage;

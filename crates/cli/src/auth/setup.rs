@@ -47,6 +47,9 @@ pub async fn setup_default_project(
         am_cloud_client::CloudClientError::Auth => {
             anyhow::anyhow!("list projects: {e}\n{}", missing_org_login_hint())
         }
+        am_cloud_client::CloudClientError::Forbidden { code } => anyhow::anyhow!(
+            "list projects: Cloud forbade this request ({code}). Refreshing login does not change your org role."
+        ),
         other => anyhow::anyhow!("list projects: {other}"),
     })?;
     let Some(project) = pick_project(&projects, interactive)? else {

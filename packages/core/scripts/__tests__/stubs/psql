@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Stub psql: reject passwordless (-w) connections and succeed otherwise.
+set -euo pipefail
+
+for arg in "$@"; do
+  if [[ "$arg" == "-w" ]]; then
+    echo "psql: fe_sendauth: no password supplied" >&2
+    exit 2
+  fi
+done
+for arg in "$@"; do
+  if [[ "$arg" == *"pg_database"* ]]; then
+    printf '1\n'
+    exit 0
+  fi
+done
+exit 0

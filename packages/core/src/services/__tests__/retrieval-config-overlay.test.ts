@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyConfigOverride,
+  classifyOverrideKeys,
   hashEffectiveConfig,
   summarizeOverrideKeys,
 } from '../retrieval-config-overlay.js';
@@ -51,6 +52,24 @@ describe('applyConfigOverride', () => {
     applyConfigOverride(base, { hybridSearchEnabled: true });
     expect(base.hybridSearchEnabled).toBe(false);
   });
+
+  it('does not apply decode-cap overrides that LLM calls read from the singleton', () => {
+    const base = makeConfig({
+      extractionMaxTokens: 4096,
+      audnMaxTokens: 2048,
+      audnJsonSchema: false,
+    });
+    const result = applyConfigOverride(base, {
+      extractionMaxTokens: 128,
+      audnMaxTokens: 64,
+      audnJsonSchema: true,
+      hybridSearchEnabled: true,
+    });
+    expect(result.extractionMaxTokens).toBe(4096);
+    expect(result.audnMaxTokens).toBe(2048);
+    expect(result.audnJsonSchema).toBe(false);
+    expect(result.hybridSearchEnabled).toBe(true);
+  });
 });
 
 describe('hashEffectiveConfig', () => {
@@ -69,6 +88,30 @@ describe('hashEffectiveConfig', () => {
     const a = hashEffectiveConfig(makeConfig({ hybridSearchEnabled: false }));
     const b = hashEffectiveConfig(makeConfig({ hybridSearchEnabled: true }));
     expect(a).not.toBe(b);
+  });
+});
+
+describe('classifyOverrideKeys', () => {
+  const known = new Set(['hybridSearchEnabled', 'extractionMaxTokens', 'audnMaxTokens']);
+
+  it('reports denylisted RuntimeConfig fields as ignored, not unknown', () => {
+    expect(classifyOverrideKeys({ extractionMaxTokens: 128, audnMaxTokens: 64 }, known)).toEqual({
+      applied: [],
+      ignored: ['audnMaxTokens', 'extractionMaxTokens'],
+      unknown: [],
+    });
+  });
+
+  it('keeps applied keys separate from ignored and unknown', () => {
+    expect(classifyOverrideKeys({
+      hybridSearchEnabled: true,
+      extractionMaxTokens: 128,
+      futureFieldX: true,
+    } as Partial<RuntimeConfig>, known)).toEqual({
+      applied: ['futureFieldX', 'hybridSearchEnabled'],
+      ignored: ['extractionMaxTokens'],
+      unknown: ['futureFieldX'],
+    });
   });
 });
 
