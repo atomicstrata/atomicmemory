@@ -29,6 +29,23 @@ for (const [name, steps, prefix] of [
   ['docker', docker.jobs.publish.steps, 'release-source/'],
 ]) {
   const step = steps.find((s) => s.name.includes('private identifiers'));
+  test(`${name}: installs ripgrep before scanning artifacts`, () => {
+    const setup = steps.find((s) => s.name === 'Install artifact scanner dependency');
+    assert.ok(setup);
+    assert.ok(steps.indexOf(setup) < steps.indexOf(step));
+    assert.equal(setup.if, undefined);
+    const commands = [];
+    const result = spawnSync('bash', ['-e', '-c',
+      'sudo() { printf "%s\\n" "$*"; }; rg() { printf "rg %s\\n" "$*"; };\n' + setup.run],
+    { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    commands.push(...result.stdout.trim().split('\n'));
+    assert.deepEqual(commands, [
+      'apt-get update',
+      'apt-get install --yes --no-install-recommends ripgrep',
+      'rg --version',
+    ]);
+  });
   test(`${name}: secret reaches scanner, missing secret refuses release`, () => {
     assert.equal(step.env.PUBLIC_ARTIFACT_SIGNATURES, secretExpression);
     const dir = mkdtempSync(join(tmpdir(), 'am-release-input-'));

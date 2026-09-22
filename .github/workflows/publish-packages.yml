@@ -102,6 +102,11 @@ jobs:
       MANIFEST_JSON: ${{ needs.manifest.outputs.manifest_json }}
       PUBLIC_SHA: ${{ needs.manifest.outputs.public_sha }}
     steps:
+      - name: Install artifact scanner dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ripgrep
+          rg --version
       - name: Checkout public_sha
         uses: actions/checkout@v4
         with:
