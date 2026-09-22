@@ -98,6 +98,8 @@ jobs:
         run: node --test scripts/ci/__tests__/release-policy.test.mjs
       - name: Test public release input wiring
         run: node --test scripts/ci/__tests__/public-release-inputs.test.mjs
+      - name: Test public-to-private merge safety
+        run: node --test scripts/ci/__tests__/sync-public-to-private.test.mjs
       # Every surface that can write a verbatim memory must be able to stamp
       # content_class. The 0.2.0 release fixed Hermes for Core's raw-content
       # policy and missed OpenClaw, whose published plugin could not perform a

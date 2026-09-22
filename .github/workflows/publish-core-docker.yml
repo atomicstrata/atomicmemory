@@ -36,6 +36,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
+      - name: Install artifact scanner dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ripgrep
+          rg --version
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
