@@ -80,7 +80,10 @@ jobs:
           version="$(jq -r '.version' <<<"${metadata}")"
           git_head="$(jq -r '.gitHead' <<<"${metadata}")"
           short_sha="${git_head:0:7}"
-          tarball="$(jq -r '.dist.tarball' <<<"${metadata}")"
+          if ! tarball="$(jq -er '.["dist.tarball"] | select(type == "string" and length > 0)' <<<"${metadata}")"; then
+            echo "::error::Published package metadata is missing dist.tarball"
+            exit 1
+          fi
           latest_version="$(npm view @atomicmemory/core@latest version)"
 
           if [[ -z "${version}" || "${version}" == "null" ]]; then
