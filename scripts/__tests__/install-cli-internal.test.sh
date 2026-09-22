@@ -40,7 +40,7 @@ create_fake_am() {
   cat >"$path" <<EOF
 #!/bin/sh
 case "\$1" in
-  --version) printf 'am ${ver}\n'; exit 0 ;;
+  --version) printf '{"surface":"cli","version":"%s","gitSha":null,"env":"dev"}\n' "${ver}"; exit 0 ;;
   --help) printf 'AtomicMemory CLI\n'; exit 0 ;;
   *) exit 0 ;;
 esac
@@ -67,7 +67,7 @@ setup_release_fixture() {
       shasum -a 256 "am-${ver}-${target}.tar.gz" >SHA256SUMS
     fi
   )
-  printf '{"version":"%s","tag":"cli-internal-latest","git_sha":"deadbeef","channel":"internal"}\n' \
+  printf '{"surface":"cli","version":"%s","gitSha":"deadbeef","env":"internal","tag":"cli-internal-latest"}\n' \
     "$ver" >"${release_dir}/version.json"
   cp "$ROOT/scripts/install-cli.sh" "${release_dir}/install-cli.sh"
   cp "$ROOT/scripts/install-cli-internal.sh" "${release_dir}/install.sh"
@@ -96,7 +96,7 @@ if [ "\$1" = "release" ] && [ "\$2" = "download" ]; then
   [ -n "\$dir" ] || exit 1
   [ "\$repo" = "atomicstrata/atomicmemory-internal" ] || exit 1
   case "\$tag" in
-    cli-internal-latest|cli-internal-deadbeef) ;;
+    cli-internal-latest|cli-internal-deadbeef|cli-canary-latest|cli-canary-deadbeef) ;;
     *) echo "unknown tag \$tag" >&2; exit 1 ;;
   esac
   cp "${release_dir}"/* "\$dir/"
@@ -158,7 +158,7 @@ main() {
   else
     assert "install from floating internal tag" true
   fi
-  if [ -x "${bin_dir}/am" ] && [ "$("${bin_dir}/am" --version)" = "am ${ver}" ]; then
+  if [ -x "${bin_dir}/am" ] && printf \'%s\' "$("${bin_dir}/am" --version)" | grep -q "\"version\":\"${ver}\""; then
     assert "installed binary reports expected version" true
   else
     assert "installed binary reports expected version" false
@@ -168,6 +168,21 @@ main() {
     assert "refuses public cli-v tag" false
   else
     assert "refuses public cli-v tag" true
+  fi
+
+  local canary_bin="${FIXTURE_ROOT}/bin-canary"
+  mkdir -p "$canary_bin"
+  if ! AM_INTERNAL_REPO=atomicstrata/atomicmemory-internal \
+    AM_INTERNAL_TAG=cli-canary-latest \
+    sh "$INSTALLER" --bin-dir "$canary_bin" --no-modify-path; then
+    assert "install from floating canary tag" false
+  else
+    assert "install from floating canary tag" true
+  fi
+  if [ -x "${canary_bin}/am" ] && printf \'%s\' "$("${canary_bin}/am" --version)" | grep -q "\"version\":\"${ver}\""; then
+    assert "canary install reports expected version" true
+  else
+    assert "canary install reports expected version" false
   fi
 
   # Hostile sibling beside the downloaded wrapper must never win over the
@@ -198,7 +213,7 @@ HOSTILE
   else
     assert "hostile sibling install-cli.sh was not executed" true
   fi
-  if [ -x "${wrap_bin}/am" ] && [ "$("${wrap_bin}/am" --version)" = "am ${ver}" ]; then
+  if [ -x "${wrap_bin}/am" ] && printf \'%s\' "$("${wrap_bin}/am" --version)" | grep -q "\"version\":\"${ver}\""; then
     assert "install still uses release install-cli.sh asset" true
   else
     assert "install still uses release install-cli.sh asset" false

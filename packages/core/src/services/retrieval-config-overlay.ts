@@ -16,9 +16,10 @@
  *      response header so callers can link traces to a canonical config
  *      fingerprint.
  *
- *   3. `summarizeOverrideKeys` — comma-separated list of top-level keys
- *      present in the override object, for the
- *      `X-Atomicmem-Config-Override-Keys` header.
+ *   3. `classifyOverrideKeys` — applied / ignored / unknown split for
+ *      `X-Atomicmem-Config-Override-Keys`,
+ *      `X-Atomicmem-Ignored-Override-Keys`, and
+ *      `X-Atomicmem-Unknown-Override-Keys`.
  *
  * Public contract: request overrides are validated before this helper sees
  * them, so the merge step remains intentionally shallow and deterministic.
@@ -27,12 +28,48 @@
 import { createHash } from 'node:crypto';
 import type { RuntimeConfig } from '../config.js';
 
+/**
+ * Decode caps and AUDN wire format are read from the process singleton.
+ * Accepting them on config_override would report "applied" while doing nothing.
+ */
+const REQUEST_SINGLETON_ONLY_CONFIG_KEYS = new Set([
+  'extractionMaxTokens',
+  'audnMaxTokens',
+  'audnJsonSchema',
+]);
+
+/** Applied / ignored / unknown classification for override response headers. */
+export function classifyOverrideKeys(
+  override: Partial<RuntimeConfig>,
+  knownKeys: ReadonlySet<string>,
+): { applied: string[]; ignored: string[]; unknown: string[] } {
+  const ignored = nonOverridableOverrideKeys(override);
+  const ignoredSet = new Set(ignored);
+  const submitted = Object.keys(override);
+  return {
+    applied: submitted.filter((key) => !ignoredSet.has(key)).sort(),
+    ignored,
+    unknown: submitted.filter((key) => !knownKeys.has(key)).sort(),
+  };
+}
+
+/** Override keys that cannot take effect on the current request path. */
+function nonOverridableOverrideKeys(override: Partial<RuntimeConfig>): string[] {
+  return Object.keys(override)
+    .filter((key) => REQUEST_SINGLETON_ONLY_CONFIG_KEYS.has(key))
+    .sort();
+}
+
 /** Merge a validated override on top of the startup runtime config. */
 export function applyConfigOverride(
   base: RuntimeConfig,
   override: Partial<RuntimeConfig>,
 ): RuntimeConfig {
-  return { ...base, ...override };
+  const applied = { ...override };
+  for (const key of REQUEST_SINGLETON_ONLY_CONFIG_KEYS) {
+    delete applied[key as keyof RuntimeConfig];
+  }
+  return { ...base, ...applied };
 }
 
 /**

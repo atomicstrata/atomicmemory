@@ -17,6 +17,9 @@ vi.mock('../../config.js', () => ({
   config: {
     extractionCacheEnabled: true,
     extractionCacheDir: TEST_CACHE_DIR,
+    extractionMaxTokens: 4096,
+    audnMaxTokens: 2048,
+    audnJsonSchema: false,
   },
 }));
 
@@ -28,7 +31,7 @@ vi.mock('../extraction.js', () => ({
   resolveAUDN: (...args: unknown[]) => mockResolveAUDN(...args),
 }));
 
-const { cachedExtractFacts, cachedResolveAUDN } = await import('../extraction-cache.js');
+const { cachedExtractFacts, cachedResolveAUDN, EXTRACTION_CACHE_CONTRACT } = await import('../extraction-cache.js');
 
 beforeEach(() => {
   mkdirSync(TEST_CACHE_DIR, { recursive: true });
@@ -105,6 +108,20 @@ describe('cachedExtractFacts', () => {
     const tmpFiles = files.filter((f) => f.endsWith('.tmp'));
     expect(tmpFiles).toHaveLength(0);
   });
+
+  it('misses when the effective extraction token cap changes', async () => {
+    mockExtractFacts.mockResolvedValue(SAMPLE_FACTS);
+    const { config } = await import('../../config.js');
+    const original = config.extractionMaxTokens;
+
+    await cachedExtractFacts('cap check');
+    (config as { extractionMaxTokens: number }).extractionMaxTokens = 128;
+    await cachedExtractFacts('cap check');
+    (config as { extractionMaxTokens: number }).extractionMaxTokens = original;
+
+    expect(mockExtractFacts).toHaveBeenCalledTimes(2);
+    expect(EXTRACTION_CACHE_CONTRACT).toBe('v3');
+  });
 });
 
 describe('cachedResolveAUDN', () => {
@@ -123,18 +140,18 @@ describe('cachedResolveAUDN', () => {
   it('calls resolveAUDN on cache miss', async () => {
     mockResolveAUDN.mockResolvedValueOnce(SAMPLE_DECISION);
 
-    const result = await cachedResolveAUDN('new fact', EXISTING_MEMORIES);
+    const result = await cachedResolveAUDN('new fact', EXISTING_MEMORIES, 'full');
 
     expect(mockResolveAUDN).toHaveBeenCalledOnce();
-    expect(mockResolveAUDN).toHaveBeenCalledWith('new fact', EXISTING_MEMORIES);
+    expect(mockResolveAUDN).toHaveBeenCalledWith('new fact', EXISTING_MEMORIES, 'full');
     expect(result).toEqual(SAMPLE_DECISION);
   });
 
   it('returns cached result on hit', async () => {
     mockResolveAUDN.mockResolvedValueOnce(SAMPLE_DECISION);
 
-    const first = await cachedResolveAUDN('fact A', EXISTING_MEMORIES);
-    const second = await cachedResolveAUDN('fact A', EXISTING_MEMORIES);
+    const first = await cachedResolveAUDN('fact A', EXISTING_MEMORIES, 'full');
+    const second = await cachedResolveAUDN('fact A', EXISTING_MEMORIES, 'full');
 
     expect(mockResolveAUDN).toHaveBeenCalledOnce();
     expect(second).toEqual(first);
@@ -146,8 +163,8 @@ describe('cachedResolveAUDN', () => {
       { id: 'mem-2', content: 'User likes Python', similarity: 0.75 },
     ];
 
-    await cachedResolveAUDN('same fact', EXISTING_MEMORIES);
-    await cachedResolveAUDN('same fact', differentMemories);
+    await cachedResolveAUDN('same fact', EXISTING_MEMORIES, 'full');
+    await cachedResolveAUDN('same fact', differentMemories, 'full');
 
     expect(mockResolveAUDN).toHaveBeenCalledTimes(2);
   });
@@ -155,11 +172,37 @@ describe('cachedResolveAUDN', () => {
   it('writes audn-prefixed cache files', async () => {
     mockResolveAUDN.mockResolvedValueOnce(SAMPLE_DECISION);
 
-    await cachedResolveAUDN('audn test', EXISTING_MEMORIES);
+    await cachedResolveAUDN('audn test', EXISTING_MEMORIES, 'full');
 
     const files = readdirSync(TEST_CACHE_DIR).filter((f) => f.startsWith('audn-'));
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/^audn-[a-f0-9]{16}\.json$/);
+  });
+
+  it('misses when the effective AUDN token cap changes', async () => {
+    mockResolveAUDN.mockResolvedValue(SAMPLE_DECISION);
+    const { config } = await import('../../config.js');
+    const original = config.audnMaxTokens;
+
+    await cachedResolveAUDN('cap audn', EXISTING_MEMORIES, 'compact');
+    (config as { audnMaxTokens: number }).audnMaxTokens = 128;
+    await cachedResolveAUDN('cap audn', EXISTING_MEMORIES, 'compact');
+    (config as { audnMaxTokens: number }).audnMaxTokens = original;
+
+    expect(mockResolveAUDN).toHaveBeenCalledTimes(2);
+  });
+
+  it('misses when the AUDN json_schema capability flag changes', async () => {
+    mockResolveAUDN.mockResolvedValue(SAMPLE_DECISION);
+    const { config } = await import('../../config.js');
+    const typed = config as { audnJsonSchema: boolean };
+
+    await cachedResolveAUDN('schema audn', EXISTING_MEMORIES, 'full');
+    typed.audnJsonSchema = true;
+    await cachedResolveAUDN('schema audn', EXISTING_MEMORIES, 'full');
+    typed.audnJsonSchema = false;
+
+    expect(mockResolveAUDN).toHaveBeenCalledTimes(2);
   });
 });
 

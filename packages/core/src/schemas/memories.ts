@@ -246,6 +246,10 @@ const RetrievalModeField = z
  *   unmatched keys and logs a warning. This catches typos without
  *   rejecting a request that would otherwise be valid once the field
  *   lands in a future release.
+ * - Known fields that cannot take effect on this request (decode caps,
+ *   `audnJsonSchema`) are listed on `X-Atomicmem-Ignored-Override-Keys`.
+ *   `X-Atomicmem-Config-Override-Applied` and
+ *   `X-Atomicmem-Config-Override-Keys` reflect only the applied subset.
  * - If you want a typed, IDE-autocompleted experience, import
  *   `RuntimeConfig` from `src/config.ts` and type your override as
  *   `Partial<RuntimeConfig>` on the caller side.
@@ -260,7 +264,7 @@ export const ConfigOverrideSchema = z
   )
   .openapi({
     description:
-      'Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via the X-Atomicmem-Unknown-Override-Keys response header and a server-side warning log — they do not cause a 400. Scope: just this request — no server mutation.',
+      'Optional per-request overlay on RuntimeConfig. Keys correspond to RuntimeConfig field names; values must be primitives (boolean / number / string / null). Unknown keys are accepted but surfaced via X-Atomicmem-Unknown-Override-Keys. Known non-overridable fields (decode caps, audnJsonSchema) are listed on X-Atomicmem-Ignored-Override-Keys and are not counted as applied. Scope: just this request — no server mutation.',
   });
 
 /**

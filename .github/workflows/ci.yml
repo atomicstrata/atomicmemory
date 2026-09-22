@@ -40,6 +40,24 @@ jobs:
       - name: Run repo hygiene
         run: node scripts/ci/repo-hygiene.mjs
 
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # actionlint parses the shell inside every `run:` block. The repo's other
+      # workflow checks match text and cannot: a stray `fi` made
+      # mirror-cli-r2.yml's first step a bash syntax error and sat on `dev`
+      # undetected for two days (ATO-1934).
+      - name: Lint workflows
+        run: bash scripts/ci/lint-workflows.sh
+
   package-metadata:
     name: package-metadata
     runs-on: ubuntu-24.04
@@ -71,13 +89,15 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run release-policy guardrails
         run: node scripts/ci/release-policy.mjs
       - name: Run release-policy unit tests
         run: node --test scripts/ci/__tests__/release-policy.test.mjs
+      - name: Test public release input wiring
+        run: node --test scripts/ci/__tests__/public-release-inputs.test.mjs
       # Every surface that can write a verbatim memory must be able to stamp
       # content_class. The 0.2.0 release fixed Hermes for Core's raw-content
       # policy and missed OpenClaw, whose published plugin could not perform a
@@ -114,11 +134,14 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run affected build, typecheck, lint, and self-contained tests
         run: node scripts/ci/run-root-script.mjs ci:affected
+      - name: Run private hosted Core compatibility tests
+        if: github.repository == 'atomicstrata/atomicmemory-internal'
+        run: bash packages/core/hosted/__tests__/run.sh
 
   code-health:
     name: code-health
@@ -136,7 +159,7 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run code health checks
@@ -158,7 +181,7 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run package dry-runs through turbo
@@ -180,7 +203,7 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run docs contract
@@ -210,7 +233,7 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run public integration smoke
@@ -273,13 +296,20 @@ jobs:
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@${PNPM_VERSION} --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run security compliance contract tests
         run: |
           pnpm run test:security-compliance
           pnpm run test:release-cli-version
+          pnpm run test:cli-version-bump
           pnpm run test:mirror-cli-r2
           pnpm run test:install-cli
+          pnpm run test:install-cli-internal
+          pnpm run test:cli-install-smoke
+          pnpm run test:cli-install-smoke-reporter
+          pnpm run test:reconcile-internal-release
+          pnpm run test:release-policy
+          pnpm run test:guards
           pnpm run security-compliance

@@ -52,7 +52,7 @@ auditable.
 - Keep the MCP server stable for memory capture, retrieval, search, and context
   packaging workflows.
 - **Shipped:** `am integrate` installs the published `@atomicmemory/mcp-server`
-  into global host MCP config for Cursor, Claude Code, and Codex (`list`,
+  into global host MCP config for Cursor, Claude Code, Codex, and OpenCode (`list`,
   `detect`, `install`, `update`, `doctor`, `uninstall`). Global user config only
   in v1.
 - **Next:** project-scoped host configs (for example repo-local `.cursor/mcp.json`),

@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use reqwest::Url;
 use tokio::time::sleep;
 
+use crate::auth::http;
 use crate::auth::login_feedback::LoginFeedback;
 use crate::auth::setup::setup_default_project;
 use crate::config::{OAuthTokens, load_config, store_oauth, store_profile_base_url};
@@ -32,9 +33,7 @@ pub async fn run_device_login(
     let feedback = LoginFeedback::detect(opts.verbose, opts.quiet);
     let step_id = progress_step.unwrap_or("identity");
     let base = Url::parse(&opts.base_url).context("parse cloud base_url")?;
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    let http = http::client()?;
 
     let authorize_url = base
         .join("api/oauth/device/authorize")
@@ -144,7 +143,103 @@ pub async fn run_device_login(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use axum::extract::State;
+    use axum::http::{HeaderMap, StatusCode, header};
+    use axum::response::{IntoResponse, Response};
+    use axum::routing::post;
+    use axum::{Json, Router};
+
     use super::*;
+
+    type RecordedUserAgent = (String, Option<String>);
+
+    #[derive(Clone, Default)]
+    struct SeenUserAgents(Arc<Mutex<Vec<RecordedUserAgent>>>);
+
+    impl SeenUserAgents {
+        fn record(&self, path: &str, headers: &HeaderMap) {
+            let user_agent = headers
+                .get(header::USER_AGENT)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            self.0.lock().unwrap().push((path.into(), user_agent));
+        }
+    }
+
+    fn has_cli_user_agent(headers: &HeaderMap) -> bool {
+        headers
+            .get(header::USER_AGENT)
+            .is_some_and(|value| value == crate::auth::http::USER_AGENT)
+    }
+
+    async fn authorize(State(seen): State<SeenUserAgents>, headers: HeaderMap) -> Response {
+        seen.record("authorize", &headers);
+        if !has_cli_user_agent(&headers) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        Json(serde_json::json!({
+            "device_code": "device-code",
+            "user_code": "user-code",
+            "verification_uri": "https://example.com/activate",
+            "verification_uri_complete": "https://example.com/activate?code=user-code",
+            "expires_in": 600,
+            "interval": 1
+        }))
+        .into_response()
+    }
+
+    async fn token(State(seen): State<SeenUserAgents>, headers: HeaderMap) -> Response {
+        seen.record("token", &headers);
+        if !has_cli_user_agent(&headers) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "expired_token"})),
+        )
+            .into_response()
+    }
+
+    #[tokio::test]
+    async fn device_requests_send_versioned_cli_user_agent() {
+        let seen = SeenUserAgents::default();
+        let app = Router::new()
+            .route("/api/oauth/device/authorize", post(authorize))
+            .route("/api/oauth/device/token", post(token))
+            .with_state(seen.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let error = run_device_login(
+            DeviceLoginOptions {
+                profile: "test".into(),
+                base_url: format!("http://{address}"),
+                client_id: None,
+                quiet: true,
+                verbose: false,
+            },
+            None,
+            None,
+        )
+        .await
+        .expect_err("expired fixture must stop the polling loop");
+        server.abort();
+
+        assert!(error.to_string().contains("device code expired"));
+        assert_eq!(
+            *seen.0.lock().unwrap(),
+            vec![
+                (
+                    "authorize".into(),
+                    Some(crate::auth::http::USER_AGENT.into())
+                ),
+                ("token".into(), Some(crate::auth::http::USER_AGENT.into())),
+            ]
+        );
+    }
 
     #[test]
     fn device_login_feedback_is_concise_on_tty() {

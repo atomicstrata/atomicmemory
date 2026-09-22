@@ -6,8 +6,8 @@
  *   1. Absent override → no `X-Atomicmem-Config-Override-*` headers
  *      (zero-cost path) and the service receives the startup config
  *      (effectiveConfig undefined).
- *   2. Present override → all three headers emitted
- *      (applied=true, hash=sha256:<hex>, keys=sorted csv).
+ *   2. Present override → Applied/Hash/Keys reflect the applied subset;
+ *      ignored known fields use `X-Atomicmem-Ignored-Override-Keys`.
  *   3. Search routes forward `effectiveConfig` via the scopedSearch
  *      options bag; ingest routes forward it through the named input.
  *   4. Unknown override keys do NOT 400 (the schema is permissive so
@@ -247,6 +247,43 @@ describe('POST /memories/* — per-request config_override', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Atomicmem-Config-Override-Keys')).toBe('futureFieldX,hybridSearchEnabled');
     expect(res.headers.get('X-Atomicmem-Unknown-Override-Keys')).toBe('futureFieldX');
+    warnSpy.mockRestore();
+  });
+
+  it('decode-cap overrides are reported unused and not applied', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await postSearchWithConfigOverride(booted, {
+      hybridSearchEnabled: true,
+      extractionMaxTokens: 128,
+      audnMaxTokens: 64,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('X-Atomicmem-Config-Override-Applied')).toBe('true');
+    expect(res.headers.get('X-Atomicmem-Config-Override-Keys')).toBe('hybridSearchEnabled');
+    expect(res.headers.get('X-Atomicmem-Ignored-Override-Keys'))
+      .toBe('audnMaxTokens,extractionMaxTokens');
+    expect(res.headers.get('X-Atomicmem-Unknown-Override-Keys')).toBeNull();
+    const call = scopedSearch.mock.calls[0]!;
+    const options = call[2] as { effectiveConfig?: { extractionMaxTokens: number; audnMaxTokens: number } };
+    expect(options.effectiveConfig?.extractionMaxTokens).toBe(config.extractionMaxTokens);
+    expect(options.effectiveConfig?.audnMaxTokens).toBe(config.audnMaxTokens);
+    warnSpy.mockRestore();
+  });
+
+  it('caps-only override reports Applied false and does not invent unknown keys', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await postSearchWithConfigOverride(booted, {
+      extractionMaxTokens: 128,
+      audnMaxTokens: 64,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('X-Atomicmem-Config-Override-Applied')).toBe('false');
+    expect(res.headers.get('X-Atomicmem-Config-Override-Keys')).toBeNull();
+    expect(res.headers.get('X-Atomicmem-Ignored-Override-Keys'))
+      .toBe('audnMaxTokens,extractionMaxTokens');
+    expect(res.headers.get('X-Atomicmem-Unknown-Override-Keys')).toBeNull();
+    const options = scopedSearch.mock.calls[0]![2] as { effectiveConfig?: RuntimeConfig };
+    expect(options.effectiveConfig).toBeUndefined();
     warnSpy.mockRestore();
   });
 

@@ -53,11 +53,12 @@ describe('consensusExtractFacts runtime config', () => {
       extractionCacheEnabled: false,
       observationDateExtractionEnabled: true,
       quotedEntityExtractionEnabled: false,
+      extractionPromptVariant: 'full',
     });
 
     expect(mockChunkedExtractFacts).toHaveBeenCalledWith(
       'User: I commute 45 minutes.',
-      { observationDateExtractionEnabled: true },
+      { observationDateExtractionEnabled: true, promptVariant: 'full' },
       { chunkSizeTurns: 8, chunkOverlapTurns: 2, extractionCacheEnabled: false },
     );
     expect(mockCachedExtractFacts).not.toHaveBeenCalled();
@@ -82,14 +83,16 @@ describe('consensusExtractFacts runtime config', () => {
       extractionCacheEnabled: true,
       observationDateExtractionEnabled: false,
       quotedEntityExtractionEnabled: false,
+      extractionPromptVariant: 'full',
     });
 
     expect(mockCachedExtractFacts).toHaveBeenCalledWith(longConversation, {
       observationDateExtractionEnabled: false,
+      promptVariant: 'full',
     });
     expect(mockChunkedExtractFacts).toHaveBeenCalledWith(
       longConversation,
-      { observationDateExtractionEnabled: false },
+      { observationDateExtractionEnabled: false, promptVariant: 'full' },
       { chunkSizeTurns: 2, chunkOverlapTurns: 1, extractionCacheEnabled: true },
     );
   });
@@ -108,6 +111,7 @@ describe('consensusExtractFacts runtime config', () => {
       extractionCacheEnabled: true,
       observationDateExtractionEnabled: false,
       quotedEntityExtractionEnabled: false,
+      extractionPromptVariant: 'full',
     });
 
     expect(mockChunkedExtractFacts).not.toHaveBeenCalled();
@@ -127,10 +131,12 @@ describe('consensusExtractFacts runtime config', () => {
       extractionCacheEnabled: false,
       observationDateExtractionEnabled: false,
       quotedEntityExtractionEnabled: false,
+      extractionPromptVariant: 'full',
     });
 
     expect(mockExtractFacts).toHaveBeenCalledWith('User: I prefer Rust', {
       observationDateExtractionEnabled: false,
+      promptVariant: 'full',
     });
     expect(mockCachedExtractFacts).not.toHaveBeenCalled();
   });

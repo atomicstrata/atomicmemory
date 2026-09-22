@@ -8,6 +8,9 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 /** Mock llm and fact-normalization to avoid config.ts env var requirements. */
 vi.mock('../llm.js', () => ({ llm: { chat: vi.fn() } }));
+vi.mock('../../config.js', () => ({
+  config: { extractionMaxTokens: 4096, audnMaxTokens: 2048 },
+}));
 vi.mock('../fact-normalization.js', () => ({
   normalizeExtractedFacts: (facts: unknown[]) => facts,
 }));
@@ -20,13 +23,25 @@ const {
   normalizeConfidence,
   inferConflictConfidence,
   generateFallbackHeadline,
+  deriveKeywordsFromFact,
   normalizeExtractedEntities,
   normalizeExtractedRelations,
   EXTRACTION_PROMPT,
+  EXTRACTION_PROMPT_COMPACT,
+  resolveAudnPrompt,
+  resolveExtractionPrompt,
+  extractFacts,
 } = await import('../extraction.js');
-
 type AUDNAction = Awaited<ReturnType<typeof normalizeAction>>;
 const mockLlmChat = vi.mocked(llm.chat);
+
+const ADD_AUDN_LLM_PAYLOAD = JSON.stringify({
+  action: 'ADD',
+  target_memory_id: null,
+  updated_content: null,
+  clarification_note: null,
+  contradiction_confidence: null,
+});
 
 beforeEach(() => {
   mockLlmChat.mockReset();
@@ -99,7 +114,7 @@ describe('resolveAUDN', () => {
       id: '11111111-1111-4111-8111-111111111111',
       content: 'User likes Vite.',
       similarity: 0.99,
-    }]);
+    }], 'full');
 
     expect(decision.action).toBe('NOOP');
     expect(decision.targetMemoryId).toBe('11111111-1111-4111-8111-111111111111');
@@ -116,27 +131,36 @@ describe('resolveAUDN', () => {
 }
 This is final.`);
 
-    const decision = await resolveAUDN('User uses Supabase.', []);
+    const decision = await resolveAUDN('User uses Supabase.', [], 'full');
 
     expect(decision).toEqual(defaultDecision());
   });
 
-  it('requests a larger AUDN output budget for Anthropic-compatible models', async () => {
-    mockLlmChat.mockResolvedValueOnce(JSON.stringify({
-      action: 'ADD',
-      target_memory_id: null,
-      updated_content: null,
-      clarification_note: null,
-      contradiction_confidence: null,
-    }));
+  it('keeps json_object on the default full path so Groq-compatible providers stay valid', async () => {
+    mockLlmChat.mockResolvedValueOnce(ADD_AUDN_LLM_PAYLOAD);
 
-    await resolveAUDN('User uses Tailwind.', []);
+    await resolveAUDN('User uses Tailwind.', [], 'full');
 
-    expect(mockLlmChat).toHaveBeenLastCalledWith(expect.any(Array), expect.objectContaining({
+    expect(mockLlmChat).toHaveBeenLastCalledWith(expect.any(Array), {
+      temperature: 0,
       jsonMode: true,
       maxTokens: 2048,
-      temperature: 0,
-    }));
+    });
+  });
+
+  it('uses config.audnMaxTokens for the decode cap', async () => {
+    const { config } = await import('../../config.js');
+    const original = config.audnMaxTokens;
+    (config as { audnMaxTokens: number }).audnMaxTokens = 128;
+    try {
+      mockLlmChat.mockResolvedValueOnce(ADD_AUDN_LLM_PAYLOAD);
+      await resolveAUDN('User uses Tailwind.', [], 'full');
+      expect(mockLlmChat).toHaveBeenLastCalledWith(expect.any(Array), expect.objectContaining({
+        maxTokens: 128,
+      }));
+    } finally {
+      (config as { audnMaxTokens: number }).audnMaxTokens = original;
+    }
   });
 });
 
@@ -361,6 +385,24 @@ describe('EXTRACTION_PROMPT — assistant-turn extraction directives', () => {
     expect(EXTRACTION_PROMPT).toContain('DO extract specific factual content from assistant responses');
   });
 
+  it('defaults resolveExtractionPrompt to the full prompt', () => {
+    expect(resolveExtractionPrompt(undefined)).toBe(EXTRACTION_PROMPT);
+    expect(resolveExtractionPrompt('full')).toBe(EXTRACTION_PROMPT);
+  });
+
+  it('selects compact extraction prompt when configured', () => {
+    expect(resolveExtractionPrompt('compact')).toBe(EXTRACTION_PROMPT_COMPACT);
+    expect(EXTRACTION_PROMPT_COMPACT.length).toBeLessThan(EXTRACTION_PROMPT.length / 2);
+  });
+
+  it('keeps the full AUDN mutation policy under compact extraction', () => {
+    expect(resolveAudnPrompt('compact')).toBe(resolveAudnPrompt('full'));
+    expect(resolveAudnPrompt('compact')).toContain('ACTIONS:');
+    expect(resolveAudnPrompt('compact')).toContain('clarification_note');
+    expect(resolveAudnPrompt('compact')).toContain('contradiction_confidence');
+    expect(resolveAudnPrompt('compact')).toContain('If you are unsure whether to SUPERSEDE or CLARIFY');
+  });
+
   it('instructs to skip generic assistant chatter', () => {
     expect(EXTRACTION_PROMPT).toContain('Skip generic assistant chatter');
   });
@@ -368,5 +410,118 @@ describe('EXTRACTION_PROMPT — assistant-turn extraction directives', () => {
   it('does NOT contain the old blanket skip-assistant instruction', () => {
     expect(EXTRACTION_PROMPT).not.toContain('Skip information the AI assistant stated');
     expect(EXTRACTION_PROMPT).not.toContain('extract only user-provided info');
+  });
+});
+
+describe('extractFacts — compact SLM envelope', () => {
+  it('accepts fact-only memories and backfills headline and keywords on compact', async () => {
+    const fact = 'User prefers PostgreSQL over MongoDB for all production databases.';
+    mockLlmChat.mockResolvedValue(JSON.stringify({ memories: [{ fact }] }));
+    const facts = await extractFacts(
+      'User: I prefer PostgreSQL over MongoDB for all production databases.',
+      { promptVariant: 'compact' },
+    );
+    const match = facts.find((f) => f.fact.includes('PostgreSQL'));
+    expect(match).toBeDefined();
+    // normalizeRawFact: missing headline → generateFallbackHeadline(fact),
+    // missing keywords → derived from the fact text so keyword search has something
+    // to match on the compact path (it used to be left empty).
+    expect(match?.headline).toBe(generateFallbackHeadline(fact));
+    expect(match?.keywords).toEqual(['PostgreSQL', 'MongoDB']);
+    expect(match?.importance).toBe(0.5);
+    expect(match?.type).toBe('knowledge');
+  });
+
+  it('keeps model-provided keywords instead of deriving them', async () => {
+    const fact = 'User prefers PostgreSQL over MongoDB.';
+    mockLlmChat.mockResolvedValue(
+      JSON.stringify({ memories: [{ fact, keywords: ['production databases'] }] }),
+    );
+    const facts = await extractFacts('User: I prefer PostgreSQL over MongoDB.', { promptVariant: 'compact' });
+    expect(facts[0]?.keywords).toEqual(['production databases']);
+  });
+
+  it('keeps explicit empty keywords on the full path', async () => {
+    const fact = 'User prefers PostgreSQL over MongoDB.';
+    mockLlmChat.mockResolvedValue(JSON.stringify({ memories: [{ fact, keywords: [] }] }));
+    const facts = await extractFacts('User: I prefer PostgreSQL over MongoDB.', { promptVariant: 'full' });
+    expect(facts[0]?.keywords).toEqual([]);
+  });
+
+  it('sanitizes untrusted keyword arrays before accepting them', async () => {
+    const fact = 'User prefers PostgreSQL over MongoDB.';
+    mockLlmChat.mockResolvedValue(
+      JSON.stringify({ memories: [{ fact, keywords: [null, '', '  PostgreSQL  '] }] }),
+    );
+    const facts = await extractFacts('User: I prefer PostgreSQL over MongoDB.', { promptVariant: 'full' });
+    expect(facts[0]?.keywords).toEqual(['PostgreSQL']);
+  });
+});
+
+describe('EXTRACTION_PROMPT_COMPACT — contract agreement with the compact grammar', () => {
+  // The am-slm runtime's compact llguidance grammar (AM_SLM_CORE_COMPACT_SCHEMA=1)
+  // allows only `fact` and `type`. A prompt asking for more fields than the grammar
+  // permits made the model pad the array with duplicate facts instead.
+  it('asks for exactly the fields the compact grammar allows', () => {
+    expect(EXTRACTION_PROMPT_COMPACT).toContain(
+      '{"memories":[{"fact":"...","type":"preference|project|knowledge|person|plan"}]}',
+    );
+  });
+
+  it('does not request fields the compact grammar forbids', () => {
+    for (const forbidden of ['"headline"', '"keywords"', '"entities"', '"relations"', '"importance"']) {
+      expect(EXTRACTION_PROMPT_COMPACT).not.toContain(forbidden);
+    }
+  });
+
+  it('states the anti-padding rules the grammar cannot express', () => {
+    expect(EXTRACTION_PROMPT_COMPACT).toContain('One fact per distinct claim');
+    expect(EXTRACTION_PROMPT_COMPACT).toContain('Emit few facts');
+    expect(EXTRACTION_PROMPT_COMPACT).toContain("Never record the assistant's commentary");
+  });
+});
+
+describe('deriveKeywordsFromFact', () => {
+  it('extracts proper nouns and technical identifiers', () => {
+    expect(deriveKeywordsFromFact('User prefers PostgreSQL over MongoDB in production.')).toEqual([
+      'PostgreSQL',
+      'MongoDB',
+    ]);
+  });
+
+  it('keeps whole dates rather than splitting them', () => {
+    expect(
+      deriveKeywordsFromFact("User's sprint deadline is April 5, 2026, replacing March 29, 2026."),
+    ).toEqual(['April 5, 2026', 'March 29, 2026']);
+  });
+
+  it('does not emit sub-spans of a multi-word proper noun', () => {
+    const keywords = deriveKeywordsFromFact('User earned a degree from UC Berkeley.');
+    expect(keywords).toContain('UC Berkeley');
+    expect(keywords).not.toContain('Berkeley');
+  });
+
+  it('drops the possessive subject rather than emitting it', () => {
+    // "User's" must not survive as a keyword; "manager" comes from the content-word
+    // fallback, which fires because the fact yields only one proper noun.
+    const keywords = deriveKeywordsFromFact("User's manager is Sarah.");
+    expect(keywords).toContain('Sarah');
+    expect(keywords).not.toContain("User's");
+    expect(keywords).not.toContain('User');
+  });
+
+  it('falls back to content words when a fact has no proper noun', () => {
+    // Without this, keyword search has nothing at all to match on such facts.
+    expect(deriveKeywordsFromFact('User is vegetarian.')).toEqual(['vegetarian']);
+  });
+
+  it('returns nothing for empty input', () => {
+    expect(deriveKeywordsFromFact('')).toEqual([]);
+    expect(deriveKeywordsFromFact('   ')).toEqual([]);
+  });
+
+  it('caps the keyword list', () => {
+    const fact = 'User visited Lisbon, Nairobi, Osaka, Bogota, Helsinki, Karachi, Toronto, Warsaw, Quito, Dakar.';
+    expect(deriveKeywordsFromFact(fact).length).toBeLessThanOrEqual(8);
   });
 });

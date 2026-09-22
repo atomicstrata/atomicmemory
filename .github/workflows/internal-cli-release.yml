@@ -1,8 +1,14 @@
 name: Internal CLI Release
 
-# Internal-only convenience lane. Builds prebuilt `am` binaries from
+# Internal-only convenience lanes. Builds prebuilt `am` binaries from
 # atomicmemory-internal and publishes them to PRIVATE GitHub Releases for eng
-# testing (tags cli-internal-*).
+# testing:
+#
+#   main → cli-internal-<sha>  + floating cli-internal-latest (AM_BUILD_ENV=internal)
+#   dev  → cli-canary-<sha>    + floating cli-canary-latest   (AM_BUILD_ENV=canary)
+#
+# Channel is derived from the build ref (push branch or workflow_dispatch `ref`).
+# Do not pass a separate channel input — auto-from-ref avoids footguns.
 #
 # This is NOT the public release pipeline. Official cli-v* Releases + R2
 # mirroring are owned exclusively by release-cli.yml / mirror-cli-r2.yml on
@@ -20,13 +26,18 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch, tag, or SHA of atomicmemory-internal to build"
+        description: >-
+          Branch, tag, or SHA of atomicmemory-internal to build. Use `main` for
+          the internal lane (cli-internal-* / cli-internal-latest) or `dev` for
+          the canary lane (cli-canary-* / cli-canary-latest). Other refs publish
+          an immutable cli-internal-<sha> only (no floating alias).
         required: false
         default: main
         type: string
   push:
     branches:
       - main
+      - dev
     paths:
       - "crates/**"
       - "Cargo.toml"
@@ -39,11 +50,21 @@ on:
 permissions:
   contents: read
 
-# Serialize the whole lane so floating cli-internal-latest has a single writer.
-# Branch/SHA dispatches still publish immutable cli-internal-<sha> tags; only
-# main refreshes the floating alias (see publish job).
+# Separate writers per floating alias so canary and internal cannot race.
+# Arbitrary SHA dispatches get their own group (no floating refresh).
 concurrency:
-  group: internal-cli-release
+  group: >-
+    ${{
+      (
+        (github.event_name == 'push' && github.ref_name == 'dev') ||
+        (github.event_name == 'workflow_dispatch' && inputs.ref == 'dev')
+      ) && 'internal-cli-release-canary' ||
+      (
+        (github.event_name == 'push' && github.ref_name == 'main') ||
+        (github.event_name == 'workflow_dispatch' && (inputs.ref || 'main') == 'main')
+      ) && 'internal-cli-release-main' ||
+      format('internal-cli-release-other-{0}', github.run_id)
+    }}
   cancel-in-progress: false
 
 defaults:
@@ -61,6 +82,9 @@ jobs:
       short_sha: ${{ steps.meta.outputs.short_sha }}
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
+      channel: ${{ steps.meta.outputs.channel }}
+      build_env: ${{ steps.meta.outputs.build_env }}
+      floating_tag: ${{ steps.meta.outputs.floating_tag }}
       refresh_latest: ${{ steps.meta.outputs.refresh_latest }}
     steps:
       - name: Checkout requested ref
@@ -69,12 +93,13 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
 
-      - name: Resolve immutable SHA and version
+      - name: Resolve immutable SHA, channel, and version
         id: meta
         env:
           # Pass through env — never interpolate untrusted ref text into the script body.
           EVENT_NAME: ${{ github.event_name }}
           INPUT_REF: ${{ inputs.ref }}
+          PUSH_REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           ver="$(awk '/^\[workspace\.package\]/{found=1; next} found && /^version = /{gsub(/[" ]/,"",$3); print $3; exit}' Cargo.toml)"
@@ -83,29 +108,105 @@ jobs:
             exit 1
           fi
           sha="$(git rev-parse HEAD)"
-          tag="cli-internal-${sha}"
+
+          # Auto channel from ref: main → internal, dev → canary.
+          # Floating aliases refresh only for those exact named refs.
+          channel=""
+          refresh_latest=false
+          if [ "$EVENT_NAME" = "push" ]; then
+            case "$PUSH_REF_NAME" in
+              main)
+                channel=internal
+                refresh_latest=true
+                ;;
+              dev)
+                channel=canary
+                refresh_latest=true
+                ;;
+              *)
+                echo "::error::unexpected push branch '${PUSH_REF_NAME}' (expected main or dev)"
+                exit 1
+                ;;
+            esac
+          else
+            case "${INPUT_REF:-main}" in
+              main)
+                channel=internal
+                refresh_latest=true
+                ;;
+              dev)
+                channel=canary
+                refresh_latest=true
+                ;;
+              *)
+                # Arbitrary SHA/branch: immutable internal tag only (legacy contract).
+                channel=internal
+                refresh_latest=false
+                ;;
+            esac
+          fi
+
+          if [ "$channel" = "canary" ]; then
+            tag_prefix="cli-canary"
+            floating_tag="cli-canary-latest"
+            build_env="canary"
+          else
+            tag_prefix="cli-internal"
+            floating_tag="cli-internal-latest"
+            build_env="internal"
+          fi
+          tag="${tag_prefix}-${sha}"
+
+          # Fail closed: refuse public namespace and cross-channel tag mistakes.
           case "$tag" in
             cli-v*)
               echo "::error::refusing public cli-v tag namespace"
               exit 1
               ;;
           esac
-          # Floating alias is only rewritten from main so branch builds cannot
-          # race to become "latest". Compare quoted env values only.
-          refresh_latest=false
-          if [ "$EVENT_NAME" = "push" ]; then
-            refresh_latest=true
-          elif [ "${INPUT_REF:-main}" = "main" ]; then
-            refresh_latest=true
+          if [ "$channel" = "canary" ]; then
+            case "$tag" in
+              cli-internal-*)
+                echo "::error::canary builds must use cli-canary-<sha>, not cli-internal-*"
+                exit 1
+                ;;
+            esac
+            if [ "$floating_tag" != "cli-canary-latest" ]; then
+              echo "::error::canary floating tag must be cli-canary-latest (got ${floating_tag})"
+              exit 1
+            fi
+            if [ "$refresh_latest" = "true" ] && [ "$build_env" != "canary" ]; then
+              echo "::error::canary refresh requires AM_BUILD_ENV=canary"
+              exit 1
+            fi
+          else
+            case "$tag" in
+              cli-canary-*)
+                echo "::error::internal builds must use cli-internal-<sha>, not cli-canary-*"
+                exit 1
+                ;;
+            esac
+            if [ "$floating_tag" != "cli-internal-latest" ]; then
+              echo "::error::internal floating tag must be cli-internal-latest (got ${floating_tag})"
+              exit 1
+            fi
+            if [ "$refresh_latest" = "true" ] && [ "$build_env" != "internal" ]; then
+              echo "::error::internal refresh requires AM_BUILD_ENV=internal"
+              exit 1
+            fi
           fi
+
           {
             printf 'version=%s\n' "$ver"
             printf 'sha=%s\n' "$sha"
             printf 'short_sha=%s\n' "${sha:0:7}"
             printf 'tag=%s\n' "$tag"
+            printf 'channel=%s\n' "$channel"
+            printf 'build_env=%s\n' "$build_env"
+            printf 'floating_tag=%s\n' "$floating_tag"
             printf 'refresh_latest=%s\n' "$refresh_latest"
           } >>"$GITHUB_OUTPUT"
-          echo "Resolved internal version ${ver} @ ${sha} (refresh_latest=${refresh_latest})"
+          echo "Resolved ${channel} version ${ver} @ ${sha} (tag=${tag}, refresh_latest=${refresh_latest})"
 
   build:
     name: build ${{ matrix.target }}
@@ -141,9 +242,12 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
-          key: internal-cli-${{ matrix.target }}
+          key: internal-cli-${{ needs.resolve.outputs.channel }}-${{ matrix.target }}
 
       - name: Build
+        env:
+          AM_GIT_SHA: ${{ needs.resolve.outputs.sha }}
+          AM_BUILD_ENV: ${{ needs.resolve.outputs.build_env }}
         run: cargo build --release -p atomicmemory --bin am --target ${{ matrix.target }} --locked
 
       - name: Package
@@ -163,12 +267,19 @@ jobs:
           printf '%s\n' "$members" | grep -qx am
           printf '%s\n' "$members" | grep -qx LICENSE
           printf '%s\n' "$members" | grep -qx README.md
-          ! printf '%s\n' "$members" | grep -qx atomicmemory
+          # `! cmd` is exempt from errexit, so the negated form passed whether or
+          # not the file was there — the one assertion here that could never fail
+          # (SC2251). The three above abort correctly because they are not negated.
+          if printf '%s\n' "$members" | grep -qx atomicmemory; then
+            echo "::error::tarball contains an 'atomicmemory' member; expected only am, LICENSE, README.md"
+            exit 1
+          fi
           ls -l dist
 
       - name: Native smoke
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD_ENV: ${{ needs.resolve.outputs.build_env }}
         run: |
           set -euo pipefail
           ver="$VERSION"
@@ -179,9 +290,19 @@ jobs:
           tar -xzf "$tarball" -C "$work"
           chmod +x "$work/am"
           got="$("$work/am" --version)"
-          expected="am ${ver}"
-          if [ "$got" != "$expected" ]; then
-            echo "::error::version mismatch: expected '${expected}', got '${got}'"
+          got_ver="$(printf '%s' "$got" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+          got_sha="$(printf '%s' "$got" | sed -n 's/.*"gitSha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+          got_env="$(printf '%s' "$got" | sed -n 's/.*"env"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+          if [ "$got_ver" != "$ver" ]; then
+            echo "::error::version mismatch: expected version '${ver}', got '${got}'"
+            exit 1
+          fi
+          if [ -z "$got_sha" ]; then
+            echo "::error::CI-stamped build must report non-empty gitSha; got '${got}'"
+            exit 1
+          fi
+          if [ "$got_env" != "$BUILD_ENV" ]; then
+            echo "::error::env mismatch: expected '${BUILD_ENV}', got '${got}'"
             exit 1
           fi
           "$work/am" --help | head -n1 | grep -qi atomicmemory
@@ -189,13 +310,13 @@ jobs:
       - name: Upload tarball
         uses: actions/upload-artifact@v4
         with:
-          name: tarball-${{ matrix.target }}
+          name: tarball-${{ needs.resolve.outputs.channel }}-${{ matrix.target }}
           path: dist/*.tar.gz
           if-no-files-found: error
           retention-days: 7
 
   publish:
-    name: publish internal GitHub Release
+    name: publish ${{ needs.resolve.outputs.channel }} GitHub Release
     if: github.repository == 'atomicstrata/atomicmemory-internal'
     needs: [resolve, build]
     runs-on: ubuntu-24.04
@@ -215,7 +336,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: tarball-*
+          pattern: tarball-${{ needs.resolve.outputs.channel }}-*
           merge-multiple: true
 
       - name: Assemble release assets
@@ -223,6 +344,8 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SHA: ${{ needs.resolve.outputs.sha }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+          BUILD_ENV: ${{ needs.resolve.outputs.build_env }}
         run: |
           set -euo pipefail
           ver="$VERSION"
@@ -230,9 +353,10 @@ jobs:
           cp artifacts/*.tar.gz dist/
           cp scripts/install-cli.sh dist/install-cli.sh
           cp scripts/install-cli-internal.sh dist/install.sh
-          printf '{"version":"%s","tag":"%s","git_sha":"%s","channel":"internal"}\n' \
-            "$ver" "$TAG" "$SHA" >dist/version.json
-          ( cd dist && sha256sum *.tar.gz >SHA256SUMS )
+          # env + channel both carry the lane so testers can tell canary from internal.
+          printf '{"surface":"cli","version":"%s","gitSha":"%s","env":"%s","tag":"%s","channel":"%s"}\n' \
+            "$ver" "$SHA" "$BUILD_ENV" "$TAG" "$CHANNEL" >dist/version.json
+          ( cd dist && sha256sum -- *.tar.gz >SHA256SUMS )
           echo "==== SHA256SUMS ===="
           cat dist/SHA256SUMS
           echo "==== version.json ===="
@@ -251,41 +375,104 @@ jobs:
         # verifies target SHA + name manifest, then swaps dist/ for the
         # immutable release's actual bytes (rebuilt tarballs are not
         # byte-reproducible) so the floating alias upload can never
-        # publish content different from cli-internal-<sha>.
+        # publish content different from the immutable tag.
         run: scripts/ci/reconcile-internal-release.sh
 
-      - name: Create immutable internal release
+      - name: Create immutable release
         if: steps.reconcile.outputs.release_exists != 'true'
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           VERSION: ${{ needs.resolve.outputs.version }}
           SHA: ${{ needs.resolve.outputs.sha }}
           SHORT_SHA: ${{ needs.resolve.outputs.short_sha }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+          FLOATING_TAG: ${{ needs.resolve.outputs.floating_tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          case "$CHANNEL" in
+            canary)
+              case "$TAG" in
+                cli-canary-*) ;;
+                *)
+                  echo "::error::canary create refused unexpected tag '${TAG}'"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            internal)
+              case "$TAG" in
+                cli-internal-*) ;;
+                *)
+                  echo "::error::internal create refused unexpected tag '${TAG}'"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "::error::unknown channel '${CHANNEL}'"
+              exit 1
+              ;;
+          esac
           gh release create "$TAG" dist/* \
             --repo "$GH_REPO" \
             --target "${SHA}" \
-            --title "am ${VERSION} (internal ${SHORT_SHA})" \
-            --notes "Internal eng-team build of am ${VERSION} at ${SHA}. Not a public release. Install: tmp=\"\$(mktemp -d)\" && gh release download cli-internal-latest --repo atomicstrata/atomicmemory-internal --pattern install.sh --dir \"\$tmp\" && sh \"\$tmp/install.sh\"" \
+            --title "am ${VERSION} (${CHANNEL} ${SHORT_SHA})" \
+            --notes "${CHANNEL} eng-team build of am ${VERSION} at ${SHA}. Not a public release. Install: tmp=\"\$(mktemp -d)\" && AM_INTERNAL_TAG=${FLOATING_TAG} gh release download ${FLOATING_TAG} --repo atomicstrata/atomicmemory-internal --pattern install.sh --dir \"\$tmp\" && AM_INTERNAL_TAG=${FLOATING_TAG} sh \"\$tmp/install.sh\"" \
             --latest=false
 
-      - name: Refresh floating cli-internal-latest
+      - name: Refresh floating channel alias
         if: needs.resolve.outputs.refresh_latest == 'true'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           SHA: ${{ needs.resolve.outputs.sha }}
           SHORT_SHA: ${{ needs.resolve.outputs.short_sha }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+          FLOATING_TAG: ${{ needs.resolve.outputs.floating_tag }}
+          IMMUTABLE_TAG: ${{ needs.resolve.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view cli-internal-latest --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release delete cli-internal-latest --repo "$GH_REPO" --yes --cleanup-tag
+          # Fail closed: never let a canary job touch cli-internal-latest or
+          # an internal job touch cli-canary-latest.
+          case "$CHANNEL" in
+            canary)
+              if [ "$FLOATING_TAG" != "cli-canary-latest" ]; then
+                echo "::error::canary lane refused to refresh '${FLOATING_TAG}'"
+                exit 1
+              fi
+              case "$IMMUTABLE_TAG" in
+                cli-canary-*) ;;
+                *)
+                  echo "::error::canary refresh refused unexpected immutable tag '${IMMUTABLE_TAG}'"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            internal)
+              if [ "$FLOATING_TAG" != "cli-internal-latest" ]; then
+                echo "::error::internal lane refused to refresh '${FLOATING_TAG}'"
+                exit 1
+              fi
+              case "$IMMUTABLE_TAG" in
+                cli-internal-*) ;;
+                *)
+                  echo "::error::internal refresh refused unexpected immutable tag '${IMMUTABLE_TAG}'"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "::error::unknown channel '${CHANNEL}'"
+              exit 1
+              ;;
+          esac
+          if gh release view "$FLOATING_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release delete "$FLOATING_TAG" --repo "$GH_REPO" --yes --cleanup-tag
           fi
-          gh release create cli-internal-latest dist/* \
+          gh release create "$FLOATING_TAG" dist/* \
             --repo "$GH_REPO" \
             --target "${SHA}" \
-            --title "am ${VERSION} (internal latest → ${SHORT_SHA})" \
-            --notes "Floating internal eng-team channel for am ${VERSION} @ ${SHA}. Not a public release." \
+            --title "am ${VERSION} (${CHANNEL} latest → ${SHORT_SHA})" \
+            --notes "Floating ${CHANNEL} eng-team channel for am ${VERSION} @ ${SHA} (from ${IMMUTABLE_TAG}). Not a public release." \
             --latest=false

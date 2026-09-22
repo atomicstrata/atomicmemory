@@ -68,34 +68,8 @@ resolve_core_api_key() {
   log "CORE_API_KEY generated and persisted to $CORE_API_KEY_FILE"
 }
 
-cloud_tier_api_url() {
-  case "${1:-dev}" in
-    dev) printf '%s' 'https://api.dev.atomicstrata.ai' ;;
-    staging) printf '%s' 'https://api.staging.atomicstrata.ai' ;;
-    production|prod) printf '%s' 'https://api.atomicstrata.ai' ;;
-    *)
-      log "Unknown CLOUD_ENV: ${1}"
-      exit 1
-      ;;
-  esac
-}
-
-cloud_tier_memory_origin() {
-  case "${1:-dev}" in
-    dev) printf '%s' 'https://memory.dev.atomicstrata.ai' ;;
-    staging) printf '%s' 'https://memory.staging.atomicstrata.ai' ;;
-    production|prod) printf '%s' 'https://memory.atomicstrata.ai' ;;
-    *)
-      log "Unknown CLOUD_ENV: ${1}"
-      exit 1
-      ;;
-  esac
-}
-
-# When running self-hosted Core for connected-local, apply tier defaults so
-# operators only pass OPENAI_API_KEY + ATOMICMEMORY_API_KEY. The presence of
-# ATOMICMEMORY_API_KEY is the single switch that turns connected-local on;
-# CLOUD_PROJECT_ID is optional (Core trusts the token's project_id when unset).
+# When running self-hosted Core for connected-local, derive related settings
+# from URLs supplied by the operator. Public images never select a hosted tier.
 apply_connected_local_defaults() {
   if is_hosted_deployment_env "${RAW_STORAGE_DEPLOYMENT_ENV:-local}"; then
     return
@@ -105,24 +79,23 @@ apply_connected_local_defaults() {
     return
   fi
 
-  local tier="${CLOUD_ENV:-dev}"
-  local api_url memory_origin
+  if [ -z "${ATOMICMEMORY_API_URL:-}" ]; then
+    log "ATOMICMEMORY_API_URL is required when ATOMICMEMORY_API_KEY is set"
+    exit 1
+  fi
+  if [ -z "${ALLOWED_ORIGINS:-}" ]; then
+    log "ALLOWED_ORIGINS is required when ATOMICMEMORY_API_KEY is set"
+    exit 1
+  fi
 
-  api_url="$(cloud_tier_api_url "$tier")"
-  memory_origin="$(cloud_tier_memory_origin "$tier")"
-
+  local api_url="${ATOMICMEMORY_API_URL%/}"
   export CLOUD_TRACE_SYNC_ENABLED="${CLOUD_TRACE_SYNC_ENABLED:-true}"
-  export ATOMICMEMORY_API_URL="${ATOMICMEMORY_API_URL:-$api_url}"
-
+  export ATOMICMEMORY_API_URL="$api_url"
   export CLOUD_JWKS_URL="${CLOUD_JWKS_URL:-${api_url}/.well-known/atomic-core/jwks.json}"
   export CLOUD_JWT_ISSUER="${CLOUD_JWT_ISSUER:-$api_url}"
   export CLOUD_JWT_AUDIENCE="${CLOUD_JWT_AUDIENCE:-atomicmemory-core}"
-  export ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-$memory_origin}"
   export CLOUD_JWT_STATIC_KEY_FALLBACK="${CLOUD_JWT_STATIC_KEY_FALLBACK:-true}"
-  if [ "$tier" = "dev" ]; then
-    export CLOUD_JWT_LEGACY_DEFAULT_MEMORY_USER_ID="${CLOUD_JWT_LEGACY_DEFAULT_MEMORY_USER_ID:-default}"
-  fi
-  log "Connected-local defaults applied (CLOUD_ENV=$tier, api=$ATOMICMEMORY_API_URL)"
+  log "Connected-local defaults applied (api=$ATOMICMEMORY_API_URL)"
 }
 
 stop_postgres() {
@@ -235,7 +208,7 @@ run_migrations() {
   fi
 
   log "Running migrations..."
-  gosu appuser ./node_modules/.bin/tsx src/db/migrate.ts "${migrate_args[@]}"
+  gosu appuser node dist/db/migrate.js "${migrate_args[@]}"
 }
 
 configure_local_defaults

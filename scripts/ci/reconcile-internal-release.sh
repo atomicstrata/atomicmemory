@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reconcile a rerun of the Internal CLI Release workflow against the
-# existing immutable cli-internal-<sha> release, if any.
+# existing immutable cli-internal-<sha> / cli-canary-<sha> release, if any.
 #
 # Called from .github/workflows/internal-cli-release.yml. Because
 # rebuilt tarballs are NOT byte-reproducible (tar embeds mtimes), a
@@ -20,11 +20,11 @@
 #      downloaded tarballs, and replace $DIST_DIR contents with the
 #      downloaded bytes. Downstream steps (floating alias refresh)
 #      therefore upload the immutable release's exact bytes, so the
-#      floating alias can never diverge from cli-internal-<sha> for
+#      floating alias can never diverge from the immutable tag for
 #      the same SHA.
 #
 # Required env:
-#   TAG      immutable release tag (cli-internal-<sha>)
+#   TAG      immutable release tag (cli-internal-<sha> or cli-canary-<sha>)
 #   SHA      expected target commit SHA
 #   GH_REPO  owner/name of the repository
 #   GH_TOKEN implicit; passed through to gh
@@ -139,7 +139,7 @@ for f in "$DIST_DIR"/*; do
 done
 
 # Swap DIST_DIR for the immutable release's bytes so downstream steps
-# (Refresh floating cli-internal-latest) upload identical content,
+# (Refresh floating channel alias) upload identical content,
 # never divergent rebuilds.
 rm -rf "$DIST_DIR"
 mv "$reconciled" "$DIST_DIR"

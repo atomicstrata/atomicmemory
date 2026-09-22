@@ -1,0 +1,405 @@
+name: Core ECR Dev/Staging
+
+# Internal Dev/Staging lane. On each new @atomicmemory/core version on `dev`
+# (or an operator dispatch), builds packages/core/Dockerfile for linux/amd64,
+# pushes to the enterprise ECR repository, updates SSM core_image params, and
+# rolls the Dev/Staging ECS services to an immutable tag.
+#
+# This is NOT the public GHCR release pipeline. Official
+# ghcr.io/atomicstrata/atomicmemory-core images stay on publish-core-docker.yml.
+# Private GHCR test builds stay on internal-core-docker-image.yml.
+#
+# Naming contract with release-policy: scripts/ci/release-policy.mjs forbids
+# workflow_dispatch on every `.github/workflows/publish-*.yml`. This file is
+# deliberately named OUTSIDE that prefix so operators can dispatch rebuilds
+# and selective deploys. It is an enumerated image publisher pinned to the
+# ECR enterprise repository (see release-policy.mjs).
+#
+# Repo guard: mirrored into the public export, so jobs run ONLY on
+# atomicstrata/atomicmemory-internal. Keep this file free of secrets.
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "packages/core/package.json"
+      - ".github/workflows/core-ecr-dev-staging.yml"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA of atomicmemory-internal to build (default: current SHA / dispatch ref)"
+        required: false
+        default: ""
+        type: string
+      deploy_dev:
+        description: "Roll atomicmemory-dev-cluster / atomicmemory-core after push"
+        required: false
+        default: true
+        type: boolean
+      deploy_staging:
+        description: "Roll atomicmemory-staging-cluster / atomicmemory-core after push"
+        required: false
+        default: true
+        type: boolean
+      force:
+        description: "Rebuild and retag even when the VERSION tag already exists in ECR"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: core-ecr-dev-staging-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE_NAME: 636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-core-enterprise
+  ECR_REPOSITORY: atomicmemory-core-enterprise
+  AWS_REGION_DEFAULT: us-east-1
+  PLATFORM: linux/amd64
+  SOURCE_LABEL: atomicmemory-internal
+  # Defaults match the companion infra SSM params; override via repo vars if paths differ.
+  SSM_CORE_IMAGE_DEV_DEFAULT: /am-cloud/dev/core_image
+  SSM_CORE_IMAGE_STAGING_DEFAULT: /am-cloud/staging/core_image
+  ECS_CLUSTER_DEV: atomicmemory-dev-cluster
+  ECS_CLUSTER_STAGING: atomicmemory-staging-cluster
+  ECS_SERVICE: atomicmemory-core
+
+jobs:
+  publish:
+    name: build, push ECR, roll Dev/Staging
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          # Empty dispatch ref falls back to the triggering SHA.
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Decide whether to publish
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before || '' }}
+          # Boolean inputs must not use `&& x || true` — that collapses false to true.
+          FORCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && (inputs.force && 'true' || 'false') || 'false' }}
+          DEPLOY_DEV_INPUT: ${{ github.event_name == 'workflow_dispatch' && (inputs.deploy_dev && 'true' || 'false') || 'true' }}
+          DEPLOY_STAGING_INPUT: ${{ github.event_name == 'workflow_dispatch' && (inputs.deploy_staging && 'true' || 'false') || 'true' }}
+        run: |
+          set -euo pipefail
+
+          sha="$(git rev-parse HEAD)"
+          short_sha="${sha:0:7}"
+          version="$(node -p "require('./packages/core/package.json').version")"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::packages/core/package.json version '${version}' is not a usable image tag."
+            exit 1
+          fi
+
+          should_run=true
+          reason="workflow_dispatch"
+
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            reason="push_without_prior_version"
+            if [[ -n "${EVENT_BEFORE}" && "${EVENT_BEFORE}" =~ ^[0-9a-f]{40}$ && "${EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ]]; then
+              if git cat-file -e "${EVENT_BEFORE}:packages/core/package.json" 2>/dev/null; then
+                prev_version="$(git show "${EVENT_BEFORE}:packages/core/package.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")"
+                if [[ "${prev_version}" == "${version}" ]]; then
+                  should_run=false
+                  reason="version_unchanged:${version}"
+                else
+                  reason="version_changed:${prev_version}->${version}"
+                fi
+              fi
+            fi
+          fi
+
+          force=false
+          if [[ "${FORCE_INPUT}" == "true" ]]; then
+            force=true
+            should_run=true
+            reason="force_rebuild"
+          fi
+
+          deploy_dev=true
+          deploy_staging=true
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            [[ "${DEPLOY_DEV_INPUT}" == "true" ]] || deploy_dev=false
+            [[ "${DEPLOY_STAGING_INPUT}" == "true" ]] || deploy_staging=false
+          fi
+
+          {
+            echo "should_run=${should_run}"
+            echo "force=${force}"
+            echo "reason=${reason}"
+            echo "sha=${sha}"
+            echo "short_sha=${short_sha}"
+            echo "version=${version}"
+            echo "deploy_dev=${deploy_dev}"
+            echo "deploy_staging=${deploy_staging}"
+            echo "image_sha_tag=sha-${short_sha}"
+            echo "image_version_tag=${version}"
+          } >>"${GITHUB_OUTPUT}"
+
+          echo "Gate: should_run=${should_run} reason=${reason} version=${version} sha=${short_sha}"
+          echo "Deploy flags: dev=${deploy_dev} staging=${deploy_staging} force=${force}"
+
+      - name: Skip when Core version did not change
+        if: steps.gate.outputs.should_run != 'true'
+        run: |
+          set -euo pipefail
+          echo "No @atomicmemory/core version change on this push; skipping ECR publish and ECS roll."
+
+      - name: Free runner disk space
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force >/dev/null
+          df -h /
+
+      - name: Resolve AWS settings
+        id: aws
+        if: steps.gate.outputs.should_run == 'true'
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          ROLE_SHARED: ${{ vars.AWS_CORE_ECR_PUBLISH_ROLE_ARN }}
+          ROLE_DEV: ${{ vars.AWS_CORE_ECR_PUBLISH_ROLE_ARN_DEV }}
+          ROLE_STAGING: ${{ vars.AWS_CORE_ECR_PUBLISH_ROLE_ARN_STAGING }}
+          SSM_DEV_VAR: ${{ vars.AWS_CORE_IMAGE_SSM_PARAM_DEV }}
+          SSM_STAGING_VAR: ${{ vars.AWS_CORE_IMAGE_SSM_PARAM_STAGING }}
+          SSM_DEV_DEFAULT: ${{ env.SSM_CORE_IMAGE_DEV_DEFAULT }}
+          SSM_STAGING_DEFAULT: ${{ env.SSM_CORE_IMAGE_STAGING_DEFAULT }}
+          AWS_REGION_DEFAULT: ${{ env.AWS_REGION_DEFAULT }}
+        run: |
+          set -euo pipefail
+
+          region="${AWS_REGION_VAR:-${AWS_REGION_DEFAULT}}"
+          role_publish="${ROLE_SHARED:-}"
+          role_dev="${ROLE_DEV:-${role_publish}}"
+          role_staging="${ROLE_STAGING:-${role_publish}}"
+          ssm_dev="${SSM_DEV_VAR:-${SSM_DEV_DEFAULT}}"
+          ssm_staging="${SSM_STAGING_VAR:-${SSM_STAGING_DEFAULT}}"
+
+          if [[ -z "${role_dev}" ]]; then
+            echo "::error::Set repository variable AWS_CORE_ECR_PUBLISH_ROLE_ARN or AWS_CORE_ECR_PUBLISH_ROLE_ARN_DEV (GitHub OIDC role for ECR/ECS/SSM)."
+            exit 1
+          fi
+          if [[ -z "${role_staging}" ]]; then
+            echo "::error::Set repository variable AWS_CORE_ECR_PUBLISH_ROLE_ARN or AWS_CORE_ECR_PUBLISH_ROLE_ARN_STAGING."
+            exit 1
+          fi
+
+          {
+            echo "region=${region}"
+            echo "role_dev=${role_dev}"
+            echo "role_staging=${role_staging}"
+            echo "ssm_dev=${ssm_dev}"
+            echo "ssm_staging=${ssm_staging}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Configure AWS credentials (publish / Dev)
+        if: steps.gate.outputs.should_run == 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ steps.aws.outputs.role_dev }}
+          aws-region: ${{ steps.aws.outputs.region }}
+
+      - name: Login to Amazon ECR
+        if: steps.gate.outputs.should_run == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd
+
+      - name: Check existing VERSION tag
+        id: existing
+        if: steps.gate.outputs.should_run == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+          FORCE: ${{ steps.gate.outputs.force }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        run: |
+          set -euo pipefail
+
+          exists=false
+          if aws ecr describe-images \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids "imageTag=${VERSION}" \
+            >/dev/null 2>&1; then
+            exists=true
+          fi
+
+          skip_build=false
+          if [[ "${exists}" == "true" && "${FORCE}" != "true" ]]; then
+            skip_build=true
+            echo "VERSION tag ${VERSION} already exists in ECR and force=false; will reuse it for ECS roll."
+          fi
+
+          {
+            echo "version_tag_exists=${exists}"
+            echo "skip_build=${skip_build}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        if: steps.gate.outputs.should_run == 'true' && steps.existing.outputs.skip_build != 'true'
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Build and verify linux/amd64 image
+        if: steps.gate.outputs.should_run == 'true' && steps.existing.outputs.skip_build != 'true'
+        env:
+          PLATFORM: ${{ env.PLATFORM }}
+          SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
+          CORE_VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          verify_suffix="verify-${SHORT_SHA}-linux-amd64"
+
+          docker buildx build \
+            --platform "${PLATFORM}" \
+            --file packages/core/Dockerfile \
+            --target hosted-runtime \
+            --load \
+            --tag "${IMAGE_NAME}:${verify_suffix}" \
+            .
+
+          image_version="$(docker run --rm --platform "${PLATFORM}" --entrypoint node "${IMAGE_NAME}:${verify_suffix}" -p "require('./package.json').version")"
+          if [[ "${image_version}" != "${CORE_VERSION}" ]]; then
+            echo "::error::image package version is ${image_version}, expected ${CORE_VERSION}"
+            exit 1
+          fi
+          echo "Verified @atomicmemory/core ${image_version} on ${PLATFORM}"
+          docker image rm --force "${IMAGE_NAME}:${verify_suffix}" >/dev/null
+
+      - name: Build and push ECR tags
+        if: steps.gate.outputs.should_run == 'true' && steps.existing.outputs.skip_build != 'true'
+        env:
+          PLATFORM: ${{ env.PLATFORM }}
+          GIT_SHA: ${{ steps.gate.outputs.sha }}
+          SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
+          CORE_VERSION: ${{ steps.gate.outputs.version }}
+          SOURCE_LABEL: ${{ env.SOURCE_LABEL }}
+        run: |
+          set -euo pipefail
+
+          docker buildx build \
+            --platform "${PLATFORM}" \
+            --file packages/core/Dockerfile \
+            --target hosted-runtime \
+            --label "org.opencontainers.image.source=${SOURCE_LABEL}" \
+            --label "org.opencontainers.image.revision=${GIT_SHA}" \
+            --label "org.opencontainers.image.version=${CORE_VERSION}" \
+            --label "org.opencontainers.image.title=@atomicmemory/core (Dev/Staging ECR)" \
+            --tag "${IMAGE_NAME}:${CORE_VERSION}" \
+            --tag "${IMAGE_NAME}:sha-${SHORT_SHA}" \
+            --tag "${IMAGE_NAME}:dev" \
+            --push \
+            .
+
+      - name: Resolve immutable image URI for ECS
+        id: image
+        if: steps.gate.outputs.should_run == 'true'
+        env:
+          SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
+          CORE_VERSION: ${{ steps.gate.outputs.version }}
+          SKIP_BUILD: ${{ steps.existing.outputs.skip_build }}
+        run: |
+          set -euo pipefail
+
+          # Prefer sha-* when we just built this commit; when reusing an
+          # existing VERSION tag without rebuild, pin ECS to VERSION.
+          if [[ "${SKIP_BUILD}" == "true" ]]; then
+            tag="${CORE_VERSION}"
+          else
+            tag="sha-${SHORT_SHA}"
+          fi
+          uri="${IMAGE_NAME}:${tag}"
+          {
+            echo "tag=${tag}"
+            echo "uri=${uri}"
+          } >>"${GITHUB_OUTPUT}"
+          echo "ECS will track ${uri}"
+
+      - name: Roll Dev ECS
+        if: steps.gate.outputs.should_run == 'true' && steps.gate.outputs.deploy_dev == 'true'
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          SSM_PARAM: ${{ steps.aws.outputs.ssm_dev }}
+          CLUSTER: ${{ env.ECS_CLUSTER_DEV }}
+          SERVICE: ${{ env.ECS_SERVICE }}
+          IMAGE_REPO: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          scripts/ci/roll-core-ecs-image.sh \
+            "${IMAGE_URI}" \
+            "${IMAGE_REPO}" \
+            "${SSM_PARAM}" \
+            "${CLUSTER}" \
+            "${SERVICE}"
+
+      - name: Configure AWS credentials (Staging)
+        if: steps.gate.outputs.should_run == 'true' && steps.gate.outputs.deploy_staging == 'true' && steps.aws.outputs.role_staging != steps.aws.outputs.role_dev
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ steps.aws.outputs.role_staging }}
+          aws-region: ${{ steps.aws.outputs.region }}
+
+      - name: Roll Staging ECS
+        if: steps.gate.outputs.should_run == 'true' && steps.gate.outputs.deploy_staging == 'true'
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          SSM_PARAM: ${{ steps.aws.outputs.ssm_staging }}
+          CLUSTER: ${{ env.ECS_CLUSTER_STAGING }}
+          SERVICE: ${{ env.ECS_SERVICE }}
+          IMAGE_REPO: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          scripts/ci/roll-core-ecs-image.sh \
+            "${IMAGE_URI}" \
+            "${IMAGE_REPO}" \
+            "${SSM_PARAM}" \
+            "${CLUSTER}" \
+            "${SERVICE}"
+
+      - name: Summary
+        if: always() && steps.gate.outcome == 'success'
+        env:
+          SHOULD_RUN: ${{ steps.gate.outputs.should_run }}
+          REASON: ${{ steps.gate.outputs.reason }}
+          VERSION: ${{ steps.gate.outputs.version }}
+          SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
+          GIT_SHA: ${{ steps.gate.outputs.sha }}
+          IMAGE_URI: ${{ steps.image.outputs.uri || '' }}
+          DEPLOY_DEV: ${{ steps.gate.outputs.deploy_dev }}
+          DEPLOY_STAGING: ${{ steps.gate.outputs.deploy_staging }}
+          SKIP_BUILD: ${{ steps.existing.outputs.skip_build || '' }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Core ECR Dev/Staging"
+            echo ""
+            echo "- should_run: \`${SHOULD_RUN}\` (${REASON})"
+            echo "- package version: \`${VERSION}\`"
+            echo "- revision: \`${GIT_SHA}\`"
+            if [[ "${SHOULD_RUN}" == "true" ]]; then
+              echo "- skip_build: \`${SKIP_BUILD}\`"
+              echo "- ECS image URI: \`${IMAGE_URI}\`"
+              echo "- tags (when built):"
+              echo "  - \`${IMAGE_NAME}:${VERSION}\`"
+              echo "  - \`${IMAGE_NAME}:sha-${SHORT_SHA}\`"
+              echo "  - \`${IMAGE_NAME}:dev\`"
+              echo "- deploy_dev: \`${DEPLOY_DEV}\`"
+              echo "- deploy_staging: \`${DEPLOY_STAGING}\`"
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"

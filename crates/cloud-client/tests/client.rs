@@ -214,3 +214,67 @@ async fn delete_project_still_fails_on_error_status() {
         "discarding the body must not swallow a failing status",
     );
 }
+
+#[tokio::test]
+async fn mint_preserves_non_json_failure_context() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/local/token"))
+        .respond_with(
+            ResponseTemplate::new(422)
+                .set_body_raw("Unprocessable Entity: expected an object", "text/plain"),
+        )
+        .mount(&server)
+        .await;
+    let client = MemoryClient::new(Url::parse(&server.uri()).unwrap(), "amc_test_key").unwrap();
+    let error = client.mint_local_token().await.unwrap_err();
+    let display = error.to_string();
+    for context in ["422", "POST", "v1/local/token", "expected an object"] {
+        assert!(display.contains(context), "missing {context}: {display}");
+    }
+}
+
+#[tokio::test]
+async fn mint_bounds_and_redacts_non_json_failure() {
+    let server = MockServer::start().await;
+    let body = format!(
+        "upstream failure Bearer jwt-secret amc_key-secret {}",
+        "界".repeat(20_000)
+    );
+    Mock::given(method("POST"))
+        .and(path("/v1/local/token"))
+        .respond_with(ResponseTemplate::new(502).set_body_raw(body, "text/html"))
+        .mount(&server)
+        .await;
+    let client = MemoryClient::new(Url::parse(&server.uri()).unwrap(), "amc_test_key").unwrap();
+    let display = client.mint_local_token().await.unwrap_err().to_string();
+    assert!(display.contains("upstream failure"));
+    assert!(!display.contains("jwt-secret"));
+    assert!(!display.contains("key-secret"));
+    assert!(display.len() < 5_000, "error excerpt must be bounded");
+    assert!(display.contains("truncated"));
+}
+
+#[tokio::test]
+async fn mint_redacts_raw_credential_echo_and_json_secret_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/local/token"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
+            "error": { "code": "validation_error", "message": "echo opaque-credential" },
+            "access_token": "private-response-token", "email": "person@example.test"
+        })))
+        .mount(&server)
+        .await;
+    let client =
+        MemoryClient::new(Url::parse(&server.uri()).unwrap(), "opaque-credential").unwrap();
+    let display = client.mint_local_token().await.unwrap_err().to_string();
+    assert!(display.contains("validation_error"));
+    for private in [
+        "opaque-credential",
+        "private-response-token",
+        "person@example.test",
+    ] {
+        assert!(!display.contains(private), "leaked {private}: {display}");
+    }
+}

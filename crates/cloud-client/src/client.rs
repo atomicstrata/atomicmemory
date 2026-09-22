@@ -258,6 +258,13 @@ impl MemoryClient {
         })
     }
 
+    /// Set an explicit request timeout for workloads such as local model extraction.
+    pub fn with_timeout(self, timeout: std::time::Duration) -> Result<Self, CloudClientError> {
+        Ok(Self {
+            transport: self.transport.with_timeout(timeout)?,
+        })
+    }
+
     pub fn base_url(&self) -> &Url {
         self.transport.base_url()
     }

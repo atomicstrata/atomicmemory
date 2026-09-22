@@ -1,5 +1,8 @@
 # Build outputs
 dist/
+dist-bin/
+.deno-compile-staging/
+deno.lock
 *.tsbuildinfo
 
 # Dependencies

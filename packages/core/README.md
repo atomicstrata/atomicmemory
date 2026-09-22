@@ -74,6 +74,11 @@ present in GHCR with both required platforms, checks out the package `gitHead`,
 builds `packages/core/Dockerfile`, smoke-tests the local `linux/amd64` image,
 and then pushes the matching multi-platform GHCR tags.
 
+Internal Dev/Staging ECS does **not** use that public GHCR image. On
+`atomicmemory-internal`, version bumps of `@atomicmemory/core` on `dev` build
+the same Dockerfile into the enterprise ECR repository and roll Dev/Staging
+ECS. See [docs/ecr-dev-staging.md](docs/ecr-dev-staging.md).
+
 Local Docker defaults use `Authorization: Bearer local-dev-key`, OpenAI
 embeddings at 1536 dimensions, and `RAW_STORAGE_DEPLOYMENT_ENV=local`. The
 quickstart binds to `127.0.0.1` so that default key is only exposed locally.
@@ -295,19 +300,21 @@ curl -X POST http://localhost:17350/v1/memories/search \
   }'
 ```
 
-Responses from requests carrying an override emit four observability headers:
+Responses from requests carrying an override emit these observability headers:
 
 | Header | Emitted when | Value |
 |--------|--------------|-------|
-| `X-Atomicmem-Config-Override-Applied` | Override present | `true` |
+| `X-Atomicmem-Config-Override-Applied` | Override present | `true` if at least one key was applied, otherwise `false` |
 | `X-Atomicmem-Effective-Config-Hash` | Override present | `sha256:<hex>` of the merged config |
-| `X-Atomicmem-Config-Override-Keys` | Override present | Comma-joined sorted override keys |
+| `X-Atomicmem-Config-Override-Keys` | At least one key was applied | Comma-joined sorted **applied** keys |
+| `X-Atomicmem-Ignored-Override-Keys` | One or more submitted keys are current `RuntimeConfig` fields that cannot take effect on this request (decode caps, `audnJsonSchema`) | Comma-joined sorted ignored keys |
 | `X-Atomicmem-Unknown-Override-Keys` | One or more keys don't match a current `RuntimeConfig` field | Comma-joined sorted unknown keys |
 
 The schema is permissive — unknown keys don't 400. They ride through on the
-effective config and surface via the fourth header plus a server-side warning
-log, so callers catch typos without gating new runtime fields behind a schema
-release.
+effective config and surface via `X-Atomicmem-Unknown-Override-Keys` plus a
+server-side warning log, so callers catch typos without gating new runtime
+fields behind a schema release. Non-overridable known fields are listed on
+`X-Atomicmem-Ignored-Override-Keys` and are not counted as applied.
 
 ## Environment Variables
 

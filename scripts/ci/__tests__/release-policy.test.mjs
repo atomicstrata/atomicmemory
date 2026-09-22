@@ -92,7 +92,7 @@ test("workflow without image pushes is not held to image-publisher policy", () =
 
 test("non-enumerated workflow pushing images is rejected", () => {
   const failures = checkImagePublisherText("jobs:\n  x:\n    steps:\n      - run: docker buildx build --push .\n", ".github/workflows/nightly.yml");
-  assert.ok(failures.some((failure) => /neither a publish-\*\.yml release lane nor the enumerated internal image publisher/.test(failure)));
+  assert.ok(failures.some((failure) => /neither a publish-\*\.yml release lane nor an enumerated operator image publisher/.test(failure)));
 });
 
 test("internal image publisher without the repository guard is rejected", () => {
@@ -142,6 +142,54 @@ test("internal image publisher using docker push or imagetools create is rejecte
 
 test("valid internal image publisher fixture passes", () => {
   assert.deepEqual(checkImagePublisherText(VALID_INTERNAL_IMAGE_YAML, ".github/workflows/internal-core-docker-image.yml"), []);
+});
+
+const VALID_ECR_IMAGE_YAML = [
+  "env:",
+  "  IMAGE_NAME: 636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-core-enterprise",
+  "jobs:",
+  "  publish:",
+  "    if: github.repository == 'atomicstrata/atomicmemory-internal'",
+  "    steps:",
+  '      - run: docker buildx build --tag "${IMAGE_NAME}:sha-abc1234" --push .',
+  "",
+].join("\n");
+
+test("valid ECR Dev/Staging image publisher fixture passes", () => {
+  assert.deepEqual(checkImagePublisherText(VALID_ECR_IMAGE_YAML, ".github/workflows/core-ecr-dev-staging.yml"), []);
+});
+
+test("ECR image publisher pinned to the wrong image name is rejected", () => {
+  const yaml = VALID_ECR_IMAGE_YAML.replace(
+    "636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-core-enterprise",
+    "ghcr.io/atomicstrata/atomicmemory-core-internal",
+  );
+  const failures = checkImagePublisherText(yaml, ".github/workflows/core-ecr-dev-staging.yml");
+  assert.ok(failures.some((failure) => /assign env IMAGE_NAME exactly once/.test(failure)));
+});
+
+test("ECR image publisher without the repository guard is rejected", () => {
+  const yaml = VALID_ECR_IMAGE_YAML.replace(/^.*github\.repository.*\n/m, "");
+  const failures = checkImagePublisherText(yaml, ".github/workflows/core-ecr-dev-staging.yml");
+  assert.ok(failures.some((failure) => /repository guard|github\.repository/.test(failure)));
+});
+
+test("ECR image publisher using a non-allowlisted action is rejected", () => {
+  const yaml = VALID_ECR_IMAGE_YAML + "      - uses: actions/setup-node@v4\n";
+  const failures = checkImagePublisherText(yaml, ".github/workflows/core-ecr-dev-staging.yml");
+  assert.ok(failures.some((failure) => /action allowlist/.test(failure)));
+});
+
+test("ECR image publisher may use aws-actions OIDC and ECR login", () => {
+  const yaml = VALID_ECR_IMAGE_YAML.replace(
+    "    steps:",
+    [
+      "    steps:",
+      "      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a",
+      "      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd",
+    ].join("\n"),
+  );
+  assert.deepEqual(checkImagePublisherText(yaml, ".github/workflows/core-ecr-dev-staging.yml"), []);
 });
 
 test("workflow pushing via --output=type=registry is treated as a publisher", () => {

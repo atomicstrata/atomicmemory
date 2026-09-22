@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "version": "0.1.1",
+  "tag": "am-slm-v0.1.1",
+  "source_sha": "774d5a03dd067cddc3b91000cc4473562ed3f7d0",
+  "supported_targets": [
+    "aarch64-apple-darwin"
+  ],
+  "artifacts": [
+    {
+      "target": "aarch64-apple-darwin",
+      "filename": "am-slm-0.1.1-aarch64-apple-darwin.tar.gz",
+      "url": "https://get.atomicstrata.ai/am-slm/v0.1.1/am-slm-0.1.1-aarch64-apple-darwin.tar.gz",
+      "sha256": "fdd26cd4a4d6952065f4c5941728a80b0dccbe91e88510381e76651f5b90b37d",
+      "size_bytes": 6374708
+    }
+  ],
+  "min_disk_bytes": {
+    "binary_only": 52428800,
+    "with_models": 2684354560
+  },
+  "models_catalog_url": "https://get.atomicstrata.ai/am-slm/models/index.json",
+  "runtime_api_compat": "am-slm-openai-v1",
+  "license_id": "Apache-2.0",
+  "third_party_notices_file": "THIRD_PARTY_NOTICES.md"
+}

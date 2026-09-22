@@ -25,14 +25,19 @@ use crate::instance::docker::{
     DockerRunner, RealDockerRunner, ensure_docker_available_with_preflight,
 };
 use crate::instance::managed_core_needs_env_sync;
-use crate::onboarding_runtime::{default_runtime_wait, wait_runtime_online_with_progress};
+use crate::onboarding_runtime::{
+    default_runtime_wait, managed_core_instance_id, wait_runtime_online_with_progress,
+};
 use crate::output::message;
 use crate::progress::{ProgressReporter, progress_for};
 use crate::telemetry::{
     ActivationContext, ActivationEvent, InitStep, capture_activation, capture_email_hash,
     capture_step_failure,
 };
-use crate::verification::receipt::{InitReceiptInput, build_init_receipt, print_init_receipt};
+use crate::verification::receipt::{
+    InitReceiptInput, VerificationAttempt, VerificationStatus, build_init_receipt,
+    print_init_receipt,
+};
 use crate::verification::smoke::{SmokeOptions, SmokeTelemetry, run_memory_smoke};
 
 #[derive(Debug, Clone)]
@@ -43,6 +48,11 @@ pub struct ConnectProjectOptions {
     pub instance_image: Option<String>,
     /// When false, stdin prompts (Docker preflight retry, etc.) are skipped.
     pub interactive: bool,
+    /// Start Core with Connected Local SLM (host Metal runtime).
+    pub slm: bool,
+    pub provider: Option<crate::instance::storage::Provider>,
+    /// Confirm SLM model download without prompting (`am init --yes`).
+    pub slm_pull_yes: bool,
 }
 
 impl Default for ConnectProjectOptions {
@@ -53,6 +63,9 @@ impl Default for ConnectProjectOptions {
             replace: false,
             instance_image: None,
             interactive: true,
+            slm: false,
+            provider: None,
+            slm_pull_yes: false,
         }
     }
 }
@@ -77,7 +90,8 @@ async fn run_with_progress(
     global: &GlobalOptions,
     progress: &mut dyn ProgressReporter,
 ) -> Result<()> {
-    let ctx = authenticate_and_bootstrap_org(use_device, global, progress).await?;
+    let ctx =
+        authenticate_and_bootstrap_org(use_device, opts.interactive, global, progress).await?;
     let mut cloud_global = global.clone();
     cloud_global.profile = Some(ctx.cloud_profile.clone());
     cloud_global.base_url = Some(ctx.cloud_api_url.clone());
@@ -120,11 +134,21 @@ pub async fn connect_local_project(
         );
     }
 
+    let mut effective_opts = opts.clone();
+    let opts = &mut effective_opts;
     progress.start_step("project", "Link local project");
     let local_url = project
         .local_url
         .clone()
         .unwrap_or_else(|| "http://127.0.0.1:17350".to_string());
+    if !opts.no_instance {
+        crate::instance::preflight_managed(
+            Some(&local_url),
+            crate::instance::storage::Provider::requested(opts.provider, opts.slm)?,
+            opts.interactive,
+        )
+        .await?;
+    }
     let (profile_name, profile_relinked) =
         match ensure_local_profile(&project, &cloud_profile, cloud_api_url.as_str(), &local_url) {
             Ok(v) => v,
@@ -154,6 +178,31 @@ pub async fn connect_local_project(
     local_global.profile = Some(profile_name.clone());
     local_global.base_url = Some(cloud_api_url.clone());
 
+    let profile = resolve_profile(
+        Some(&profile_name),
+        Some(&cloud_api_url),
+        global.environment,
+    )?;
+    let local_url = if opts.no_instance {
+        profile.memory_base_url.clone()
+    } else {
+        crate::instance::address::ManagedAddress::parse(&profile.memory_base_url)?.url()
+    };
+    if !opts.no_instance {
+        let observed = RealDockerRunner::new()
+            .inspect(crate::instance::DEFAULT_CONTAINER_NAME)
+            .await?;
+        let provider = crate::instance::storage::RuntimeStore::open()?.provider(
+            &profile,
+            crate::instance::storage::Provider::requested(opts.provider, opts.slm)?,
+            observed.as_ref(),
+        )?;
+        crate::instance::storage::preflight_storage(&profile, provider, opts.replace).await?;
+        opts.provider = Some(provider);
+        opts.slm = false;
+        crate::instance::preflight_managed(Some(&local_url), Some(provider), opts.interactive)
+            .await?;
+    }
     progress.start_step("credential", "Cloud API key");
     let cloud_key_outcome = match ensure_connected_local_cloud_api_key_stored(
         &local_global,
@@ -235,8 +284,10 @@ pub struct OnboardingContext {
     pub signed_in_as: Option<String>,
 }
 
+/// Establish an OAuth session and organization within the command prompt policy.
 pub async fn authenticate_and_bootstrap_org(
     use_device: bool,
+    allow_prompts: bool,
     global: &GlobalOptions,
     progress: &mut dyn ProgressReporter,
 ) -> Result<OnboardingContext> {
@@ -262,10 +313,10 @@ pub async fn authenticate_and_bootstrap_org(
         &cloud_profile,
         cloud_api_url.as_str(),
         use_device,
+        allow_prompts,
         global,
         progress,
         &mut actx,
-        global.no_telemetry,
     )
     .await
     {
@@ -293,7 +344,7 @@ pub async fn authenticate_and_bootstrap_org(
     let org = match ensure_org_context(
         &cloud_profile,
         None,
-        !global.quiet,
+        allow_prompts,
         Some(cloud_api_url.as_str()),
         EnsureOrgOptions {
             skip_default_project: true,
@@ -609,7 +660,7 @@ async fn start_core_with_env_sync(
         progress.resume_after_input();
     }
     if let Err(err) = docker_result {
-        progress.fail("runtime", Some(&err.to_string()));
+        progress.fail("runtime", Some("Core setup failed; see recovery below"));
         capture_step_failure(InitStep::Docker, &err, Some(actx.props()), no_telemetry);
         return Err(err);
     }
@@ -628,11 +679,6 @@ async fn start_core_with_env_sync(
     )
     .await?;
     let running = core_reachable(local_global).await;
-    if running && !needs_env_sync && !env_sync.cloud_key_changed {
-        progress.succeed("runtime", Some("already running"));
-        return Ok(true);
-    }
-
     if (needs_env_sync || env_sync.cloud_key_changed) && running {
         progress.tick("runtime", "recreating with Cloud trace sync");
     } else if !running {
@@ -644,6 +690,10 @@ async fn start_core_with_env_sync(
         InstanceCommand::Start {
             image: opts.instance_image.clone(),
             openai_api_key: None,
+            slm: opts.slm,
+            provider: opts.provider,
+            slm_reset_data: false,
+            yes: opts.slm_pull_yes,
             // Operator authority ONLY. The internal recreate requirement is
             // passed separately below: `replace` is read downstream as consent
             // to force-remove a container this CLI does not manage, so a
@@ -682,7 +732,7 @@ async fn start_core_with_env_sync(
             Ok(started)
         }
         Err(err) => {
-            progress.fail("runtime", Some(&err.to_string()));
+            progress.fail("runtime", Some("Core setup failed; see recovery below"));
             capture_step_failure(InitStep::CoreStart, &err, Some(actx.props()), no_telemetry);
             Err(err)
         }
@@ -706,13 +756,22 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
     } = input;
     let cloud_connection_online = if !opts.no_instance && core_healthy {
         progress.start_step("heartbeat", "Wait for Cloud runtime online");
-        let online = wait_runtime_online_with_progress(
-            local_global,
-            &project.id,
-            default_runtime_wait(),
-            Some(progress),
-        )
-        .await;
+        let online = match managed_core_instance_id(local_global).await {
+            Ok(instance_id) => {
+                wait_runtime_online_with_progress(
+                    local_global,
+                    &project.id,
+                    &instance_id,
+                    default_runtime_wait(),
+                    Some(progress),
+                )
+                .await
+            }
+            Err(error) => {
+                progress.tick("heartbeat", &error.to_string());
+                false
+            }
+        };
         if online {
             capture_activation(
                 ActivationEvent::HeartbeatReceived,
@@ -727,7 +786,10 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
                 Some(actx.props()),
                 global.no_telemetry,
             );
-            progress.warn("heartbeat", Some("timed out"));
+            progress.warn(
+                "heartbeat",
+                Some("this Core runtime is not verified online"),
+            );
         }
         online
     } else {
@@ -739,9 +801,14 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
         props: Some(actx.props()),
     };
 
-    let smoke = if !opts.no_instance && !opts.skip_verify && core_healthy {
+    let verification = if !opts.no_instance && !opts.skip_verify && core_healthy {
         progress.start_step("smoke", "Memory pipeline smoke");
-        match run_memory_smoke(local_global, SmokeOptions::default(), Some(smoke_telemetry)).await {
+        let smoke_options = if opts.provider == Some(crate::instance::storage::Provider::Slm) {
+            SmokeOptions::full_extraction()
+        } else {
+            SmokeOptions::default()
+        };
+        match run_memory_smoke(local_global, smoke_options, Some(smoke_telemetry)).await {
             Ok(result) => {
                 if result.verified {
                     capture_activation(
@@ -753,7 +820,7 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
                 } else {
                     progress.warn("smoke", Some("not verified"));
                 }
-                Some(result)
+                VerificationAttempt::Passed(result)
             }
             Err(err) => {
                 capture_step_failure(
@@ -762,8 +829,8 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
                     Some(actx.props()),
                     global.no_telemetry,
                 );
-                progress.warn("smoke", Some(&format!("skipped: {err:#}")));
-                None
+                progress.fail("smoke", Some("verification failed"));
+                VerificationAttempt::Failed(format!("{err:#}"))
             }
         }
     } else {
@@ -778,7 +845,11 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
                 }),
             );
         }
-        None
+        if opts.skip_verify || opts.no_instance {
+            VerificationAttempt::DeliberatelySkipped
+        } else {
+            VerificationAttempt::NotRun
+        }
     };
 
     progress.start_step("receipt", "Init receipt");
@@ -794,7 +865,8 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
         no_instance: opts.no_instance,
         cloud_connection_online,
         credential_ready,
-        smoke,
+        profile_name: local_global.profile.as_deref().unwrap_or("local"),
+        verification,
     });
     progress.succeed(
         "receipt",
@@ -806,6 +878,24 @@ async fn finish_onboarding(input: FinishOnboardingInput<'_>) -> Result<()> {
     );
 
     print_init_receipt(&receipt, global);
+    if !receipt.credential_ready {
+        bail!(
+            "Cloud credential is not verified. Retry: {}",
+            receipt.next_command
+        );
+    }
+    if receipt.verification_status == VerificationStatus::Failed {
+        bail!(
+            "Memory verification failed. Retry: {}",
+            receipt.next_command
+        );
+    }
+    if !opts.no_instance && !cloud_connection_online {
+        bail!(
+            "Cloud runtime connection is not verified. Retry: {}",
+            receipt.next_command
+        );
+    }
     Ok(())
 }
 
@@ -813,10 +903,10 @@ async fn ensure_authenticated(
     cloud_profile: &str,
     cloud_api_url: &str,
     use_device: bool,
+    allow_prompts: bool,
     global: &GlobalOptions,
     progress: &mut dyn ProgressReporter,
     actx: &mut ActivationContext,
-    no_telemetry: bool,
 ) -> Result<()> {
     if valid_bearer_token(cloud_profile, cloud_api_url)
         .await
@@ -824,6 +914,18 @@ async fn ensure_authenticated(
     {
         progress.succeed("identity", Some("existing session"));
         return Ok(());
+    }
+
+    if !crate::commands::init::may_run_init_login(
+        allow_prompts,
+        use_device,
+        io::stdin().is_terminal(),
+    ) {
+        bail!(
+            "sign-in required — run `am auth login --token <dashboard-jwt>` first, \
+             or `am init --device` to sign in with a device code. Browser sign-in \
+             needs an interactive terminal, and --yes never opens one."
+        );
     }
 
     if use_device {
@@ -865,7 +967,7 @@ async fn ensure_authenticated(
     capture_activation(
         ActivationEvent::LoginCompleted,
         Some(actx.props()),
-        no_telemetry,
+        global.no_telemetry,
     );
     progress.succeed("identity", Some("signed in"));
     Ok(())
@@ -909,6 +1011,45 @@ mod tests {
             local_url: None,
             ..sample_project(org_id, slug)
         }
+    }
+
+    #[tokio::test]
+    async fn incomplete_credentials_never_return_onboarding_success() {
+        let global = GlobalOptions {
+            quiet: true,
+            no_telemetry: true,
+            ..Default::default()
+        };
+        let mut progress = progress_for(&global);
+        let mut actx = ActivationContext::local();
+        let org = Organization {
+            id: "org_a".into(),
+            clerk_org_id: "clerk_a".into(),
+            name: "org".into(),
+            slug: "org".into(),
+            created_at: Utc::now(),
+        };
+        let project = sample_project("org_a", "local");
+        let opts = ConnectProjectOptions {
+            no_instance: true,
+            ..Default::default()
+        };
+        let result = finish_onboarding(FinishOnboardingInput {
+            local_global: &global,
+            project: &project,
+            org: &org,
+            local_url: "http://127.0.0.1:17350",
+            cloud_api_url: "https://api.atomicmemory.ai",
+            signed_in_as: None,
+            core_healthy: false,
+            credential_ready: false,
+            opts: &opts,
+            actx: &mut actx,
+            global: &global,
+            progress: progress.as_mut(),
+        })
+        .await;
+        assert!(result.unwrap_err().to_string().contains("credential"));
     }
 
     #[test]

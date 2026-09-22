@@ -7,6 +7,7 @@
  * migration entry points used by source and Docker workflows.
  */
 
+import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const LOCAL_PROFILE_DEFAULTS = {
@@ -144,8 +145,14 @@ function applyProfile(profile: ProfileName | null): void {
 }
 
 function isEntrypoint(): boolean {
+  // Deno `compile` sets import.meta.main; Node npm bin ends with atomicmemory-core.
+  const meta = import.meta as ImportMeta & { main?: boolean };
+  if (meta.main === true) return true;
   const invokedPath = process.argv[1] ?? '';
-  return invokedPath === fileURLToPath(import.meta.url) || invokedPath.endsWith('/atomicmemory-core');
+  if (!invokedPath) return false;
+  if (invokedPath === fileURLToPath(import.meta.url)) return true;
+  const name = basename(invokedPath);
+  return name === 'atomicmemory-core' || name.startsWith('atomicmemory-core');
 }
 
 if (isEntrypoint()) {

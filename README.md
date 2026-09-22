@@ -67,7 +67,7 @@ am memory search "seat preference"
 Connect the active profile to an agent host when you are ready:
 
 ```bash
-am integrate --yes --host cursor # or claude-code / codex
+am integrate --yes --host cursor # or claude-code / codex / opencode
 ```
 
 `am integrate` writes the host's user-level MCP configuration. It does not
@@ -169,7 +169,7 @@ Both initialization paths leave an active profile that the published MCP server
 can use. Configure a supported host with:
 
 ```bash
-am integrate --yes --host cursor # or claude-code / codex
+am integrate --yes --host cursor # or claude-code / codex / opencode
 ```
 
 Codex and Cursor marketplace plugin packages remain **coming soon** in the

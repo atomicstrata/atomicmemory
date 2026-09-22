@@ -78,6 +78,7 @@ struct PlainSteps {
     step_n: usize,
     active: HashMap<String, (usize, String)>,
     /// Captured lines for tests (also mirrored to stderr when not capturing-only).
+    #[cfg(test)]
     lines: Vec<String>,
     write_stderr: bool,
 }
@@ -87,6 +88,7 @@ impl PlainSteps {
         Self {
             step_n: 0,
             active: HashMap::new(),
+            #[cfg(test)]
             lines: Vec::new(),
             write_stderr: true,
         }
@@ -104,6 +106,7 @@ impl PlainSteps {
         if self.write_stderr {
             let _ = writeln!(io::stderr(), "{line}");
         }
+        #[cfg(test)]
         self.lines.push(line);
     }
 }

@@ -8,6 +8,40 @@
 /** Chat Completions reasoning_effort values we intentionally set. */
 export type ReasoningEffort = 'none' | 'minimal' | 'low';
 
+export interface OpenAIJsonSchemaRequest {
+  name: string;
+  strict?: boolean;
+  schema: Record<string, unknown>;
+}
+
+/** Prefer client json_schema over generic json_object when both are requested. */
+export function openAIResponseFormat(
+  jsonMode: boolean | undefined,
+  jsonSchema: OpenAIJsonSchemaRequest | undefined,
+): { response_format: { type: 'json_object' } } | {
+  response_format: {
+    type: 'json_schema';
+    json_schema: { name: string; strict: boolean; schema: Record<string, unknown> };
+  };
+} | Record<string, never> {
+  if (jsonSchema) {
+    return {
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: jsonSchema.name,
+          strict: jsonSchema.strict ?? true,
+          schema: jsonSchema.schema,
+        },
+      },
+    };
+  }
+  if (jsonMode) {
+    return { response_format: { type: 'json_object' } };
+  }
+  return {};
+}
+
 /** Model name with any provider prefix (e.g. `openai/`) stripped, lowercased. */
 function bareModelName(model: string): string {
   const normalized = model.toLowerCase();

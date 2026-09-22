@@ -322,7 +322,9 @@ async function runBaselineMigration(client: PoolClient): Promise<void> {
  * misbuilt package mark a DB as migrated without ever applying DDL; that
  * was the audit finding this guards against.
  */
-async function runFrameworkMigrationsToHead(client: PoolClient): Promise<void> {
+async function runFrameworkMigrationsToHead(
+  client: PoolClient,
+): Promise<void> {
   await runMigrationRunner(client);
 }
 
@@ -330,12 +332,10 @@ async function runMigrationRunner(
   client: PoolClient,
   opts: { file?: string; fake?: boolean } = {},
 ): Promise<void> {
-  // Side-effect call: validates the shipped migration set before letting the
-  // framework touch the database. Throws on missing dir / no .sql files /
-  // missing 0001_baseline.sql / empty file. Return value intentionally
-  // discarded — node-pg-migrate enumerates the directory itself.
+  // Revalidate shipped files before the framework touches migration state.
   listMigrationFilenames();
   await runMigrations({
+    checkOrder: true,
     dbClient: client,
     dir: MIGRATIONS_DIR,
     migrationsTable: PGMIGRATIONS_TABLE,

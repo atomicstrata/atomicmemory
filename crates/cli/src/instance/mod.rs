@@ -3,10 +3,10 @@
 use anyhow::Result;
 use rand::Rng;
 
-use crate::auth::origin::same_origin;
-use crate::config::resolve_core_api_key;
-
+pub mod address;
+pub mod credentials;
 pub mod docker;
+pub mod storage;
 
 pub use docker::{ContainerInspect, DockerRunner, RealDockerRunner};
 
@@ -46,31 +46,6 @@ pub fn generate_core_api_key() -> String {
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
-}
-
-/// Resolve the `CORE_API_KEY` to inject on `docker run` and use for health checks.
-///
-/// Precedence: shell override → persisted state file → container env → generate.
-/// A new key is minted only when `purge_data` is true or no persisted/env key exists
-/// (`--replace` alone must not rotate the local Core bearer).
-pub async fn resolve_instance_core_api_key(
-    docker: &dyn DockerRunner,
-    purge_data: bool,
-) -> Result<String> {
-    if let Some(key) = resolve_core_api_key() {
-        return Ok(key);
-    }
-    if !purge_data {
-        if let Some(key) = docker.read_core_api_key(DEFAULT_CONTAINER_NAME).await? {
-            return Ok(key);
-        }
-        if let Some(inspect) = docker.inspect(DEFAULT_CONTAINER_NAME).await?
-            && let Some(key) = inspect.core_api_key
-        {
-            return Ok(key);
-        }
-    }
-    Ok(generate_core_api_key())
 }
 
 /// True when a CLI-managed container was started for a different local profile.
@@ -127,38 +102,91 @@ pub async fn managed_core_needs_env_sync(
         || managed_core_cloud_env_mismatch(&inspect, expected_api_url, expected_jwks_url))
 }
 
-/// Read `CORE_API_KEY` from the CLI-managed Core container when it matches `profile_name`.
+/// Read a managed Core key only for the resolved project's active dataset.
 pub async fn read_managed_core_api_key(
-    profile_name: &str,
-    destination_url: &str,
-) -> Option<String> {
-    let docker = RealDockerRunner::new();
-    read_managed_core_api_key_with(&docker, profile_name, destination_url)
-        .await
-        .ok()
-        .flatten()
+    profile: &crate::config::ResolvedProfile,
+) -> Result<Option<String>> {
+    read_managed_core_api_key_with(&RealDockerRunner::new(), profile).await
 }
 
+/// Resolve the managed credential through the shared Cloud and dataset ownership gate.
 pub async fn read_managed_core_api_key_with(
     docker: &dyn DockerRunner,
-    profile_name: &str,
-    destination_url: &str,
+    profile: &crate::config::ResolvedProfile,
 ) -> Result<Option<String>> {
-    let inspect = docker.inspect(DEFAULT_CONTAINER_NAME).await?;
+    read_managed_core_api_key_using(docker, profile, storage::RuntimeStore::open).await
+}
+
+async fn read_managed_core_api_key_using<F>(
+    docker: &dyn DockerRunner,
+    profile: &crate::config::ResolvedProfile,
+    load_registry: F,
+) -> Result<Option<String>>
+where
+    F: FnOnce() -> Result<storage::RuntimeStore>,
+{
+    // External Core destinations retain their explicit-key / Cloud JWT path.
+    let Ok(destination) = address::ManagedAddress::parse(&profile.memory_base_url) else {
+        return Ok(None);
+    };
+    // Keep inspection and key retrieval in the same lifecycle transaction.
+    let registry = load_registry()?;
+    let inspect = match docker.inspect(DEFAULT_CONTAINER_NAME).await {
+        Ok(inspect) => inspect,
+        Err(error)
+            if error.chain().any(|cause| {
+                cause
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+            }) =>
+        {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
     let Some(inspect) = inspect else {
         return Ok(None);
     };
     if !inspect.managed_by_cli || !inspect.state.is_running() {
         return Ok(None);
     }
-    if inspect.profile_label.as_deref() != Some(profile_name) {
+    let bound = inspect
+        .local_url
+        .as_deref()
+        .and_then(|url| address::ManagedAddress::parse(url).ok());
+    if bound != Some(destination) {
         return Ok(None);
     }
-    let Some(ref local_url) = inspect.local_url else {
-        return Ok(None);
-    };
-    if !same_origin(local_url, destination_url) {
-        return Ok(None);
+    if !storage::matches_profile_context(profile, &inspect) {
+        anyhow::bail!(
+            "managed Core belongs to a different Cloud project or origin; run `am instance start --replace` before using this profile"
+        );
+    }
+    let observed = inspect.storage.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "managed Core provider and mounts could not be verified; administrator key withheld"
+        )
+    })?;
+    if let Some((provider, volumes)) = registry.selected_dataset(profile)?
+        && (provider != observed.provider || volumes != observed.volumes)
+    {
+        anyhow::bail!(
+            "managed Core is still running a different dataset from the saved selection; finish `am instance start` before using this profile"
+        );
+    }
+    let identity = registry.identity(profile, observed.provider)?;
+    if let Some(identity) = identity {
+        let mut config = docker::default_instance_config(&profile.name, &inspect.image);
+        config.provider = observed.provider;
+        config.storage = observed.volumes.clone();
+        config.project_id = profile.project_id.clone();
+        docker
+            .validate_storage(&config, Some(identity), false)
+            .await?;
+    } else if storage::owned_storage(profile, Some(&inspect)).is_none() {
+        anyhow::bail!(
+            "managed Core project ownership could not be verified; administrator key withheld"
+        );
     }
     if let Some(key) = docker.read_core_api_key(DEFAULT_CONTAINER_NAME).await? {
         return Ok(Some(key));
@@ -174,6 +202,7 @@ mod tests {
 
     fn inspect_with_profile(profile: Option<&str>) -> ContainerInspect {
         ContainerInspect {
+            storage: None,
             name: DEFAULT_CONTAINER_NAME.into(),
             image: "test".into(),
             state: ContainerState::Running,
@@ -245,9 +274,13 @@ mod tests {
         ));
     }
 
+    #[derive(Default)]
     struct StubDocker {
         state_key: Option<String>,
         inspect: Option<ContainerInspect>,
+        observed_identity: Option<storage::StorageIdentity>,
+        inspect_lock_path: Option<std::path::PathBuf>,
+        read_calls: std::sync::atomic::AtomicUsize,
     }
 
     #[async_trait::async_trait]
@@ -257,6 +290,12 @@ mod tests {
         }
 
         async fn inspect(&self, _name: &str) -> Result<Option<ContainerInspect>> {
+            if let Some(path) = &self.inspect_lock_path {
+                assert!(
+                    storage::RuntimeStore::at(path).is_err(),
+                    "inspection must happen while the lifecycle lock is held"
+                );
+            }
             Ok(self.inspect.clone())
         }
 
@@ -293,8 +332,53 @@ mod tests {
         }
 
         async fn read_core_api_key(&self, _name: &str) -> Result<Option<String>> {
+            self.read_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(self.state_key.clone())
         }
+        async fn validate_storage(
+            &self,
+            config: &docker::InstanceConfig,
+            recorded: Option<&storage::StorageIdentity>,
+            live_legacy: bool,
+        ) -> Result<storage::StorageIdentity> {
+            assert!(
+                !live_legacy,
+                "rotated credentials require durable ownership proof"
+            );
+            assert_eq!(config.storage, storage::StorageVolumes::legacy());
+            let actual = self
+                .observed_identity
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("missing identity fixture"))?;
+            if recorded != Some(actual) {
+                bail!("legacy volume creation identity changed");
+            }
+            Ok(actual.clone())
+        }
+    }
+
+    fn key_profile(destination: &str) -> crate::config::ResolvedProfile {
+        crate::config::ResolvedProfile {
+            name: "default".into(),
+            base_url: "https://api.dev.example.com".into(),
+            project_id: Some("project-one".into()),
+            kind: crate::config::ProfileKind::Local,
+            memory_base_url: destination.into(),
+            api_key: Some("amc_current".into()),
+            oauth: None,
+        }
+    }
+
+    async fn read_test_key(
+        docker: &dyn DockerRunner,
+        profile: &crate::config::ResolvedProfile,
+    ) -> Result<Option<String>> {
+        let directory = tempfile::tempdir().unwrap();
+        read_managed_core_api_key_using(docker, profile, || {
+            storage::RuntimeStore::at(&directory.path().join("runtimes.json"))
+        })
+        .await
     }
 
     fn managed_inspect_with_key(
@@ -303,6 +387,11 @@ mod tests {
         core_api_key: Option<&str>,
     ) -> ContainerInspect {
         ContainerInspect {
+            storage: Some(storage::ObservedStorage {
+                provider: storage::Provider::Openai,
+                volumes: storage::StorageVolumes::legacy(),
+                project_id: Some("project-one".into()),
+            }),
             name: DEFAULT_CONTAINER_NAME.into(),
             image: "test".into(),
             state: ContainerState::Running,
@@ -319,24 +408,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_reuses_persisted_key_without_purge() {
-        let docker = StubDocker {
-            state_key: Some("persisted-core-key".into()),
-            inspect: None,
-        };
-        let key = resolve_instance_core_api_key(&docker, false).await.unwrap();
-        assert_eq!(key, "persisted-core-key");
-    }
-
-    #[tokio::test]
-    async fn resolve_generates_when_purge_data_even_if_persisted() {
-        let docker = StubDocker {
-            state_key: Some("persisted-core-key".into()),
-            inspect: None,
-        };
-        let key = resolve_instance_core_api_key(&docker, true).await.unwrap();
-        assert_ne!(key, "persisted-core-key");
-        assert_eq!(key.len(), 64);
+    async fn read_managed_key_rejects_same_label_and_port_for_foreign_cloud_context() {
+        for foreign_origin in [false, true] {
+            let mut inspect = managed_inspect_with_key(
+                "default",
+                "http://127.0.0.1:17350",
+                Some("outgoing-admin"),
+            );
+            inspect.storage = Some(storage::ObservedStorage {
+                provider: storage::Provider::Openai,
+                volumes: storage::StorageVolumes::legacy(),
+                project_id: Some(
+                    if foreign_origin {
+                        "project-one"
+                    } else {
+                        "project-other"
+                    }
+                    .into(),
+                ),
+            });
+            if foreign_origin {
+                inspect.atomicmemory_api_url = Some("https://foreign.example.test".into());
+            }
+            let docker = StubDocker {
+                state_key: Some("outgoing-admin".into()),
+                inspect: Some(inspect),
+                ..Default::default()
+            };
+            let result = read_test_key(&docker, &key_profile("http://127.0.0.1:17350")).await;
+            assert!(
+                result.is_err(),
+                "foreign dataset leaked its administrator key"
+            );
+        }
     }
 
     #[tokio::test]
@@ -348,16 +452,16 @@ mod tests {
                 "http://127.0.0.1:17350",
                 None,
             )),
+            ..Default::default()
         };
-        let key = read_managed_core_api_key_with(&docker, "default", "http://127.0.0.1:17350")
+        let key = read_test_key(&docker, &key_profile("http://127.0.0.1:17350"))
             .await
             .unwrap();
         assert_eq!(key.as_deref(), Some("core-from-state"));
 
-        let mismatched =
-            read_managed_core_api_key_with(&docker, "default", "http://127.0.0.1:9999")
-                .await
-                .unwrap();
+        let mismatched = read_test_key(&docker, &key_profile("http://127.0.0.1:9999"))
+            .await
+            .unwrap();
         assert!(mismatched.is_none());
     }
 
@@ -368,10 +472,177 @@ mod tests {
         let docker = StubDocker {
             state_key: Some("core-from-state".into()),
             inspect: Some(inspect),
+            ..Default::default()
         };
-        let key = read_managed_core_api_key_with(&docker, "default", "http://127.0.0.1:17350")
+        let key = read_test_key(&docker, &key_profile("http://127.0.0.1:17350"))
             .await
             .unwrap();
         assert!(key.is_none());
     }
+    #[tokio::test]
+    async fn read_managed_key_rejects_outgoing_provider_or_mapping_after_failed_switch() {
+        for requested in [storage::Provider::Slm, storage::Provider::Openai] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("runtimes.json");
+            let profile = key_profile("http://127.0.0.1:17350");
+            let mut registry = storage::RuntimeStore::at(&path).unwrap();
+            registry.select(&profile, requested, None).unwrap();
+            registry.save().unwrap();
+            drop(registry);
+            let docker = StubDocker {
+                state_key: Some("outgoing-admin".into()),
+                inspect: Some(managed_inspect_with_key(
+                    "default",
+                    &profile.memory_base_url,
+                    Some("outgoing-env-admin"),
+                )),
+                ..Default::default()
+            };
+            let result = read_managed_core_api_key_using(&docker, &profile, || {
+                storage::RuntimeStore::at(&path)
+            })
+            .await;
+            assert!(
+                result.is_err(),
+                "saved selection mismatch must withhold both state and env keys"
+            );
+            assert_eq!(
+                docker.read_calls.load(std::sync::atomic::Ordering::SeqCst),
+                0
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn read_managed_key_requires_unchanged_legacy_identity_after_cloud_key_rotation() {
+        for recreated in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("runtimes.json");
+            let mut profile = key_profile("http://127.0.0.1:17350");
+            let mut inspect = managed_inspect_with_key("default", &profile.memory_base_url, None);
+            inspect.storage.as_mut().unwrap().project_id = None;
+            inspect.atomicmemory_api_key = profile.api_key.clone();
+            let identity = storage::StorageIdentity {
+                data: Some("created-data".into()),
+                state: Some("created-state".into()),
+            };
+            let mut registry = storage::RuntimeStore::at(&path).unwrap();
+            let volumes = registry
+                .select(&profile, storage::Provider::Openai, Some(&inspect))
+                .unwrap();
+            registry
+                .record_identity(
+                    &profile,
+                    storage::Provider::Openai,
+                    &volumes,
+                    identity.clone(),
+                )
+                .unwrap();
+            registry.save().unwrap();
+            drop(registry);
+            profile.api_key = Some("amc_rotated".into());
+            let mut actual = identity;
+            if recreated {
+                actual.state = Some("different-creation".into());
+            }
+            let docker = StubDocker {
+                state_key: Some("retained-admin".into()),
+                inspect: Some(inspect),
+                observed_identity: Some(actual),
+                ..Default::default()
+            };
+            let result = read_managed_core_api_key_using(&docker, &profile, || {
+                storage::RuntimeStore::at(&path)
+            })
+            .await;
+            if recreated {
+                assert!(result.is_err());
+            } else {
+                assert_eq!(result.unwrap().as_deref(), Some("retained-admin"));
+            }
+            assert_eq!(
+                docker.read_calls.load(std::sync::atomic::Ordering::SeqCst),
+                usize::from(!recreated)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn read_managed_key_holds_lifecycle_lock_before_inspecting_container() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("runtimes.json");
+        let docker = StubDocker {
+            inspect_lock_path: Some(path.clone()),
+            ..Default::default()
+        };
+        let profile = key_profile("http://127.0.0.1:17350");
+        let result =
+            read_managed_core_api_key_using(&docker, &profile, || storage::RuntimeStore::at(&path))
+                .await
+                .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_managed_key_keeps_external_and_missing_docker_paths_available() {
+        let docker = StubDocker::default();
+        let profile = key_profile("https://external-core.example.test");
+        let result = read_managed_core_api_key_using(&docker, &profile, || {
+            panic!("external Core must not load managed state")
+        })
+        .await
+        .unwrap();
+        assert!(result.is_none());
+        let directory = tempfile::tempdir().unwrap();
+        let missing = RealDockerRunner {
+            docker_bin: directory
+                .path()
+                .join("missing-docker")
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let profile = key_profile("http://127.0.0.1:17350");
+        let result = read_managed_core_api_key_using(&missing, &profile, || {
+            storage::RuntimeStore::at(&directory.path().join("runtimes.json"))
+        })
+        .await
+        .unwrap();
+        assert!(result.is_none());
+    }
 }
+
+/// Validate known prerequisites before provisioning Cloud resources or downloading models.
+pub async fn preflight_managed(
+    local_url: Option<&str>,
+    provider: Option<storage::Provider>,
+    interactive: bool,
+) -> Result<()> {
+    if let Some(url) = local_url {
+        address::ManagedAddress::parse(url)?;
+    }
+    if provider == Some(storage::Provider::Slm) && crate::slm::current_target().is_none() {
+        anyhow::bail!("Connected Local SLM requires Apple Silicon macOS");
+    }
+    docker::ensure_docker_available_with_preflight(&RealDockerRunner::new(), interactive).await
+}
+
+/// Pick the shared smoke mode from the selected provider, including saved selections.
+pub async fn smoke_options(
+    profile: &crate::config::ResolvedProfile,
+) -> Result<crate::verification::smoke::SmokeOptions> {
+    if profile.kind != crate::config::ProfileKind::Local {
+        return Ok(Default::default());
+    }
+    let observed = RealDockerRunner::new()
+        .inspect(DEFAULT_CONTAINER_NAME)
+        .await?;
+    let provider = storage::RuntimeStore::open()?.provider(profile, None, observed.as_ref())?;
+    Ok(if provider == storage::Provider::Slm {
+        crate::verification::smoke::SmokeOptions::full_extraction()
+    } else {
+        Default::default()
+    })
+}
+
+#[cfg(test)]
+mod storage_tests;

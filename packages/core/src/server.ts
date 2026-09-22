@@ -17,6 +17,7 @@ import { createApp } from './app/create-app.js';
 import { checkEmbeddingDimensions } from './app/startup-checks.js';
 import { startDeferredAudnScheduler, type DeferredAudnScheduler } from './services/deferred-audn-scheduler.js';
 import { startCloudTraceSync, stopCloudTraceSync } from './services/cloud-trace-sync.js';
+import { buildListenOptions, formatListenUrl } from './app/listen-options.js';
 
 // Process-lifecycle signal handlers reference `runtime` via a closure
 // captured AFTER `bootstrap()` resolves — wired below. Reconciler
@@ -53,8 +54,9 @@ async function bootstrap(): Promise<void> {
     console.log('[startup] Cloud trace sync uploader started');
   }
 
-  app.listen(runtime.config.port, () => {
-    console.log(`AtomicMemory Core running on http://localhost:${runtime!.config.port}`);
+  const listenOptions = buildListenOptions(runtime.config.port, runtime.config.listenHost);
+  app.listen(listenOptions, () => {
+    console.log(`AtomicMemory Core running on ${formatListenUrl(runtime!.config.port, runtime!.config.listenHost)}`);
   });
 
   // Drain the deferred-AUDN queue in the background so ingest stays fast while

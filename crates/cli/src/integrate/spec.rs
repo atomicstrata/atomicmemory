@@ -44,7 +44,7 @@ pub async fn resolve_credentials(global: &GlobalOptions) -> Result<IntegrateCred
     let (api_url, api_key) = match profile.kind {
         ProfileKind::Local => {
             let url = profile.memory_base_url.clone();
-            let key = resolve_local_core_key(&profile.name, &url).await?;
+            let key = resolve_local_core_key(&profile).await?;
             (url, key)
         }
         ProfileKind::Cloud => {
@@ -68,11 +68,11 @@ pub fn preflight_install_runtime() -> Result<()> {
     require_npx()
 }
 
-async fn resolve_local_core_key(profile_name: &str, local_url: &str) -> Result<String> {
+async fn resolve_local_core_key(profile: &crate::config::ResolvedProfile) -> Result<String> {
     if let Some(key) = resolve_core_api_key() {
         return Ok(key);
     }
-    if let Some(key) = crate::instance::read_managed_core_api_key(profile_name, local_url).await {
+    if let Some(key) = crate::instance::read_managed_core_api_key(profile).await? {
         return Ok(key);
     }
     bail!(
@@ -113,11 +113,21 @@ fn push_scope_env(env: &mut Map<String, Value>, creds: &IntegrateCredentials, ho
     }
 }
 
-/// JSON MCP server entry for Cursor / Claude Code.
+/// JSON MCP server entry for Cursor, Claude Code, or OpenCode.
 pub fn json_mcp_server(creds: &IntegrateCredentials, host: Host) -> Value {
     let mut env = Map::new();
     push_scope_env(&mut env, creds, host);
     let (command, args) = launcher_command();
+    if host == Host::OpenCode {
+        let mut command = vec![Value::String(command)];
+        command.extend(args.into_iter().map(Value::String));
+        return json!({
+            "type": "local",
+            "command": command,
+            "environment": Value::Object(env),
+            "codemode": false,
+        });
+    }
     json!({
         "type": "stdio",
         "command": command,
@@ -217,6 +227,50 @@ mod tests {
                 .iter()
                 .any(|v| v.as_str() == Some(MCP_SERVER_PACKAGE))
         );
+    }
+
+    #[test]
+    fn opencode_mcp_uses_v2_local_server_shape() {
+        let creds = IntegrateCredentials {
+            api_url: "http://127.0.0.1:17350".into(),
+            api_key: "local-dev-key".into(),
+            scope_user: "pip".into(),
+            scope_namespace: Some("proj".into()),
+            profile_name: "local".into(),
+            profile_kind: ProfileKind::Local,
+        };
+
+        let entry = json_mcp_server(&creds, Host::OpenCode);
+
+        assert_eq!(entry["type"], "local");
+        #[cfg(windows)]
+        assert_eq!(
+            entry["command"],
+            json!([
+                "cmd",
+                "/c",
+                "npx",
+                "-y",
+                "--package",
+                MCP_SERVER_PACKAGE,
+                "atomicmemory-mcp"
+            ])
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            entry["command"],
+            json!([
+                "npx",
+                "-y",
+                "--package",
+                MCP_SERVER_PACKAGE,
+                "atomicmemory-mcp"
+            ])
+        );
+        assert_eq!(entry["environment"]["ATOMICMEMORY_SCOPE_AGENT"], "opencode");
+        assert_eq!(entry["codemode"], false);
+        assert!(entry.get("args").is_none());
+        assert!(entry.get("env").is_none());
     }
 
     #[cfg(windows)]

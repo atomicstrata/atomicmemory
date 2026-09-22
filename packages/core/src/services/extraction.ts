@@ -7,6 +7,7 @@
  */
 
 import { llm } from './llm.js';
+import { config } from '../config.js';
 import { withCostStage } from './cost-telemetry.js';
 import { timed, timedSync } from './timing.js';
 import { normalizeExtractedFacts } from './fact-normalization.js';
@@ -18,9 +19,12 @@ import {
   type ExtractionOptions,
 } from './observation-date-extraction.js';
 import { filterMetaFacts } from './meta-fact-filter.js';
+import { audnChatOptions } from './extraction-json-schema.js';
+import { deriveKeywordsFromFact, sanitizeKeywords } from './extraction-keywords.js';
+import type { ExtractionPromptVariant } from './extraction-prompt-variant.js';
 
-const EXTRACTION_MAX_TOKENS = 4096;
-const AUDN_MAX_TOKENS = 2048;
+export type { ExtractionPromptVariant } from './extraction-prompt-variant.js';
+export { deriveKeywordsFromFact } from './extraction-keywords.js';
 
 export type { ExtractionOptions };
 
@@ -112,7 +116,12 @@ function repairTruncatedJson(raw: string): string | null {
   if (isValidJson(candidate)) return candidate;
 
   const repaired = closeAtLastCompleteArrayEntry(candidate);
-  return repaired && isValidJson(repaired) ? repaired : null;
+  if (repaired && isValidJson(repaired)) return repaired;
+
+  // One complete array entry then mid-entry truncation: slice ends at `}` so
+  // there is no `},` marker — close the open `[` / `{` containers directly.
+  const closed = closeOpenJsonContainers(candidate);
+  return isValidJson(closed) ? closed : null;
 }
 
 function removeTrailingJsonCommas(value: string): string {
@@ -309,39 +318,161 @@ OUTPUT FORMAT (JSON):
 
 If no extractable facts exist, return: {"memories": []}`;
 
+/**
+ * Short prompt for latency-tuned SLM paths (default-off via EXTRACTION_PROMPT_VARIANT).
+ *
+ * **Reduced capability:** records user-stated facts only. Unlike the full prompt, compact
+ * does not retain assistant recommendations, contact/entity/date guarantees, or short-input
+ * rules. Opt in knowingly via EXTRACTION_PROMPT_VARIANT=compact.
+ *
+ * The stated contract here must match the `am-slm` runtime's compact llguidance
+ * grammar (`AM_SLM_CORE_COMPACT_SCHEMA=1`), which allows only `fact` and `type` and
+ * forbids `headline`/`keywords`/`entities`/`relations`. An earlier revision asked for
+ * five fields against that two-field grammar; the model tried to spend tokens on an
+ * envelope the grammar refused, and the mass spilled into duplicate array entries
+ * (77 facts extracted vs 46 from the cloud ceiling on the same 24 conversations).
+ * Keep prompt, grammar and LoRA training targets stating one identical contract.
+ *
+ * `headline` and `keywords` are backfilled from the fact text in normalizeRawFact,
+ * so omitting them costs no retrieval quality: measured on 593 teacher-labelled
+ * memories, 94% of model-chosen keywords were already literal substrings of the fact.
+ */
+export const EXTRACTION_PROMPT_COMPACT = `You extract atomic, retrievable user facts from the conversation below.
+
+Return JSON in exactly this shape, with no other keys:
+{"memories":[{"fact":"...","type":"preference|project|knowledge|person|plan"}]}
+
+RULES:
+- One fact per distinct claim. Never restate, rephrase, or split a claim you already emitted.
+- Emit few facts when the conversation contains few. Fewer, sharper facts beat more.
+- Terse third-person single clause, under 160 characters. No trailing rationale.
+- Record what the USER said or is. Never record the assistant's commentary or advice.
+- Do not open with a date that the rest of the fact already states.
+- One technology/tool/framework per fact.
+- Preserve supersessions ("replacing X", "instead of Y").
+- Skip filler, pleasantries, and meta-observations about the chat.
+- If nothing durable is present, return {"memories": []}.`;
+
+export function resolveExtractionPrompt(variant: ExtractionPromptVariant | undefined): string {
+  return variant === 'compact' ? EXTRACTION_PROMPT_COMPACT : EXTRACTION_PROMPT;
+}
+
+/** Nudge used on a single retry when the first completion was non-empty but unparseable. */
+const EXTRACTION_JSON_ONLY_NUDGE =
+  'Respond with ONLY the JSON object matching the schema. No prose, no markdown fences, no explanation.';
+
+/**
+ * Raw LLM text long enough that a failed parse is unexpected noise rather than
+ * an empty completion. Matches the ATO-2185 "after JSON at position 22" class.
+ */
+const SUBSTANTIAL_EXTRACTION_RAW_MIN_CHARS = 20;
+
+/** Process-lifetime counter for extract parse failures after retry (ATO-2185). */
+let extractParseFailureCount = 0;
+
+/** Operator-facing count of extract completions that stayed unparseable after retry. */
+export function getExtractParseFailureCount(): number {
+  return extractParseFailureCount;
+}
+
+/** Reset parse-failure counter between tests. */
+export function resetExtractParseFailureCount(): void {
+  extractParseFailureCount = 0;
+}
+
 export async function extractFacts(
   conversationText: string,
   options: ExtractionOptions = {},
 ): Promise<ExtractedFact[]> {
-  const content = await timed('ingest.extract.llm', () => withCostStage('extract', () => llm.chat(
-    [
-      { role: 'system', content: EXTRACTION_PROMPT },
-      { role: 'user', content: buildExtractionUserMessage(conversationText, options) },
-    ],
-    { temperature: 0, jsonMode: true, maxTokens: EXTRACTION_MAX_TOKENS },
-  )));
-
+  const systemPrompt = resolveExtractionPrompt(options.promptVariant);
+  const userMessage = buildExtractionUserMessage(conversationText, options);
+  const content = await callExtractionLlm(systemPrompt, userMessage);
   if (!content) return [];
 
-  const rawFacts = timedSync('ingest.extract.parse', () => parseExtractionResponse(content));
+  const rawFacts = await parseExtractionWithRetry(content, systemPrompt, userMessage);
   if (!rawFacts) return [];
 
-  return timedSync('ingest.extract.post-process', () => {
-    const normalized: ExtractedFact[] = rawFacts.map((m) => normalizeRawFact(m));
-    const anchoredFacts = applyObservationDateAnchors(normalized, conversationText, options);
-    const baseFacts = enrichExtractedFacts(normalizeExtractedFacts(anchoredFacts));
-    const merged = mergeSupplementalFacts(baseFacts, conversationText);
-    // Drop extraction-style meta-facts that describe the conversation
-    // itself rather than recording a durable user fact. These poison
-    // the embedding pool downstream. The filter is on by default;
-    // operators can disable for incident response via
-    // ATOMICMEMORY_META_FACT_FILTER=off. See
-    // src/services/meta-fact-filter.ts for rationale + AlignBench v0
-    // (the AlignBench v0 results) for evidence.
-    // Drops are logged structured ("[meta-fact-filter] dropped …") and
-    // counted via getMetaFactDropStats() for operator monitoring.
-    return filterMetaFacts(merged, { source: 'extract' });
-  });
+  return timedSync('ingest.extract.post-process', () =>
+    postProcessExtractedFacts(rawFacts, conversationText, options),
+  );
+}
+
+async function callExtractionLlm(systemPrompt: string, userMessage: string): Promise<string> {
+  return timed('ingest.extract.llm', () => withCostStage('extract', () => llm.chat(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
+    { temperature: 0, jsonMode: true, maxTokens: config.extractionMaxTokens },
+  )));
+}
+
+/**
+ * Parse extraction JSON; on substantial but unparseable content, retry once with a
+ * JSON-only system nudge. Empty `{"memories":[]}` is valid and does not retry.
+ */
+async function parseExtractionWithRetry(
+  content: string,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<(RawExtractedFact | LeafFact)[] | null> {
+  const first = timedSync('ingest.extract.parse', () => parseExtractionResponse(content));
+  if (first !== null) return first;
+  if (!isSubstantialExtractionContent(content)) return null;
+
+  const retryContent = await retryExtractionForJsonOnly(systemPrompt, userMessage);
+  const retried = timedSync('ingest.extract.parse-retry', () =>
+    parseExtractionResponse(retryContent ?? ''),
+  );
+  if (retried !== null) return retried;
+
+  recordExtractParseFailure();
+  return null;
+}
+
+function isSubstantialExtractionContent(content: string): boolean {
+  return content.trim().length >= SUBSTANTIAL_EXTRACTION_RAW_MIN_CHARS && content.includes('{');
+}
+
+async function retryExtractionForJsonOnly(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  return timed('ingest.extract.llm-retry', () => withCostStage('extract', () => llm.chat(
+    [
+      { role: 'system', content: `${systemPrompt}\n\n${EXTRACTION_JSON_ONLY_NUDGE}` },
+      { role: 'user', content: userMessage },
+    ],
+    { temperature: 0, jsonMode: true, maxTokens: config.extractionMaxTokens },
+  )));
+}
+
+function recordExtractParseFailure(): void {
+  extractParseFailureCount += 1;
+  console.error(
+    '[extractFacts] parse failed after retry; returning empty.',
+  );
+}
+
+function postProcessExtractedFacts(
+  rawFacts: (RawExtractedFact | LeafFact)[],
+  conversationText: string,
+  options: ExtractionOptions,
+): ExtractedFact[] {
+  const normalized: ExtractedFact[] = rawFacts.map((m) => normalizeRawFact(m, options.promptVariant));
+  const anchoredFacts = applyObservationDateAnchors(normalized, conversationText, options);
+  const baseFacts = enrichExtractedFacts(normalizeExtractedFacts(anchoredFacts));
+  const merged = mergeSupplementalFacts(baseFacts, conversationText);
+  // Drop extraction-style meta-facts that describe the conversation
+  // itself rather than recording a durable user fact. These poison
+  // the embedding pool downstream. The filter is on by default;
+  // operators can disable for incident response via
+  // ATOMICMEMORY_META_FACT_FILTER=off. See
+  // src/services/meta-fact-filter.ts for rationale + AlignBench v0
+  // (the AlignBench v0 results) for evidence.
+  // Drops are logged structured ("[meta-fact-filter] dropped …") and
+  // counted via getMetaFactDropStats() for operator monitoring.
+  return filterMetaFacts(merged, { source: 'extract' });
 }
 
 type RawExtractedFact = ExtractedFact & {
@@ -352,9 +483,14 @@ type RawExtractedFact = ExtractedFact & {
   relations?: ExtractedRelation[];
 };
 
-/** Parse and validate LLM extraction response, returning raw facts or null on failure. */
+/**
+ * Parse and validate LLM extraction response, returning raw facts or null on failure.
+ * Uses extractFirstJsonObject (same as AUDN) so trailing prose / second JSON blocks
+ * do not trip JSON.parse — the ATO-2185 "non-whitespace after JSON at position N" mode.
+ * Incomplete first objects still fall through to truncated-JSON repair.
+ */
 function parseExtractionResponse(content: string): (RawExtractedFact | LeafFact)[] | null {
-  const cleanedContent = stripJsonFences(content);
+  const cleanedContent = extractFirstJsonObject(content);
   const parsed = parseJsonWithRepair(cleanedContent);
   if (!parsed) return null;
   return resolveFactArray(parsed, content);
@@ -365,19 +501,19 @@ function parseJsonWithRepair(
   cleanedContent: string,
 ): Record<string, unknown> | null {
   try {
-    return JSON.parse(cleanedContent);
-  } catch (err) {
-    console.warn(`[extractFacts] JSON parse failed (${(err as Error).message}); attempting repair`);
+    return JSON.parse(cleanedContent) as Record<string, unknown>;
+  } catch {
+    console.warn('[extractFacts] JSON parse failed; attempting repair');
   }
   const repaired = repairTruncatedJson(cleanedContent);
   if (!repaired) {
-    console.warn('[extractFacts] No valid JSON found; returning empty. Raw:', cleanedContent.slice(0, 300));
+    console.warn('[extractFacts] No valid JSON found; returning empty.');
     return null;
   }
   try {
-    return JSON.parse(repaired);
+    return JSON.parse(repaired) as Record<string, unknown>;
   } catch {
-    console.warn('[extractFacts] JSON repair failed; returning empty. Raw:', cleanedContent.slice(0, 300));
+    console.warn('[extractFacts] JSON repair failed; returning empty.');
     return null;
   }
 }
@@ -404,19 +540,64 @@ function resolveFactArray(
 }
 
 /** Normalize a single raw extracted fact into the canonical ExtractedFact shape. */
-function normalizeRawFact(m: RawExtractedFact | LeafFact): ExtractedFact {
+const VALID_FACT_TYPES = new Set<ExtractedFact['type']>([
+  'preference',
+  'project',
+  'knowledge',
+  'person',
+  'plan',
+]);
+
+const DEFAULT_IMPORTANCE = 0.5;
+
+function coerceImportance(raw: unknown): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : DEFAULT_IMPORTANCE;
+}
+
+function coerceFactType(raw: unknown): ExtractedFact['type'] {
+  const candidate = typeof raw === 'string' ? raw.toLowerCase() : '';
+  return VALID_FACT_TYPES.has(candidate as ExtractedFact['type'])
+    ? (candidate as ExtractedFact['type'])
+    : 'knowledge';
+}
+
+/**
+ * Backfill the retrieval envelope the compact SLM contract omits.
+ *
+ * Both fields are derived from the fact text rather than requested from the model, so
+ * the compact grammar can forbid them without degrading keyword search.
+ */
+function coerceKeywords(
+  raw: unknown,
+  fact: string,
+  promptVariant: ExtractionPromptVariant | undefined,
+): string[] {
+  const sanitized = sanitizeKeywords(raw);
+  if (sanitized.length > 0) return sanitized;
+  if (promptVariant === 'compact' || raw === undefined) {
+    return deriveKeywordsFromFact(fact);
+  }
+  return [];
+}
+
+function coerceHeadline(raw: unknown, fact: string): string {
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : generateFallbackHeadline(fact);
+}
+
+function normalizeRawFact(
+  m: RawExtractedFact | LeafFact,
+  promptVariant: ExtractionPromptVariant | undefined,
+): ExtractedFact {
   const rawEntry = m as RawExtractedFact;
   const fact = rawEntry.fact ?? rawEntry.statement ?? '';
-  const rawImportance = Number(m.importance);
-  const importance = Number.isFinite(rawImportance) ? Math.max(0, Math.min(1, rawImportance)) : 0.5;
-  const VALID_TYPES = new Set<ExtractedFact['type']>(['preference', 'project', 'knowledge', 'person', 'plan']);
-  const rawType = typeof m.type === 'string' ? m.type.toLowerCase() : '';
+  const keywordsPresent = Object.prototype.hasOwnProperty.call(rawEntry, 'keywords');
   return {
     fact,
-    importance,
-    type: VALID_TYPES.has(rawType as ExtractedFact['type']) ? rawType as ExtractedFact['type'] : 'knowledge',
-    keywords: Array.isArray(m.keywords) ? m.keywords : [],
-    headline: typeof m.headline === 'string' && m.headline.trim() ? m.headline.trim() : generateFallbackHeadline(fact),
+    importance: coerceImportance(m.importance),
+    type: coerceFactType(m.type),
+    keywords: coerceKeywords(keywordsPresent ? rawEntry.keywords : undefined, fact, promptVariant),
+    headline: coerceHeadline(m.headline, fact),
     entities: normalizeExtractedEntities(m.entities),
     relations: normalizeExtractedRelations(m.relations),
   };
@@ -550,9 +731,14 @@ OUTPUT FORMAT (JSON):
 Return only the JSON object. Do not wrap it in markdown fences. Do not explain your reasoning.
 `;
 
+export function resolveAudnPrompt(_variant: ExtractionPromptVariant): string {
+  return AUDN_PROMPT;
+}
+
 export async function resolveAUDN(
   newFact: string,
   existingMemories: ExistingMemory[],
+  promptVariant: ExtractionPromptVariant,
 ): Promise<AUDNDecision> {
   const memoriesBlock = existingMemories
     .map((m) => `[ID: ${m.id}] (similarity: ${m.similarity.toFixed(2)}) ${m.content}`)
@@ -560,10 +746,10 @@ export async function resolveAUDN(
 
   const content = await llm.chat(
     [
-      { role: 'system', content: AUDN_PROMPT },
+      { role: 'system', content: resolveAudnPrompt(promptVariant) },
       { role: 'user', content: `NEW FACT: ${newFact}\n\nEXISTING MEMORIES:\n${memoriesBlock}` },
     ],
-    { temperature: 0, jsonMode: true, maxTokens: AUDN_MAX_TOKENS },
+    { temperature: 0, ...audnChatOptions(config.audnJsonSchema, config.audnMaxTokens) },
   );
 
   if (!content) {

@@ -12,8 +12,19 @@
 #     --dir "$tmp" \
 #     && sh "$tmp/install.sh"
 #
+# Canary (dev tip) channel:
+#   tmp="$(mktemp -d)" && \
+#   AM_INTERNAL_TAG=cli-canary-latest gh release download cli-canary-latest \
+#     --repo atomicstrata/atomicmemory-internal \
+#     --pattern install.sh \
+#     --dir "$tmp" \
+#     && AM_INTERNAL_TAG=cli-canary-latest sh "$tmp/install.sh"
+#
 # Optional:
+#   AM_INTERNAL_TAG=cli-internal-latest  floating main/internal (default)
+#   AM_INTERNAL_TAG=cli-canary-latest    floating dev/canary
 #   AM_INTERNAL_TAG=cli-internal-<sha>   pin a specific internal release
+#   AM_INTERNAL_TAG=cli-canary-<sha>     pin a specific canary release
 #   AM_INTERNAL_REPO=owner/repo          override source repo (tests)
 #   AM_INSTALL_DIR / --bin-dir           same as scripts/install-cli.sh
 set -eu
@@ -36,7 +47,7 @@ have tar || err "need tar on PATH"
 
 case "$AM_INTERNAL_TAG" in
   cli-v* | v[0-9]* | [0-9]*.[0-9]*.[0-9]*)
-    err "refusing public release tag '${AM_INTERNAL_TAG}'; use cli-internal-latest or cli-internal-<sha>"
+    err "refusing public release tag '${AM_INTERNAL_TAG}'; use cli-internal-latest, cli-canary-latest, or cli-*-<sha>"
     ;;
 esac
 
@@ -44,7 +55,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/am-internal.XXXXXX")" || err "mktemp failed"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT INT TERM
 
-info "info: downloading internal release ${AM_INTERNAL_TAG} from ${AM_INTERNAL_REPO}"
+info "info: downloading release ${AM_INTERNAL_TAG} from ${AM_INTERNAL_REPO}"
 gh release download "$AM_INTERNAL_TAG" \
   --repo "$AM_INTERNAL_REPO" \
   --dir "$TMP" \
@@ -80,5 +91,5 @@ export AM_BASE_URL="file://${TMP}/mirror"
 export AM_VERIFY_ATTESTATION=0
 export AM_VERSION
 
-info "info: installing am ${AM_VERSION} from internal channel (${AM_INTERNAL_TAG})"
+info "info: installing am ${AM_VERSION} from private channel (${AM_INTERNAL_TAG})"
 sh "$installer" "$@"

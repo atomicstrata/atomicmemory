@@ -40,8 +40,8 @@ or publish pending.
 - CLI (`am`) public install channel via GitHub Releases and
   `get.atomicstrata.ai`, with install and verification steps in
   [`crates/cli/README.md`](crates/cli/README.md).
-- `am integrate` for global host MCP install into Cursor, Claude Code, and
-  Codex (`list`, `detect`, `install`, `update`, `doctor`, `uninstall`). See
+- `am integrate` for global host MCP install into Cursor, Claude Code, Codex,
+  and OpenCode (`list`, `detect`, `install`, `update`, `doctor`, `uninstall`). See
   [`crates/cli/README.md`](crates/cli/README.md).
 - MCP `memory_ingest` reserved-metadata preflight and agent-facing schema
   guidance in `@atomicmemory/mcp-server` 0.1.5. See
@@ -54,6 +54,10 @@ or publish pending.
 
 - Core OpenAI chat parameter selection and retry mitigations for reasoning and
   token-limit SKUs (no public API change). See
+  [`packages/core/CHANGELOG.md`](packages/core/CHANGELOG.md).
+- `@atomicmemory/core` 1.2.2: harden `extractFacts` JSON parse against trailing
+  prose after a successful completion (ATO-2185), and keep hosted migration
+  compatibility in private deployment tooling. See
   [`packages/core/CHANGELOG.md`](packages/core/CHANGELOG.md).
 
 ### Changed

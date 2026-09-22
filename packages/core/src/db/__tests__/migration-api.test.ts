@@ -148,8 +148,8 @@ function expectOlderDbStatus(
 }
 
 // Update these two constants whenever a new migration file is added.
-const CURRENT_MIGRATION_COUNT = 2;
-const CURRENT_LATEST_MIGRATION = '0002_entity_settings';
+const CURRENT_MIGRATION_COUNT = 6;
+const CURRENT_LATEST_MIGRATION = '0005_cloud_trace_outbox';
 
 function expectBaselineMigrationCurrent(status: MigrationStatus): void {
   expect(status.appliedMigrationCount).toBe(CURRENT_MIGRATION_COUNT);

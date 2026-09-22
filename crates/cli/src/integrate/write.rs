@@ -7,10 +7,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use jsonc_parser::ParseOptions;
+use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp, CstRootNode};
 use serde_json::Value;
 
 use crate::config::config_dir;
-use crate::integrate::host::MCP_SERVER_NAME;
+use crate::integrate::host::{Host, MCP_SERVER_NAME};
 use crate::integrate::path_util::home_dir;
 
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -262,7 +264,28 @@ fn guard_write_target(link: &Path, real_target: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Read a JSON host configuration, returning an empty object for a missing or empty file.
 pub fn read_json_file(path: &Path) -> Result<Value> {
+    read_json_document(path, "JSON", |raw| Ok(serde_json::from_str(raw)?))
+}
+
+/// Read a host configuration using OpenCode's JSONC support when required.
+pub fn read_host_json_file(path: &Path, host: Host) -> Result<Value> {
+    if host != Host::OpenCode {
+        return read_json_file(path);
+    }
+    read_json_document(path, "JSONC", |raw| {
+        let root = parse_jsonc_root(raw)?;
+        root.to_serde_value()
+            .context("JSONC config does not contain a value")
+    })
+}
+
+fn read_json_document(
+    path: &Path,
+    format: &str,
+    parse: impl FnOnce(&str) -> Result<Value>,
+) -> Result<Value> {
     if !path.exists() {
         return Ok(Value::Object(Default::default()));
     }
@@ -270,8 +293,7 @@ pub fn read_json_file(path: &Path) -> Result<Value> {
     if raw.trim().is_empty() {
         return Ok(Value::Object(Default::default()));
     }
-    let value: Value =
-        serde_json::from_str(&raw).with_context(|| format!("parse JSON {}", path.display()))?;
+    let value = parse(&raw).with_context(|| format!("parse {format} {}", path.display()))?;
     if !value.is_object() {
         bail!(
             "{} root must be a JSON object — refusing to overwrite",
@@ -281,19 +303,207 @@ pub fn read_json_file(path: &Path) -> Result<Value> {
     Ok(value)
 }
 
-pub fn current_json_entry(existing: &Value) -> Option<Value> {
-    existing
-        .get("mcpServers")
-        .and_then(|s| s.get(MCP_SERVER_NAME))
-        .cloned()
+fn parse_jsonc_root(raw: &str) -> Result<CstRootNode> {
+    CstRootNode::parse(raw, &ParseOptions::default()).map_err(anyhow::Error::msg)
 }
 
+fn named_properties(object: &CstObject, name: &str) -> Vec<CstObjectProp> {
+    object
+        .properties()
+        .into_iter()
+        .filter(|property| property.decoded_name().as_deref() == Some(name))
+        .collect()
+}
+
+fn opencode_server_objects(root: &CstObject) -> Result<Vec<CstObject>> {
+    let mut server_objects = Vec::new();
+    for mcp_property in named_properties(root, "mcp") {
+        let mcp = mcp_property
+            .value()
+            .and_then(|value| value.as_object())
+            .context("mcp must be a JSON object")?;
+        for servers_property in named_properties(&mcp, "servers") {
+            let servers = servers_property
+                .value()
+                .and_then(|value| value.as_object())
+                .context("mcp.servers must be a JSON object")?;
+            server_objects.push(servers);
+        }
+    }
+    Ok(server_objects)
+}
+
+fn opencode_entry_properties(root: &CstObject) -> Result<Vec<CstObjectProp>> {
+    let mut entries = Vec::new();
+    for servers in opencode_server_objects(root)? {
+        entries.extend(named_properties(&servers, MCP_SERVER_NAME));
+    }
+    Ok(entries)
+}
+
+fn ensure_unambiguous_opencode_containers(root: &CstObject) -> Result<()> {
+    let mcp_properties = named_properties(root, "mcp");
+    if mcp_properties.len() > 1 {
+        bail!("OpenCode config contains duplicate `mcp` properties");
+    }
+    let Some(mcp) = mcp_properties.first() else {
+        return Ok(());
+    };
+    let mcp = mcp
+        .value()
+        .and_then(|value| value.as_object())
+        .context("mcp must be a JSON object")?;
+    if named_properties(&mcp, "servers").len() > 1 {
+        bail!("OpenCode config contains duplicate `mcp.servers` properties");
+    }
+    Ok(())
+}
+
+/// Count managed OpenCode properties across duplicate parent containers.
+pub fn opencode_entry_count(path: &Path) -> Result<usize> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Ok(0);
+    }
+    let root = parse_jsonc_root(&raw).with_context(|| format!("parse JSONC {}", path.display()))?;
+    let object = root
+        .object_value()
+        .with_context(|| format!("{} root must be a JSON object", path.display()))?;
+    opencode_entry_properties(&object).map(|entries| entries.len())
+}
+
+/// Refuse an ambiguous OpenCode target with duplicate managed server properties.
+pub fn ensure_single_opencode_entry(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    let root = parse_jsonc_root(&raw).with_context(|| format!("parse JSONC {}", path.display()))?;
+    let object = root
+        .object_value()
+        .with_context(|| format!("{} root must be a JSON object", path.display()))?;
+    ensure_unambiguous_opencode_containers(&object)?;
+    if opencode_entry_properties(&object)?.len() > 1 {
+        bail!(
+            "{} contains duplicate `mcp.servers.{MCP_SERVER_NAME}` entries — remove duplicates before retrying",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+/// Fail closed when another OpenCode global config file also defines the managed server.
+pub fn ensure_no_opencode_sibling_entry(
+    config_paths: &crate::integrate::host::HostConfigPaths,
+    target: &Path,
+) -> Result<()> {
+    for sibling in config_paths.opencode_global_config_paths() {
+        if sibling == target || !sibling.exists() {
+            continue;
+        }
+        if opencode_entry_count(&sibling)? > 0 {
+            bail!(
+                "OpenCode also defines `mcp.servers.{MCP_SERVER_NAME}` in {} — remove the sibling entry before retrying",
+                sibling.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cst_input(value: &Value) -> CstInputValue {
+    match value {
+        Value::Null => CstInputValue::Null,
+        Value::Bool(value) => CstInputValue::Bool(*value),
+        Value::Number(value) => CstInputValue::Number(value.to_string()),
+        Value::String(value) => CstInputValue::String(value.clone()),
+        Value::Array(values) => CstInputValue::Array(values.iter().map(cst_input).collect()),
+        Value::Object(values) => CstInputValue::Object(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), cst_input(value)))
+                .collect(),
+        ),
+    }
+}
+
+/// Render a merged JSON host config, preserving OpenCode JSONC trivia and formatting.
+pub fn render_json_host_config(path: &Path, host: Host, merged: &Value) -> Result<String> {
+    if host != Host::OpenCode {
+        let rendered = serde_json::to_string_pretty(merged).context("serialize JSON")?;
+        return Ok(format!("{rendered}\n"));
+    }
+    let raw = if path.exists() {
+        fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?
+    } else {
+        "{}".into()
+    };
+    let root = parse_jsonc_root(if raw.trim().is_empty() { "{}" } else { &raw })?;
+    let root_object = root
+        .object_value()
+        .context("OpenCode config root must be a JSON object")?;
+    apply_opencode_entry(&root_object, current_json_entry(merged, host))?;
+    let mut rendered = root.to_string();
+    if raw.ends_with('\n') && !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    Ok(rendered)
+}
+
+fn apply_opencode_entry(root: &jsonc_parser::cst::CstObject, entry: Option<Value>) -> Result<()> {
+    if let Some(entry) = entry {
+        ensure_unambiguous_opencode_containers(root)?;
+        let current_entries = opencode_entry_properties(root)?;
+        if current_entries.len() > 1 {
+            bail!(
+                "OpenCode config contains duplicate `mcp.servers.{MCP_SERVER_NAME}` entries — remove duplicates before retrying"
+            );
+        }
+        if let Some(current) = current_entries.first() {
+            current.set_value(cst_input(&entry));
+            return Ok(());
+        }
+        let mcp = root
+            .object_value_or_create("mcp")
+            .context("mcp must be a JSON object")?;
+        let servers = mcp
+            .object_value_or_create("servers")
+            .context("mcp.servers must be a JSON object")?;
+        servers.append(MCP_SERVER_NAME, cst_input(&entry));
+        return Ok(());
+    }
+    for current in opencode_entry_properties(root)? {
+        current.remove();
+    }
+    // Keep empty containers: comments attached inside `mcp` or `servers` are
+    // user configuration and must survive uninstall.
+    Ok(())
+}
+
+/// Return the managed MCP server entry for a JSON-based host.
+pub fn current_json_entry(existing: &Value, host: Host) -> Option<Value> {
+    let servers = if host == Host::OpenCode {
+        existing.get("mcp").and_then(|mcp| mcp.get("servers"))
+    } else {
+        existing.get("mcpServers")
+    };
+    servers.and_then(|s| s.get(MCP_SERVER_NAME)).cloned()
+}
+
+/// Merge the managed MCP server entry while preserving unrelated host settings.
 pub fn merge_json_mcp(
     existing: &Value,
     server_entry: &Value,
+    host: Host,
     force: bool,
 ) -> Result<(Value, bool)> {
-    let current = current_json_entry(existing);
+    let current = current_json_entry(existing, host);
     if let Some(current) = &current {
         if current == server_entry {
             return Ok((existing.clone(), false));
@@ -306,30 +516,54 @@ pub fn merge_json_mcp(
     let obj = root
         .as_object_mut()
         .context("host config root must be a JSON object")?;
-    let servers = obj
-        .entry("mcpServers")
-        .or_insert_with(|| Value::Object(Default::default()));
+    let servers = if host == Host::OpenCode {
+        let mcp = obj
+            .entry("mcp")
+            .or_insert_with(|| Value::Object(Default::default()))
+            .as_object_mut()
+            .context("mcp must be a JSON object")?;
+        mcp.entry("servers")
+            .or_insert_with(|| Value::Object(Default::default()))
+    } else {
+        obj.entry("mcpServers")
+            .or_insert_with(|| Value::Object(Default::default()))
+    };
     let map = servers
         .as_object_mut()
-        .context("mcpServers must be a JSON object")?;
+        .context("MCP servers must be a JSON object")?;
     map.insert(MCP_SERVER_NAME.to_string(), server_entry.clone());
     Ok((root, true))
 }
 
+/// Remove the managed MCP entry or restore the entry replaced during installation.
 pub fn remove_or_restore_json_mcp(
     existing: &Value,
+    host: Host,
     restore_entry: Option<&str>,
 ) -> Result<(Value, bool)> {
     let mut root = existing.clone();
     let (changed, remove_empty_servers) = {
-        let Some(obj) = root.as_object_mut() else {
-            return Ok((root, false));
-        };
-        let Some(servers) = obj.get_mut("mcpServers") else {
-            return Ok((root, false));
-        };
-        let Some(map) = servers.as_object_mut() else {
-            return Ok((root, false));
+        let obj = root
+            .as_object_mut()
+            .context("host config root must be a JSON object")?;
+        let map = if host == Host::OpenCode {
+            let Some(mcp) = obj.get_mut("mcp") else {
+                return Ok((root, false));
+            };
+            let mcp = mcp.as_object_mut().context("mcp must be a JSON object")?;
+            let Some(servers) = mcp.get_mut("servers") else {
+                return Ok((root, false));
+            };
+            servers
+                .as_object_mut()
+                .context("mcp.servers must be a JSON object")?
+        } else {
+            let Some(servers) = obj.get_mut("mcpServers") else {
+                return Ok((root, false));
+            };
+            servers
+                .as_object_mut()
+                .context("mcpServers must be a JSON object")?
         };
         if let Some(raw) = restore_entry {
             let entry: Value = serde_json::from_str(raw).context("parse stored prior MCP entry")?;
@@ -342,7 +576,16 @@ pub fn remove_or_restore_json_mcp(
     };
     if remove_empty_servers {
         if let Some(obj) = root.as_object_mut() {
-            obj.remove("mcpServers");
+            if host == Host::OpenCode {
+                if let Some(mcp) = obj.get_mut("mcp").and_then(Value::as_object_mut) {
+                    mcp.remove("servers");
+                    if mcp.is_empty() {
+                        obj.remove("mcp");
+                    }
+                }
+            } else {
+                obj.remove("mcpServers");
+            }
         }
     }
     Ok((root, changed))
@@ -357,7 +600,45 @@ mod tests {
     fn merge_refuses_conflicting_entry_without_force() {
         let existing = json!({ "mcpServers": { "atomicmemory": { "command": "old" } } });
         let entry = json!({ "command": "npx" });
-        assert!(merge_json_mcp(&existing, &entry, false).is_err());
+        assert!(merge_json_mcp(&existing, &entry, Host::Cursor, false).is_err());
+    }
+
+    #[test]
+    fn merge_opencode_preserves_unrelated_config_and_is_idempotent() {
+        let existing = json!({
+            "$schema": "https://opencode.ai/config.json",
+            "model": "example/model",
+            "mcp": {
+                "timeout": { "startup": 45_000 },
+                "servers": { "other": { "type": "remote", "url": "https://example.com/mcp" } }
+            }
+        });
+        let entry = json!({ "type": "local", "command": ["npx", "server"] });
+
+        let (merged, changed) = merge_json_mcp(&existing, &entry, Host::OpenCode, false).unwrap();
+        assert!(changed);
+        assert_eq!(merged["model"], "example/model");
+        assert_eq!(merged["mcp"]["timeout"]["startup"], 45_000);
+        assert_eq!(merged["mcp"]["servers"]["other"]["type"], "remote");
+        assert_eq!(merged["mcp"]["servers"]["atomicmemory"], entry);
+
+        let (again, changed) = merge_json_mcp(&merged, &entry, Host::OpenCode, false).unwrap();
+        assert!(!changed);
+        assert_eq!(again, merged);
+    }
+
+    #[test]
+    fn merge_opencode_requires_force_for_conflicting_entry() {
+        let existing = json!({
+            "mcp": { "servers": { "atomicmemory": { "type": "remote", "url": "https://example.com" } } }
+        });
+        let entry = json!({ "type": "local", "command": ["npx", "server"] });
+
+        assert!(merge_json_mcp(&existing, &entry, Host::OpenCode, false).is_err());
+        let (merged, changed) = merge_json_mcp(&existing, &entry, Host::OpenCode, true).unwrap();
+
+        assert!(changed);
+        assert_eq!(merged["mcp"]["servers"]["atomicmemory"], entry);
     }
 
     #[test]
@@ -366,6 +647,108 @@ mod tests {
         let path = dir.path().join("mcp.json");
         fs::write(&path, "[]").unwrap();
         assert!(read_json_file(&path).is_err());
+    }
+
+    #[test]
+    fn reads_opencode_jsonc_comments_and_trailing_commas() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("opencode.jsonc");
+        fs::write(
+            &path,
+            r#"{
+                // Keep the user's model setting.
+                "model": "example/model",
+                "note": "https://example.com/a,b//c/*d*/",
+                "mcp": {
+                    "servers": {},
+                },
+            }"#,
+        )
+        .unwrap();
+
+        let config = read_host_json_file(&path, Host::OpenCode).unwrap();
+
+        assert_eq!(config["model"], "example/model");
+        assert_eq!(config["note"], "https://example.com/a,b//c/*d*/");
+        assert!(config["mcp"]["servers"].is_object());
+
+        let entry = json!({ "type": "local", "command": ["npx", "server"] });
+        let (merged, _) = merge_json_mcp(&config, &entry, Host::OpenCode, false).unwrap();
+        let rendered = render_json_host_config(&path, Host::OpenCode, &merged).unwrap();
+        assert!(rendered.contains("// Keep the user's model setting."));
+        assert!(rendered.contains("https://example.com/a,b//c/*d*/"));
+        assert!(rendered.contains("\"atomicmemory\""));
+        assert!(rendered.contains(",\n                },"));
+    }
+
+    #[test]
+    fn opencode_install_rejects_duplicate_managed_properties() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("opencode.jsonc");
+        fs::write(
+            &path,
+            r#"{
+  "mcp": { "servers": {
+    "atomicmemory": { "type": "remote", "url": "https://first.example" },
+    "atomicmemory": { "type": "remote", "url": "https://second.example" },
+  } },
+}"#,
+        )
+        .unwrap();
+
+        let error = ensure_single_opencode_entry(&path).unwrap_err();
+        assert!(error.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn opencode_uninstall_removes_all_duplicate_managed_properties() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("opencode.jsonc");
+        fs::write(
+            &path,
+            r#"{
+  "mcp": { "servers": {
+    "atomicmemory": { "type": "remote", "url": "https://first.example" },
+    "atomicmemory": { "type": "remote", "url": "https://second.example" },
+  } },
+}"#,
+        )
+        .unwrap();
+        let existing = read_host_json_file(&path, Host::OpenCode).unwrap();
+        let (merged, changed) =
+            remove_or_restore_json_mcp(&existing, Host::OpenCode, None).unwrap();
+
+        assert!(changed);
+        let rendered = render_json_host_config(&path, Host::OpenCode, &merged).unwrap();
+        assert_eq!(rendered.matches("\"atomicmemory\"").count(), 0);
+    }
+
+    #[test]
+    fn opencode_uninstall_preserves_comments_in_empty_mcp_containers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("opencode.jsonc");
+        fs::write(
+            &path,
+            r#"{
+  "mcp": {
+    // Keep this MCP-level note.
+    "servers": {
+      // Keep this server-level note.
+      "atomicmemory": { "type": "local", "command": ["npx", "server"] },
+    },
+  },
+}"#,
+        )
+        .unwrap();
+        let existing = read_host_json_file(&path, Host::OpenCode).unwrap();
+        let (merged, changed) =
+            remove_or_restore_json_mcp(&existing, Host::OpenCode, None).unwrap();
+
+        assert!(changed);
+        let rendered = render_json_host_config(&path, Host::OpenCode, &merged).unwrap();
+        assert!(rendered.contains("// Keep this MCP-level note."));
+        assert!(rendered.contains("// Keep this server-level note."));
+        assert!(rendered.contains("\"servers\""));
     }
 
     #[test]
@@ -503,8 +886,44 @@ mod tests {
     #[test]
     fn remove_without_restore_drops_empty_mcp_servers_object() {
         let existing = json!({ "mcpServers": { "atomicmemory": { "command": "npx" } } });
-        let (merged, changed) = remove_or_restore_json_mcp(&existing, None).unwrap();
+        let (merged, changed) = remove_or_restore_json_mcp(&existing, Host::Cursor, None).unwrap();
         assert!(changed);
         assert!(merged.get("mcpServers").is_none());
+    }
+
+    #[test]
+    fn opencode_remove_and_restore_preserve_unrelated_settings() {
+        let prior = json!({ "type": "remote", "url": "https://example.com" });
+        let existing = json!({
+            "model": "example/model",
+            "mcp": {
+                "timeout": { "startup": 45_000 },
+                "servers": {
+                    "other": { "type": "remote", "url": "https://other.example.com" },
+                    "atomicmemory": { "type": "local", "command": ["npx", "server"] }
+                }
+            }
+        });
+
+        let (restored, changed) =
+            remove_or_restore_json_mcp(&existing, Host::OpenCode, Some(&prior.to_string()))
+                .unwrap();
+        assert!(changed);
+        assert_eq!(restored["mcp"]["servers"]["atomicmemory"], prior);
+        assert_eq!(restored["mcp"]["servers"]["other"]["type"], "remote");
+        assert_eq!(restored["model"], "example/model");
+
+        let (removed, changed) =
+            remove_or_restore_json_mcp(&existing, Host::OpenCode, None).unwrap();
+        assert!(changed);
+        assert!(removed["mcp"]["servers"].get("atomicmemory").is_none());
+        assert_eq!(removed["mcp"]["timeout"]["startup"], 45_000);
+    }
+
+    #[test]
+    fn opencode_remove_refuses_malformed_mcp_container() {
+        let existing = json!({ "mcp": [] });
+        let err = remove_or_restore_json_mcp(&existing, Host::OpenCode, None).unwrap_err();
+        assert!(err.to_string().contains("mcp must be a JSON object"));
     }
 }

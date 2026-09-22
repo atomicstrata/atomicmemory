@@ -3,25 +3,17 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use reqwest::Client;
 use serde::Serialize;
 
 use crate::auth::clerk_oauth::{resolve_oauth_pair, resolve_public_client_id};
+use crate::auth::http;
 use crate::auth::token::discover_metadata;
 use crate::config::{
     DEFAULT_OAUTH_CALLBACK_PORT, ensure_config_initialized, load_config, resolve_profile,
 };
 use crate::environment::is_production_api_url;
 
-const OAUTH_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 const API_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
-
-fn oauth_http_client() -> Result<Client> {
-    Client::builder()
-        .timeout(OAUTH_HTTP_TIMEOUT)
-        .build()
-        .context("build oauth http client")
-}
 
 /// Optional overrides for dev / custom Clerk instances (e.g. `auth login --issuer --client-id`).
 #[derive(Debug, Clone, Default)]
@@ -190,7 +182,7 @@ async fn probe_clerk_public_client(
     client_id: &str,
     redirect_uri: &str,
 ) -> Result<Option<bool>> {
-    let client = oauth_http_client()?;
+    let client = http::client()?;
     let body: serde_json::Value = client
         .post(token_endpoint)
         .form(&[
@@ -230,7 +222,7 @@ fn classify_clerk_probe(error: Option<&str>) -> Option<bool> {
 
 async fn probe_api_health(base_url: &str) -> Result<bool> {
     let url = format!("{}/healthz", base_url.trim_end_matches('/'));
-    let client = oauth_http_client()?;
+    let client = http::client()?;
     let status = client
         .get(&url)
         .timeout(API_HEALTH_TIMEOUT)
@@ -257,8 +249,55 @@ pub async fn require_login_ready(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use axum::Router;
+    use axum::extract::State;
+    use axum::http::{HeaderMap, StatusCode, header};
+    use axum::routing::get;
+
     use super::*;
     use crate::config::DEFAULT_CLOUD_URL;
+
+    #[tokio::test]
+    async fn api_health_probe_sends_versioned_cli_user_agent() {
+        let seen_user_agent = Arc::new(Mutex::new(None::<String>));
+        let app = Router::new()
+            .route(
+                "/healthz",
+                get(
+                    |State(seen): State<Arc<Mutex<Option<String>>>>, headers: HeaderMap| async move {
+                        let user_agent = headers
+                            .get(header::USER_AGENT)
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_string);
+                        *seen.lock().unwrap() = user_agent.clone();
+                        if user_agent.as_deref()
+                            == Some(crate::auth::http::USER_AGENT)
+                        {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::FORBIDDEN
+                        }
+                    },
+                ),
+            )
+            .with_state(seen_user_agent.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let healthy = probe_api_health(&format!("http://{address}"))
+            .await
+            .unwrap();
+        server.abort();
+
+        assert!(healthy);
+        assert_eq!(
+            seen_user_agent.lock().unwrap().as_deref(),
+            Some(crate::auth::http::USER_AGENT)
+        );
+    }
 
     #[test]
     fn report_ok_requires_clerk_client() {

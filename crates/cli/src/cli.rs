@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
     auth, config_cmd, connect, doctor_cmd, hooks, init, instance, integrate, key, link, memory,
-    migrate, org, project, trace, usage,
+    migrate, org, project, slm, trace, usage,
 };
 use crate::environment::Environment;
 
@@ -19,7 +19,10 @@ pub enum OutputFormat {
 #[derive(Debug, Parser)]
 #[command(
     name = "am",
-    version,
+    // Pure JSON `--version` is handled in `main` (clap would prefix `am `).
+    // Contract: crates/cli/VERSION.md (ATO-1844).
+    disable_version_flag = true,
+    after_help = "Version:\n  am --version    Print machine-readable version JSON (crates/cli/VERSION.md)",
     about = "AtomicMemory CLI",
     long_about = "Manage hosted AtomicMemory Cloud instances, link local deployments, and run memory operations."
 )]
@@ -138,10 +141,13 @@ pub enum Command {
     /// Start/stop the local Core Docker container
     #[command(subcommand)]
     Instance(instance::InstanceCommand),
+    /// Install and manage the host Metal SLM runtime (Connected Local)
+    #[command(subcommand)]
+    Slm(slm::SlmCommand),
     /// Export/import local memories to Cloud
     #[command(subcommand)]
     Migrate(migrate::MigrateCommand),
-    /// Install AtomicMemory MCP into agent hosts (Cursor, Claude Code, Codex)
+    /// Install AtomicMemory MCP into agent hosts (Cursor, Claude Code, Codex, OpenCode)
     Integrate(integrate::IntegrateOptions),
     /// Lifecycle hooks for Codex and Claude Code (complements `am integrate` MCP)
     #[command(subcommand)]
@@ -165,6 +171,7 @@ pub fn command_path(command: &Command) -> String {
         Command::Link(_) => "link".into(),
         Command::Connect(_) => "connect".into(),
         Command::Instance(_) => "instance".into(),
+        Command::Slm(_) => "slm".into(),
         Command::Migrate(_) => "migrate".into(),
         Command::Integrate(_) => "integrate".into(),
         Command::Hooks(cmd) => format!("hooks {}", hooks::command_label(cmd)),
@@ -192,5 +199,22 @@ mod tests {
         global.output = OutputFormat::Table;
         global.agent = true;
         assert!(!global.allow_prompts(false));
+    }
+    #[test]
+    fn provider_selection_is_available_on_all_onboarding_commands() {
+        for args in [
+            vec!["am", "init", "--local", "--provider", "slm", "--yes"],
+            vec![
+                "am",
+                "connect",
+                "--project",
+                "proj_test",
+                "--provider",
+                "openai",
+            ],
+            vec!["am", "instance", "start", "--provider", "openai"],
+        ] {
+            assert!(Cli::try_parse_from(args.clone()).is_ok(), "{args:?}");
+        }
     }
 }

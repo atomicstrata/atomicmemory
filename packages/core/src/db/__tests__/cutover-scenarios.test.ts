@@ -36,6 +36,7 @@ import {
   applyLegacySchemaAndSeed,
   expectSeededForeignKeysResolvable,
   expectSeededRowsPreservedAcrossMigrate,
+  projectSnapshotsToBeforeColumns,
 } from './migration-preservation-assertions.js';
 import {
   pgmigrationsRows,
@@ -73,7 +74,7 @@ describe('Phase 2 — Scenario B: v1.0.x install upgraded to Phase 2', () => {
     await expectOnlyBaselineStamped();
   });
 
-  it('does not modify any existing legacy table, column, index, or constraint', async () => {
+  it('preserves every legacy table, column, index, and foreign key across migrate', async () => {
     await applyLegacySchemaAndSeed(pool);
     const before = await structuralSnapshotExcludingBookkeeping(pool);
 
@@ -166,39 +167,45 @@ describe('Phase 2 — Scenario C: Phase 1 install upgraded to Phase 2', () => {
     await migrate({ pool });
     const after = await snapshotAllSeededTables(pool);
 
-    expect(after).toEqual(before);
+    expect(projectSnapshotsToBeforeColumns(before, after)).toEqual(before);
   });
 });
 
 /**
- * Assert that two structural snapshots describe the same set of tables,
- * columns, indexes, check constraints, and foreign keys. Uses
- * `toStrictEqual` against the helper output rather than per-field
- * iteration because the helper already canonicalizes ordering.
+ * Assert that legacy structure survives Phase 2 migrate. Post-baseline
+ * migrations may add tables/columns and may widen CHECK constraints; they
+ * must not remove or rewrite legacy columns, indexes, or foreign keys.
  */
 function assertStructuralEqual(
   before: StructuralSnapshot,
   after: StructuralSnapshot,
 ): void {
-  // Post-baseline migrations may add new tables; verify only that existing
-  // tables, indexes, and constraints are unchanged — not removed or altered.
   for (const t of before.tables) {
-    expect(after.tables).toContainEqual(t);
+    const afterTable = after.tables.find((candidate) => candidate.name === t.name);
+    expect(afterTable, `legacy table ${t.name} missing after migrate`).toBeDefined();
+    for (const column of t.columns) {
+      expect(
+        afterTable?.columns,
+        `legacy column ${t.name}.${column.column} missing or altered`,
+      ).toContainEqual(column);
+    }
   }
   for (const idx of before.indexes) {
     expect(after.indexes).toContainEqual(idx);
   }
-  expect(after.checkConstraints).toEqual(before.checkConstraints);
-  expect(after.foreignKeys).toEqual(before.foreignKeys);
+  for (const fk of before.foreignKeys) {
+    expect(after.foreignKeys).toContainEqual(fk);
+  }
 }
 
 async function expectOnlyBaselineStamped(): Promise<void> {
   const rows = await pgmigrationsRows(pool);
   // Baseline is always stamped (without re-running against legacy data).
-  // Post-baseline migrations (e.g. 0002_entity_settings) run normally on
-  // legacy installs since those tables did not exist yet. Update the count
-  // and last-name here when new migration files ship.
-  expect(rows.length).toBe(2);
+  // Post-baseline migrations run normally on legacy installs since those
+  // tables did not exist yet. Update the count and last-name here when new
+  // migration files ship.
+  expect(rows.length).toBe(6);
   expect(rows[0].name).toBe(BASELINE_MIGRATION_NAME);
   expect(rows[1].name).toBe('0002_entity_settings');
+  expect(rows.at(-1)?.name).toBe('0005_cloud_trace_outbox');
 }

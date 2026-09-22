@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-20
+
+### Fixed
+
+- Extraction JSON parsing now uses the same first-object extraction path as
+  AUDN, so trailing prose or a second JSON block after a successful model
+  completion no longer fails `JSON.parse` (ATO-2185). Truncated-JSON repair
+  (including a single complete entry) is retained, with one JSON-only retry
+  nudge on substantial unparseable content.
+- The private hosted deployment image archives its retired migration history
+  before public Core starts. The public package continues to ship only
+  `0001` through `0005_cloud_trace_outbox`.
+
+### Changed
+
+- `EXTRACTION_PROMPT_VARIANT=compact` is a reduced-capability **extraction**
+  opt-in. AUDN mutation policy stays the full UPDATE/DELETE/CLARIFY prompt.
+  AUDN wire format is independent of the prompt variant: `AUDN_JSON_SCHEMA=true`
+  sends OpenAI-strict `json_schema` (`core_audn`) for am-local-slm;
+  the default `false` keeps `response_format: json_object` so Groq and other
+  OpenAI-compatible providers that lack Structured Outputs keep working.
+- `parsePositiveIntEnv` / `parseBoundedPositiveIntEnv` now require a whole
+  decimal integer in the safe-integer range. Values such as `100abc`, `1.5`,
+  `1e3`, or overflow that used to `parseInt`-truncate now fail startup. This
+  applies to adaptive retrieval limits, all `CLOUD_TRACE_SYNC_*` intervals,
+  `RAW_UPLOAD_MAX_BYTES`, and the extraction/AUDN decode caps.
+- Full-path extraction: an omitted `keywords` field is derived from the fact
+  text, and non-string keyword entries are dropped. Explicit `keywords: []`
+  stays empty.
+- `extractionMaxTokens`, `audnMaxTokens`, and `audnJsonSchema` are not
+  request-overridable via `config_override` (LLM calls and cache identity
+  still read the process singleton). Those keys are reported on
+  `X-Atomicmem-Ignored-Override-Keys`. `X-Atomicmem-Config-Override-Applied`
+  and `X-Atomicmem-Config-Override-Keys` reflect only the keys that were
+  actually applied. `X-Atomicmem-Unknown-Override-Keys` stays reserved for
+  keys that do not match a current `RuntimeConfig` field.
+
 ## [1.2.1] - 2026-08-07
 
 ### Fixed
