@@ -6,8 +6,7 @@ use serde::Serialize;
 use am_core_types::CoreSearchRequest;
 
 use crate::cli::GlobalOptions;
-use crate::commands::client::memory_client;
-use crate::commands::memory::scope::resolve_memory_scope;
+use crate::commands::memory::{memory_client_with_scope, scope::resolve_memory_scope};
 use crate::envelope::EmitContext;
 use crate::output::emit_command;
 
@@ -85,7 +84,7 @@ pub async fn run_package(
         bail!("package requires a query");
     }
     let scope = resolve_memory_scope(global, session, agent_id, workspace)?;
-    let (_profile, client) = memory_client(global).await?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let req = CoreSearchRequest {
         user_id: scope.user_id,
         query: query.clone(),

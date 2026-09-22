@@ -10,7 +10,10 @@ use serde::Serialize;
 
 use crate::auth::token::valid_bearer_token;
 use crate::cli::GlobalOptions;
-use crate::commands::client::{cloud_api_key_client, dashboard_client, memory_client, resolve_ctx};
+use crate::commands::client::{
+    cloud_api_key_client, dashboard_client, local_token_request_for_profile, memory_client,
+    resolve_ctx,
+};
 use crate::commands::connect_project::{ConnectProjectOptions, run as run_connect_project};
 use crate::commands::local_clients::{
     KeyProvenance, redact_secret, render_client_env_block, resolve_local_clients,
@@ -300,7 +303,8 @@ async fn run_token(global: &GlobalOptions, print_token: bool) -> Result<()> {
     let profile = resolve_ctx(global).await?;
     ensure_local_profile(&profile)?;
     let (_profile, client) = cloud_api_key_client(global).await?;
-    let token = client.mint_local_token().await?;
+    let req = local_token_request_for_profile(&profile).await?;
+    let token = client.mint_local_token(&req).await?;
     eprintln!("warning: token printed to stdout; avoid logging or piping to files");
     println!("{}", token.access_token);
     Ok(())
@@ -483,28 +487,44 @@ async fn check_jwks_reachable(cloud_base_url: &str) -> DoctorCheck {
 
 async fn check_mint_token(global: &GlobalOptions) -> DoctorCheck {
     match cloud_api_key_client(global).await {
-        Ok((_p, client)) => match client.mint_local_token().await {
-            Ok(token) if !token.access_token.is_empty() => DoctorCheck {
-                name: "jwt_mint".into(),
-                status: "pass".into(),
-                message: format!("Cloud minted Core JWT (expires_in={}s)", token.expires_in),
-                hint: None,
-            },
-            Ok(_) => DoctorCheck {
-                name: "jwt_mint".into(),
-                status: "fail".into(),
-                message: "mint returned empty access_token".into(),
-                hint: None,
-            },
-            Err(err) => DoctorCheck {
-                name: "jwt_mint".into(),
-                status: "fail".into(),
-                message: err.to_string(),
-                hint: Some(
-                    "ensure project is type=local and Cloud API key belongs to that project".into(),
-                ),
-            },
-        },
+        Ok((profile, client)) => {
+            let req = match local_token_request_for_profile(&profile).await {
+                Ok(req) => req,
+                Err(err) => {
+                    return DoctorCheck {
+                        name: "jwt_mint".into(),
+                        status: "fail".into(),
+                        message: err.to_string(),
+                        hint: Some(
+                            "run `am auth login` so Connected Local can bind memory_user_id".into(),
+                        ),
+                    };
+                }
+            };
+            match client.mint_local_token(&req).await {
+                Ok(token) if !token.access_token.is_empty() => DoctorCheck {
+                    name: "jwt_mint".into(),
+                    status: "pass".into(),
+                    message: format!("Cloud minted Core JWT (expires_in={}s)", token.expires_in),
+                    hint: None,
+                },
+                Ok(_) => DoctorCheck {
+                    name: "jwt_mint".into(),
+                    status: "fail".into(),
+                    message: "mint returned empty access_token".into(),
+                    hint: None,
+                },
+                Err(err) => DoctorCheck {
+                    name: "jwt_mint".into(),
+                    status: "fail".into(),
+                    message: err.to_string(),
+                    hint: Some(
+                        "ensure project is type=local and Cloud API key belongs to that project"
+                            .into(),
+                    ),
+                },
+            }
+        }
         Err(err) => DoctorCheck {
             name: "jwt_mint".into(),
             status: "fail".into(),

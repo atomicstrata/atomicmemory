@@ -8,8 +8,8 @@ use anyhow::Result;
 use clap::Subcommand;
 
 use crate::cli::GlobalOptions;
-use crate::commands::client::memory_client;
-use crate::config::{ProfileKind, resolve_profile};
+use crate::commands::client::{memory_client_for_profile, resolve_ctx};
+use crate::config::{ProfileKind, ResolvedProfile, resolve_profile};
 use crate::envelope::EmitContext;
 use crate::output::emit_command;
 use crate::telemetry::{ActivationContext, capture_first_real_memory_if_needed};
@@ -17,7 +17,26 @@ use crate::validation::with_operation_recovery;
 
 use ingest::{ContentClass, SdkIngestMode, build_ingest_request};
 use package::{PackageFormat, PackageSection, run_package};
-use scope::{NamespaceSupport, resolve_memory_scope_with};
+use scope::{MemoryScope, NamespaceSupport, bind_memory_user, resolve_memory_scope_with};
+
+/// Resolve a memory client and bind Connected Local identity into `scope.user_id`.
+///
+/// When a Connected Local session is present, Core requests default to the
+/// Clerk `sub`. Under a Cloud-minted JWT that identity is enforced and a
+/// conflicting `--scope-user` fails; under a static `CORE_API_KEY` an explicit
+/// `--scope-user` overrides it. Pure Core-key / Cloud paths without a session
+/// leave scope unchanged.
+pub async fn memory_client_with_scope(
+    global: &GlobalOptions,
+    mut scope: MemoryScope,
+) -> Result<(ResolvedProfile, am_cloud_client::MemoryClient, MemoryScope)> {
+    let profile = resolve_ctx(global).await?;
+    let (client, identity) = memory_client_for_profile(&profile).await?;
+    if let Some(identity) = identity.as_ref() {
+        bind_memory_user(&mut scope, identity, global.scope_user.as_deref())?;
+    }
+    Ok((profile, client, scope))
+}
 
 #[derive(Debug, Subcommand)]
 pub enum MemoryCommand {
@@ -194,6 +213,7 @@ async fn run_ingest(
         NamespaceSupport::Unsupported,
     )?;
     let parsed_metadata = parse_metadata(metadata)?;
+    let (profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let (req, is_verbatim) = build_ingest_request(
         mode,
         &scope,
@@ -205,7 +225,6 @@ async fn run_ingest(
         stdin,
     )
     .await?;
-    let (profile, client) = memory_client(global).await?;
     let resp = if is_verbatim {
         client
             .ingest_quick(&req)
@@ -251,7 +270,7 @@ async fn run_search(
 ) -> Result<()> {
     let scope =
         resolve_memory_scope_with(global, session, agent_id, None, NamespaceSupport::Supported)?;
-    let (_profile, client) = memory_client(global).await?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let req = am_core_types::CoreSearchRequest {
         user_id: scope.user_id,
         query,
@@ -285,7 +304,7 @@ async fn run_list(
 ) -> Result<()> {
     let scope =
         resolve_memory_scope_with(global, session, None, None, NamespaceSupport::Unsupported)?;
-    let (_profile, client) = memory_client(global).await?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let query = am_core_types::CoreListMemoriesQuery {
         user_id: scope.user_id,
         limit,
@@ -303,7 +322,7 @@ async fn run_list(
 
 async fn run_get(global: &GlobalOptions, memory_id: String) -> Result<()> {
     let scope = resolve_memory_scope_with(global, None, None, None, NamespaceSupport::Unsupported)?;
-    let (_profile, client) = memory_client(global).await?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let query = am_core_types::CoreMemoryQuery {
         user_id: scope.user_id,
         workspace_id: scope.workspace_id,
@@ -316,7 +335,7 @@ async fn run_get(global: &GlobalOptions, memory_id: String) -> Result<()> {
 
 async fn run_delete(global: &GlobalOptions, memory_id: String) -> Result<()> {
     let scope = resolve_memory_scope_with(global, None, None, None, NamespaceSupport::Unsupported)?;
-    let (_profile, client) = memory_client(global).await?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let query = am_core_types::CoreMemoryQuery {
         user_id: scope.user_id,
         workspace_id: scope.workspace_id,

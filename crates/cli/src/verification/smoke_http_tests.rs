@@ -15,6 +15,9 @@ struct Scenario {
     requests: Arc<Mutex<Vec<(Method, String, Value)>>>,
     marker: Arc<Mutex<String>>,
     cleanup_fails: bool,
+    /// When true, DELETE returns `{ "deleted": true }` instead of Core's
+    /// `{ "success": true }` so both acknowledgment shapes stay covered.
+    cleanup_uses_deleted_flag: bool,
     search_fails: bool,
     no_facts: bool,
     duplicate_stored: bool,
@@ -48,7 +51,15 @@ async fn handle(
     if method == Method::DELETE {
         return (
             StatusCode::OK,
-            Json(json!({"deleted": !scenario.cleanup_fails})),
+            // Core's SuccessResponseSchema is `{ "success": true }`. The
+            // `deleted` flag exercises the alternate acknowledgment path.
+            Json(if scenario.cleanup_fails {
+                json!({"deleted": false, "success": false})
+            } else if scenario.cleanup_uses_deleted_flag {
+                json!({"deleted": true})
+            } else {
+                json!({"success": true})
+            }),
         );
     }
     if scenario.search_pending {
@@ -70,13 +81,17 @@ async fn handle(
 }
 
 async fn run(scenario: Scenario, opts: SmokeOptions) -> Result<SmokeResult> {
+    run_as(scenario, opts, SMOKE_USER_ID).await
+}
+
+async fn run_as(scenario: Scenario, opts: SmokeOptions, user_id: &str) -> Result<SmokeResult> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let router = Router::new().fallback(any(handle)).with_state(scenario);
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let client =
         MemoryClient::new(format!("http://{addr}").parse().unwrap(), "local-admin").unwrap();
-    let result = run_memory_smoke_with_client(client, opts, None).await;
+    let result = run_memory_smoke_with_client(client, opts, None, user_id).await;
     server.abort();
     result
 }
@@ -109,6 +124,28 @@ async fn cleanup_rejection_fails_verification() {
             .count(),
         2
     );
+}
+
+#[tokio::test]
+async fn cleanup_accepts_core_success_response_shape() {
+    // Regression: Core returns `{ "success": true }` while the CLI type only
+    // looked at `deleted`, so Connected Local smoke always reported
+    // "deletion was not confirmed" after a successful DELETE.
+    let scenario = Scenario::default();
+    let result = run(scenario, SmokeOptions::default()).await.unwrap();
+    assert!(result.verified);
+    assert_eq!(result.memory_ids_cleaned, ["stored", "updated"]);
+}
+
+#[tokio::test]
+async fn cleanup_accepts_deleted_true_acknowledgment() {
+    let scenario = Scenario {
+        cleanup_uses_deleted_flag: true,
+        ..Scenario::default()
+    };
+    let result = run(scenario, SmokeOptions::default()).await.unwrap();
+    assert!(result.verified);
+    assert_eq!(result.memory_ids_cleaned, ["stored", "updated"]);
 }
 
 #[tokio::test]
@@ -246,4 +283,52 @@ async fn search_timeout_reserves_time_to_clean_known_memories() {
             .count(),
         2
     );
+}
+
+/// A Connected Local JWT is minted for the Clerk `sub`; Core rejects every
+/// request whose `user_id` differs from it. Once the client is JWT-bound, the
+/// smoke ingest, search, and cleanup must all carry that identity rather than
+/// the dedicated smoke namespace.
+#[tokio::test]
+async fn jwt_bound_user_replaces_smoke_namespace_on_every_request() {
+    let scenario = Scenario::default();
+    let requests = scenario.requests.clone();
+    run_as(scenario, SmokeOptions::default(), "user_member")
+        .await
+        .unwrap();
+    let requests = requests.lock().unwrap();
+    assert!(
+        requests.len() >= 3,
+        "expected ingest, search, and delete requests"
+    );
+    for (method, uri, body) in requests.iter() {
+        let user = if *method == Method::DELETE {
+            uri.split('?')
+                .nth(1)
+                .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("user_id=")))
+                .map(str::to_string)
+        } else {
+            body["user_id"].as_str().map(str::to_string)
+        };
+        assert_eq!(
+            user.as_deref(),
+            Some("user_member"),
+            "{method} {uri} {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn key_based_smoke_keeps_dedicated_namespace() {
+    let scenario = Scenario::default();
+    let requests = scenario.requests.clone();
+    run(scenario, SmokeOptions::default()).await.unwrap();
+    let ingest = requests
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|(_, uri, _)| uri.contains("ingest"))
+        .map(|(_, _, body)| body.clone())
+        .expect("ingest request");
+    assert_eq!(ingest["user_id"], SMOKE_USER_ID);
 }

@@ -255,10 +255,21 @@ pub struct CoreListMemoriesResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct CoreDeleteMemoryResponse {
+    /// Legacy / alternate acknowledgment used by some fixtures and proxies.
     #[serde(default)]
     pub deleted: bool,
+    /// Core's documented SuccessResponseSchema shape (`{ "success": true }`).
+    #[serde(default)]
+    pub success: bool,
     #[serde(default)]
     pub id: Option<String>,
+}
+
+impl CoreDeleteMemoryResponse {
+    /// True when Core acknowledged the delete (`deleted` or `success`).
+    pub fn confirmed(&self) -> bool {
+        self.deleted || self.success
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -885,6 +896,22 @@ mod tests {
         assert_eq!(parsed.count, 12.0);
         assert_eq!(parsed.avg_importance, 0.42);
         assert_eq!(parsed.source_distribution.get("manual"), Some(&8.0));
+    }
+
+    #[test]
+    fn core_delete_memory_confirms_success_or_deleted() {
+        let core_shape: CoreDeleteMemoryResponse =
+            serde_json::from_value(serde_json::json!({"success": true})).unwrap();
+        assert!(core_shape.confirmed());
+        assert!(!core_shape.deleted);
+
+        let legacy: CoreDeleteMemoryResponse =
+            serde_json::from_value(serde_json::json!({"deleted": true})).unwrap();
+        assert!(legacy.confirmed());
+
+        let neither: CoreDeleteMemoryResponse =
+            serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(!neither.confirmed());
     }
 
     #[test]

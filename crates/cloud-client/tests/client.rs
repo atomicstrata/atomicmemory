@@ -1,9 +1,10 @@
 //! Integration tests for the cloud HTTP client (wiremock).
 
 use am_cloud_client::{DashboardClient, MemoryClient};
+use am_cloud_types::LocalTokenRequest;
 use am_core_types::{CoreIngestRequest, CoreSearchRequest};
 use url::Url;
-use wiremock::matchers::{bearer_token, method, path};
+use wiremock::matchers::{bearer_token, body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
@@ -100,12 +101,21 @@ async fn dashboard_list_orgs() {
     assert_eq!(orgs[0].slug, "acme");
 }
 
+fn mint_request() -> LocalTokenRequest {
+    LocalTokenRequest {
+        memory_user_id: "user_clerk_abc".into(),
+    }
+}
+
 #[tokio::test]
 async fn memory_mint_local_token() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/local/token"))
         .and(bearer_token("amc_test_key"))
+        .and(body_json(serde_json::json!({
+            "memory_user_id": "user_clerk_abc"
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "access_token": "eyJ.test",
             "token_type": "Bearer",
@@ -115,9 +125,34 @@ async fn memory_mint_local_token() {
         .await;
 
     let client = MemoryClient::new(Url::parse(&server.uri()).unwrap(), "amc_test_key").unwrap();
-    let resp = client.mint_local_token().await.unwrap();
+    let resp = client.mint_local_token(&mint_request()).await.unwrap();
     assert_eq!(resp.access_token, "eyJ.test");
     assert_eq!(resp.expires_in, 300);
+}
+
+/// Regression: a null JSON body is what caused Cloud to answer
+/// `invalid type: null, expected struct LocalTokenRequest`. The client must
+/// post an object; wiremock only matches when the body equals the object below.
+#[tokio::test]
+async fn mint_local_token_rejects_null_shaped_bodies_by_requiring_object_match() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/local/token"))
+        .and(body_json(serde_json::json!({
+            "memory_user_id": "user_clerk_abc"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "eyJ.ok",
+            "token_type": "Bearer",
+            "expires_in": 60
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = MemoryClient::new(Url::parse(&server.uri()).unwrap(), "amc_test_key").unwrap();
+    let resp = client.mint_local_token(&mint_request()).await.unwrap();
+    assert_eq!(resp.access_token, "eyJ.ok");
 }
 
 #[tokio::test]
@@ -227,7 +262,7 @@ async fn mint_preserves_non_json_failure_context() {
         .mount(&server)
         .await;
     let client = MemoryClient::new(Url::parse(&server.uri()).unwrap(), "amc_test_key").unwrap();
-    let error = client.mint_local_token().await.unwrap_err();
+    let error = client.mint_local_token(&mint_request()).await.unwrap_err();
     let display = error.to_string();
     for context in ["422", "POST", "v1/local/token", "expected an object"] {
         assert!(display.contains(context), "missing {context}: {display}");
@@ -247,7 +282,11 @@ async fn mint_bounds_and_redacts_non_json_failure() {
         .mount(&server)
         .await;
     let client = MemoryClient::new(Url::parse(&server.uri()).unwrap(), "amc_test_key").unwrap();
-    let display = client.mint_local_token().await.unwrap_err().to_string();
+    let display = client
+        .mint_local_token(&mint_request())
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(display.contains("upstream failure"));
     assert!(!display.contains("jwt-secret"));
     assert!(!display.contains("key-secret"));
@@ -268,7 +307,11 @@ async fn mint_redacts_raw_credential_echo_and_json_secret_fields() {
         .await;
     let client =
         MemoryClient::new(Url::parse(&server.uri()).unwrap(), "opaque-credential").unwrap();
-    let display = client.mint_local_token().await.unwrap_err().to_string();
+    let display = client
+        .mint_local_token(&mint_request())
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(display.contains("validation_error"));
     for private in [
         "opaque-credential",
@@ -277,4 +320,23 @@ async fn mint_redacts_raw_credential_echo_and_json_secret_fields() {
     ] {
         assert!(!display.contains(private), "leaked {private}: {display}");
     }
+}
+
+#[tokio::test]
+async fn mint_local_token_rejects_empty_memory_user_id_before_http() {
+    let client = MemoryClient::new(
+        Url::parse("https://api.example.com").unwrap(),
+        "amc_test_key",
+    )
+    .unwrap();
+    let err = client
+        .mint_local_token(&LocalTokenRequest {
+            memory_user_id: String::new(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        am_cloud_client::CloudClientError::Validation(_)
+    ));
 }

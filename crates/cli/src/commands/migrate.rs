@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 /// Records per import request. The Cloud API rejects requests above this, and
 /// export paginates by the same value, so the two cannot drift apart.
 const IMPORT_CHUNK_SIZE: usize = 500;
+/// Core user namespace exported when `--user-id` is not given.
+const DEFAULT_EXPORT_USER_ID: &str = "default";
 
 use am_cloud_types::{
     ExportManifest, ExportMemoryRecord, ExportMemoryScope, IMPORT_SCHEMA_VERSION,
@@ -19,8 +21,8 @@ use clap::Subcommand;
 
 use crate::cli::GlobalOptions;
 use crate::commands::client::{
-    dashboard_client, dashboard_client_for_export, emit_cloud_export_warning_if_needed,
-    memory_client_for_profile,
+    ScopeIdentity, dashboard_client, dashboard_client_for_export,
+    emit_cloud_export_warning_if_needed, memory_client_for_profile,
 };
 use crate::config::{
     resolve_profile, resolve_profile_with_export_identity, store_local_export_project_id,
@@ -38,9 +40,12 @@ pub enum MigrateCommand {
         /// Output file path
         #[arg(long)]
         out: Option<PathBuf>,
-        /// Core user namespace (default: default)
-        #[arg(long, default_value = "default")]
-        user_id: String,
+        /// Core user namespace to export [default: your Connected Local identity
+        /// when a session is linked, otherwise `default`]. Under a Cloud-minted
+        /// JWT a different namespace is rejected; under a Core API key any
+        /// namespace can be exported.
+        #[arg(long)]
+        user_id: Option<String>,
     },
     /// Import JSONL memories into a cloud project
     Import {
@@ -78,7 +83,7 @@ pub async fn run(cmd: MigrateCommand, global: &GlobalOptions) -> Result<()> {
             project,
             out,
             user_id,
-        } => run_export(global, &project, out.as_deref(), &user_id).await,
+        } => run_export(global, &project, out.as_deref(), user_id.as_deref()).await,
         MigrateCommand::Import {
             file,
             target_project,
@@ -91,7 +96,7 @@ async fn run_export(
     global: &GlobalOptions,
     project_ref: &str,
     out: Option<&Path>,
-    user_id: &str,
+    user_id: Option<&str>,
 ) -> Result<()> {
     // Resolve exactly once, before the first await, and build every client
     // from that one profile. Each additional resolution reopens config.toml,
@@ -152,7 +157,12 @@ async fn run_export(
             pinned_profile.name
         );
     }
-    let client = memory_client_for_profile(&client_profile).await?;
+    let (client, identity) = memory_client_for_profile(&client_profile).await?;
+    // Omitted --user-id follows the Connected Local identity. An explicit value
+    // is honored under a Core key but must match under a Cloud-minted JWT,
+    // where Core rejects any other `user_id` with 403.
+    let user_id = bind_export_user_id(user_id, identity.as_ref())?;
+    let user_id = user_id.as_str();
     client.health().await.map_err(|e| {
         with_operation_recovery(
             e.into(),
@@ -408,6 +418,97 @@ async fn resolve_project(
         .into_iter()
         .find(|p| p.slug == id_or_slug || p.id == id_or_slug)
         .ok_or_else(|| anyhow::anyhow!("project not found: {id_or_slug}"))
+}
+
+/// Resolve the export namespace from `--user-id` and the Connected Local identity.
+///
+/// `requested` is `None` when `--user-id` was omitted, so an explicit
+/// `--user-id default` stays distinguishable from the default. Omitted →
+/// the identity, or `default` without a session. Explicit → honored under a
+/// Core key (Core applies no user binding) and when it matches the identity;
+/// under a Cloud-minted JWT a different namespace fails before any Core read.
+fn bind_export_user_id(
+    requested: Option<&str>,
+    identity: Option<&ScopeIdentity>,
+) -> Result<String> {
+    let requested = requested.map(str::trim).filter(|r| !r.is_empty());
+    let Some(identity) = identity else {
+        return Ok(requested.unwrap_or(DEFAULT_EXPORT_USER_ID).to_string());
+    };
+    match requested {
+        None => Ok(identity.user.clone()),
+        Some(requested) if requested == identity.user || !identity.enforced => {
+            Ok(requested.to_string())
+        }
+        Some(requested) => bail!(
+            "--user-id '{requested}' conflicts with the Connected Local JWT identity '{user}'.\n\
+             A Cloud-minted JWT can only read that identity's memories. Omit --user-id, or \
+             export with a Core API key (CORE_API_KEY) to reach another namespace.",
+            user = identity.user
+        ),
+    }
+}
+
+#[cfg(test)]
+mod export_user_binding_tests {
+    use super::bind_export_user_id;
+    use crate::commands::client::ScopeIdentity;
+
+    fn identity(enforced: bool) -> ScopeIdentity {
+        ScopeIdentity {
+            user: "user_member".into(),
+            enforced,
+        }
+    }
+
+    #[test]
+    fn without_session_exports_requested_or_default() {
+        assert_eq!(bind_export_user_id(Some("team-a"), None).unwrap(), "team-a");
+        assert_eq!(bind_export_user_id(None, None).unwrap(), "default");
+        assert_eq!(bind_export_user_id(Some("  "), None).unwrap(), "default");
+    }
+
+    #[test]
+    fn omitted_user_id_follows_identity_on_both_paths() {
+        for enforced in [true, false] {
+            assert_eq!(
+                bind_export_user_id(None, Some(&identity(enforced))).unwrap(),
+                "user_member"
+            );
+        }
+    }
+
+    #[test]
+    fn managed_key_honors_explicit_default() {
+        // Explicit `default` is distinguishable from omitted and reaches the
+        // pre-binding namespace under a Core key.
+        assert_eq!(
+            bind_export_user_id(Some("default"), Some(&identity(false))).unwrap(),
+            "default"
+        );
+        assert_eq!(
+            bind_export_user_id(Some(" team-a "), Some(&identity(false))).unwrap(),
+            "team-a"
+        );
+    }
+
+    #[test]
+    fn jwt_accepts_matching_and_rejects_conflicting_namespace() {
+        assert_eq!(
+            bind_export_user_id(Some(" user_member "), Some(&identity(true))).unwrap(),
+            "user_member"
+        );
+        for conflicting in ["other", "default"] {
+            let err = bind_export_user_id(Some(conflicting), Some(&identity(true)))
+                .expect_err("conflicting namespace must fail closed under a JWT")
+                .to_string();
+            assert!(
+                err.contains("conflicts with the Connected Local JWT identity"),
+                "{err}"
+            );
+            assert!(err.contains("CORE_API_KEY"), "{err}");
+        }
+    }
 }
 
 #[cfg(test)]

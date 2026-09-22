@@ -2,8 +2,8 @@
 
 use am_cloud_types::{
     ApiKey, ApiKeyWithSecret, CreateApiKeyRequest, CreateOrgRequest, CreateProjectRequest,
-    EnsureOnboardingRequest, EnsureOnboardingResponse, LocalCoreTokenResponse, Memory,
-    MemoryWithEvidence, OnboardingStatusResponse, Organization, Project, RuntimeSummary,
+    EnsureOnboardingRequest, EnsureOnboardingResponse, LocalCoreTokenResponse, LocalTokenRequest,
+    Memory, MemoryWithEvidence, OnboardingStatusResponse, Organization, Project, RuntimeSummary,
     TraceDetail, TraceSummary, UpdateProjectRequest, UsageSummary,
 };
 use am_core_types::{
@@ -335,8 +335,17 @@ impl MemoryClient {
     }
 
     /// Mint a short-lived JWT for headless access to a connected-local Core (`POST /v1/local/token`).
-    pub async fn mint_local_token(&self) -> Result<LocalCoreTokenResponse, CloudClientError> {
-        self.transport.post("v1/local/token", &EmptyBody).await
+    ///
+    /// Always posts a JSON object (`LocalTokenRequest`). Never send a unit/`()`/
+    /// `Option::None` body — those serialize as JSON `null` and the Cloud API
+    /// rejects them with 422 (`expected struct LocalTokenRequest`).
+    pub async fn mint_local_token(
+        &self,
+        req: &LocalTokenRequest,
+    ) -> Result<LocalCoreTokenResponse, CloudClientError> {
+        req.validate()
+            .map_err(|e| CloudClientError::Validation(e.to_string()))?;
+        self.transport.post("v1/local/token", req).await
     }
 }
 

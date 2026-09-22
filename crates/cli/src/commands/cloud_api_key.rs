@@ -12,7 +12,9 @@ use url::Url;
 
 use crate::auth::origin::same_origin;
 use crate::cli::GlobalOptions;
-use crate::commands::client::{cloud_api_key_client, dashboard_client};
+use crate::commands::client::{
+    cloud_api_key_client, dashboard_client, local_token_request_for_profile,
+};
 use crate::config::{
     ResolvedProfile, is_cloud_api_key, machine_scoped_key_name, require_api_key,
     require_project_id, store_api_key,
@@ -181,7 +183,7 @@ pub async fn ensure_connected_local_cloud_api_key(
         && is_cloud_api_key(&key)
     {
         if stored_key_probe_allows_reuse(
-            probe_cloud_api_key_mint(&profile.base_url, &key).await,
+            probe_cloud_api_key_mint(profile, &key).await,
             profile.project_id.as_deref(),
             &project_id,
         )? {
@@ -211,7 +213,7 @@ pub async fn ensure_connected_local_cloud_api_key(
         |secret| store_api_key(&profile.name, secret, &profile.base_url, &project_id),
     )
     .await?;
-    probe_cloud_api_key_mint(&profile.base_url, &secret)
+    probe_cloud_api_key_mint(profile, &secret)
         .await
         .context("verify newly provisioned Cloud API key (POST /v1/local/token)")?;
     if let Some(msg) = outcome.operator_message() {
@@ -228,9 +230,12 @@ pub async fn ensure_connected_local_cloud_api_key_stored(
     project_id: &str,
 ) -> Result<ProvisionOutcome> {
     if let Ok((resolved, client)) = cloud_api_key_client(global).await {
+        // Identity failures must not fall through to rotate/create — that would
+        // invalidate a still-valid stored secret without ever probing mint.
+        let req = local_token_request_for_stored_key_probe(&resolved).await?;
         // The active profile can differ from the project being provisioned.
         if stored_key_probe_allows_reuse(
-            client.mint_local_token().await.map(|_| ()),
+            client.mint_local_token(&req).await.map(|_| ()),
             resolved.project_id.as_deref(),
             project_id,
         )? {
@@ -253,6 +258,18 @@ pub async fn ensure_connected_local_cloud_api_key_stored(
         message(!global.quiet, &msg);
     }
     Ok(outcome)
+}
+
+/// Resolve mint identity for the stored-key reuse probe.
+///
+/// Failures preserve the stored key: callers must `?` this before create/rotate.
+async fn local_token_request_for_stored_key_probe(
+    profile: &ResolvedProfile,
+) -> Result<am_cloud_types::LocalTokenRequest> {
+    local_token_request_for_profile(profile).await.context(
+        "resolve memory_user_id for stored-key probe: stored key preserved; \
+         identity lookup failed, so setup cannot continue",
+    )
 }
 
 async fn rotate_or_create_runtime_key<F>(
@@ -357,10 +374,16 @@ fn cloud_key_create_context(err: &CloudClientError, key_name: &str, api_origin: 
     }
 }
 
-async fn probe_cloud_api_key_mint(base_url: &str, api_key: &str) -> Result<(), CloudClientError> {
-    let base = Url::parse(base_url)?;
+async fn probe_cloud_api_key_mint(
+    profile: &ResolvedProfile,
+    api_key: &str,
+) -> Result<(), CloudClientError> {
+    let base = Url::parse(&profile.base_url)?;
     let client = MemoryClient::new(base, api_key)?;
-    client.mint_local_token().await.map(|_| ())
+    let req = local_token_request_for_profile(profile)
+        .await
+        .map_err(|err| CloudClientError::Validation(err.to_string()))?;
+    client.mint_local_token(&req).await.map(|_| ())
 }
 
 #[cfg(test)]
@@ -370,6 +393,8 @@ mod tests {
 
     use super::*;
     use am_cloud_types::ApiKeyWithSecret;
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use chrono::{TimeZone, Utc};
 
     const TEST_LOCAL_KEY_NAME: &str = "connected-local-runtime-a1b2c3d4e5f6";
@@ -726,6 +751,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"sub":"user_probe_test"}"#);
         let profile = ResolvedProfile {
             name: "probe-test".into(),
             base_url: format!("http://{address}"),
@@ -733,7 +759,13 @@ mod tests {
             project_id: Some("proj_test".into()),
             memory_base_url: format!("http://{address}"),
             api_key: Some("amc_stored_secret".into()),
-            oauth: None,
+            oauth: Some(crate::config::OAuthTokens {
+                id_token: format!("hdr.{payload}.sig"),
+                refresh_token: None,
+                expires_at: None,
+                issuer: None,
+                api_origin: Some(format!("http://{address}")),
+            }),
         };
         let result =
             ensure_connected_local_cloud_api_key(&GlobalOptions::default(), &profile).await;
@@ -803,3 +835,7 @@ mod tests {
         assert!(!is_api_key_quota_exceeded(&other));
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "cloud_api_key_identity_tests.rs"]
+mod identity_tests;
