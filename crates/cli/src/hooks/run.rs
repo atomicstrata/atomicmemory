@@ -9,7 +9,7 @@ use std::io::{self, Read};
 use am_core_types::CoreIngestRequest;
 
 use crate::cli::GlobalOptions;
-use crate::commands::client::memory_client;
+use crate::commands::memory::memory_client_with_scope;
 use crate::commands::memory::scope::{MemoryScope, NamespaceSupport, resolve_memory_scope_with};
 use crate::hooks::sanitize::{
     clean_compact_summary_text, clean_summary_text, format_additional_context, redact_secrets,
@@ -84,7 +84,7 @@ async fn run_user_prompt_submit(
         return Ok(skip("prompt_too_short"));
     }
     let scope = resolve_memory_scope_with(global, None, None, None, NamespaceSupport::Supported)?;
-    let (_profile, client) = memory_client(global).await?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let req = am_core_types::CoreSearchRequest {
         user_id: scope.user_id,
         query: prompt,
@@ -215,6 +215,7 @@ async fn ingest_hook_record(
 ) -> Result<()> {
     // `CoreIngestRequest` carries no namespace field.
     let scope = resolve_memory_scope_with(global, None, None, None, NamespaceSupport::Unsupported)?;
+    let (_profile, client, scope) = memory_client_with_scope(global, scope).await?;
     let dedupe_key = hook_dedupe_key(host, event, &scope, content);
     let metadata = serde_json::json!({
         "source": host.id(),
@@ -242,7 +243,6 @@ async fn ingest_hook_record(
         visibility: None,
         config_override: None,
     };
-    let (_profile, client) = memory_client(global).await?;
     client.ingest_quick(&req).await?;
     Ok(())
 }

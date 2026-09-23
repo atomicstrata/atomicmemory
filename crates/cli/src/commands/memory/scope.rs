@@ -24,6 +24,7 @@ use anyhow::{Result, bail};
 use uuid::Uuid;
 
 use crate::cli::GlobalOptions;
+use crate::commands::client::ScopeIdentity;
 
 #[derive(Debug, Clone)]
 pub struct MemoryScope {
@@ -131,17 +132,163 @@ pub fn resolve_memory_scope_with(
     })
 }
 
+/// Bind a Connected Local identity into memory request scope.
+///
+/// An unset `--scope-user` takes the identity instead of `"default"`.
+/// Under an enforced identity (Cloud-minted JWT) Core's
+/// `enforceMemoryUserBinding` rejects any other `user_id`, so a conflicting
+/// override fails closed before the request. Under a static Core key Core
+/// applies no binding, so an explicit override is the operator's choice and
+/// wins.
+pub fn bind_memory_user(
+    scope: &mut MemoryScope,
+    identity: &ScopeIdentity,
+    explicit_scope_user: Option<&str>,
+) -> Result<()> {
+    let user = identity.user.trim();
+    if user.is_empty() {
+        bail!("Connected Local identity is empty — run `am auth login` and retry");
+    }
+    match explicit_scope_user.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(explicit) if explicit != user => {
+            if identity.enforced {
+                bail!(
+                    "--scope-user conflicts with Connected Local JWT identity.\n\
+                     Omit --scope-user to use the logged-in identity, or pass --scope-user matching that identity."
+                );
+            }
+            scope.user_id = explicit.to_string();
+        }
+        _ => scope.user_id = user.to_string(),
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const AGENT: &str = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+    const MINTED: &str = "user_member";
+
+    fn jwt() -> ScopeIdentity {
+        ScopeIdentity {
+            user: MINTED.into(),
+            enforced: true,
+        }
+    }
+
+    fn managed_key() -> ScopeIdentity {
+        ScopeIdentity {
+            user: MINTED.into(),
+            enforced: false,
+        }
+    }
 
     fn global_with(user: Option<&str>, thread: Option<&str>) -> GlobalOptions {
         GlobalOptions {
             scope_user: user.map(str::to_string),
             scope_thread: thread.map(str::to_string),
             ..GlobalOptions::default()
+        }
+    }
+
+    fn default_scope() -> MemoryScope {
+        resolve_memory_scope(&global_with(None, None), None, None, None).unwrap()
+    }
+
+    #[test]
+    fn jwt_bind_replaces_default_user_when_no_override() {
+        let mut scope = default_scope();
+        assert_eq!(scope.user_id, "default");
+        bind_memory_user(&mut scope, &jwt(), None).unwrap();
+        assert_eq!(scope.user_id, MINTED);
+    }
+
+    #[test]
+    fn jwt_bind_allows_matching_explicit_override() {
+        let mut scope =
+            resolve_memory_scope(&global_with(Some(MINTED), None), None, None, None).unwrap();
+        bind_memory_user(&mut scope, &jwt(), Some(MINTED)).unwrap();
+        assert_eq!(scope.user_id, MINTED);
+    }
+
+    #[test]
+    fn jwt_bind_rejects_conflicting_explicit_override() {
+        let mut scope =
+            resolve_memory_scope(&global_with(Some("other"), None), None, None, None).unwrap();
+        let err = bind_memory_user(&mut scope, &jwt(), Some("other"))
+            .expect_err("conflicting --scope-user must fail closed")
+            .to_string();
+        assert!(
+            err.contains("conflicts with Connected Local JWT identity"),
+            "{err}"
+        );
+        assert_eq!(scope.user_id, "other");
+    }
+
+    #[test]
+    fn managed_key_defaults_to_session_identity() {
+        let mut scope = default_scope();
+        bind_memory_user(&mut scope, &managed_key(), None).unwrap();
+        assert_eq!(scope.user_id, MINTED);
+    }
+
+    #[test]
+    fn managed_key_allows_explicit_override() {
+        // Core applies no user binding under a static key, so an explicit
+        // namespace (e.g. data written to `default` before binding existed)
+        // must stay reachable.
+        let mut scope =
+            resolve_memory_scope(&global_with(Some("default"), None), None, None, None).unwrap();
+        bind_memory_user(&mut scope, &managed_key(), Some(" default ")).unwrap();
+        assert_eq!(scope.user_id, "default");
+    }
+
+    #[test]
+    fn empty_identity_fails_closed_on_both_paths() {
+        for enforced in [true, false] {
+            let identity = ScopeIdentity {
+                user: "  ".into(),
+                enforced,
+            };
+            assert!(bind_memory_user(&mut default_scope(), &identity, None).is_err());
+        }
+    }
+
+    /// Every memory→Core surface that resolves scope must bind JWT identity
+    /// through `memory_client_with_scope`. A sibling that calls `memory_client`
+    /// after `resolve_memory_scope*` without the binder reintroduces the
+    /// user_id=default / minted-sub mismatch.
+    #[test]
+    fn jwt_scope_binder_covers_memory_and_hook_surfaces() {
+        let roots = [
+            ("mod.rs", include_str!("mod.rs")),
+            ("package.rs", include_str!("package.rs")),
+            ("hooks/run.rs", include_str!("../../hooks/run.rs")),
+        ];
+        for (name, src) in roots {
+            let production = src
+                .split("#[cfg(test)]")
+                .next()
+                .expect("production source before tests");
+            let unbound = production
+                .lines()
+                .filter(|line| {
+                    let t = line.trim_start();
+                    !t.starts_with("//")
+                        && (t.contains("memory_client(global)")
+                            || t.contains("memory_client(&global)"))
+                })
+                .count();
+            assert_eq!(
+                unbound, 0,
+                "{name}: memory/hook surfaces must use memory_client_with_scope, not bare memory_client"
+            );
+            assert!(
+                production.contains("memory_client_with_scope"),
+                "{name}: expected memory_client_with_scope in JWT-bound surface"
+            );
         }
     }
 

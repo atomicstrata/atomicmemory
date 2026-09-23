@@ -93,7 +93,7 @@ pub async fn run_memory_smoke(
     let profile = resolve_ctx(global)
         .await
         .context("resolve profile for smoke test")?;
-    let client = memory_client_for_profile(&profile).await.map_err(|err| {
+    let (client, identity) = memory_client_for_profile(&profile).await.map_err(|err| {
         smoke_recovery(
             err,
             "Memory smoke client",
@@ -102,7 +102,13 @@ pub async fn run_memory_smoke(
             opts.mode,
         )
     })?;
-    run_memory_smoke_with_client(client, opts, telemetry)
+    // Connected Local identity (Clerk `sub`) must bind into the smoke namespace
+    // whenever a session is present — including managed CORE_API_KEY HTTP auth.
+    // Key-only paths without a session keep the dedicated smoke namespace.
+    let smoke_user = identity
+        .as_ref()
+        .map_or(SMOKE_USER_ID, |identity| identity.user.as_str());
+    run_memory_smoke_with_client(client, opts, telemetry, smoke_user)
         .await
         .map_err(|err| smoke_recovery(err, "Memory smoke", profile.kind, &profile.name, opts.mode))
 }
@@ -127,6 +133,7 @@ async fn run_memory_smoke_with_client(
     client: MemoryClient,
     opts: SmokeOptions,
     telemetry: Option<SmokeTelemetry>,
+    user_id: &str,
 ) -> Result<SmokeResult> {
     let deadline = Instant::now() + opts.timeout;
     // Reserve cleanup time inside the single overall budget so failed or timed-out
@@ -134,7 +141,7 @@ async fn run_memory_smoke_with_client(
     let pipeline_deadline = deadline - CLEANUP_RESERVE.min(opts.timeout / 4);
     let client = client.with_timeout(opts.timeout)?;
     let marker = format!("am-cli-smoke-{}", uuid::Uuid::now_v7());
-    let ingest_req = smoke_ingest_request(&marker, opts.mode);
+    let ingest_req = smoke_ingest_request(&marker, opts.mode, user_id);
     let ingest = tokio::time::timeout_at(pipeline_deadline, async {
         match opts.mode {
             SmokeMode::Quick => client.ingest_quick(&ingest_req).await,
@@ -172,13 +179,13 @@ async fn run_memory_smoke_with_client(
     } else {
         tokio::time::timeout_at(
             pipeline_deadline,
-            retrieve_marker(&client, &marker, &memory_ids, opts.mode),
+            retrieve_marker(&client, &marker, &memory_ids, opts.mode, user_id),
         )
         .await
         .map_err(|_| anyhow::anyhow!("smoke search timed out"))
         .and_then(|result| result)
     };
-    let cleanup = cleanup_memories(&client, &memory_ids, deadline).await;
+    let cleanup = cleanup_memories(&client, &memory_ids, deadline, user_id).await;
     let cleaned = match (retrieval, cleanup) {
         (Ok(()), Ok(cleaned)) => cleaned,
         (Err(retrieval), Ok(_)) => return Err(retrieval),
@@ -200,9 +207,10 @@ async fn retrieve_marker(
     marker: &str,
     memory_ids: &[String],
     mode: SmokeMode,
+    user_id: &str,
 ) -> Result<()> {
     let search_req = CoreSearchRequest {
-        user_id: SMOKE_USER_ID.into(),
+        user_id: user_id.into(),
         query: marker.into(),
         limit: Some(5),
         threshold: None,
@@ -240,9 +248,10 @@ async fn cleanup_memories(
     client: &MemoryClient,
     memory_ids: &[String],
     deadline: Instant,
+    user_id: &str,
 ) -> Result<Vec<String>> {
     let query = CoreMemoryQuery {
-        user_id: SMOKE_USER_ID.into(),
+        user_id: user_id.into(),
         workspace_id: None,
         agent_id: None,
     };
@@ -250,7 +259,9 @@ async fn cleanup_memories(
     let mut failures = Vec::new();
     for id in memory_ids {
         match tokio::time::timeout_at(deadline, client.delete_memory(id, &query)).await {
-            Ok(Ok(result)) if result.deleted => cleaned.push(id.clone()),
+            // Core returns `{ "success": true }` (SuccessResponseSchema). Older
+            // fixtures/proxies may send `{ "deleted": true }`. Either confirms.
+            Ok(Ok(result)) if result.confirmed() => cleaned.push(id.clone()),
             Ok(Ok(_)) => failures.push(format!("{id}: deletion was not confirmed")),
             Ok(Err(err)) => failures.push(format!("{id}: {err}")),
             Err(_) => failures.push(format!("{id}: cleanup timed out")),
@@ -265,10 +276,10 @@ async fn cleanup_memories(
     Ok(cleaned)
 }
 
-fn smoke_ingest_request(marker: &str, mode: SmokeMode) -> CoreIngestRequest {
+fn smoke_ingest_request(marker: &str, mode: SmokeMode, user_id: &str) -> CoreIngestRequest {
     let quick = mode == SmokeMode::Quick;
     CoreIngestRequest {
-        user_id: SMOKE_USER_ID.into(),
+        user_id: user_id.into(),
         source_site: SMOKE_SOURCE_SITE.into(),
         conversation: if quick {
             format!("CLI onboarding smoke marker: {marker}")
@@ -300,7 +311,7 @@ mod tests {
 
     #[test]
     fn smoke_ingest_request_stamps_verbatim_content_class() {
-        let req = smoke_ingest_request("marker-abc", SmokeMode::Quick);
+        let req = smoke_ingest_request("marker-abc", SmokeMode::Quick, SMOKE_USER_ID);
         assert_eq!(req.skip_extraction, Some(true));
         assert_eq!(req.content_class.as_deref(), Some("summary"));
         assert!(req.conversation.contains("marker-abc"));
