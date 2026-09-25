@@ -63,8 +63,8 @@ pub fn check_token_origin(
         None => bail!(
             "stored session predates Cloud-origin binding, so the origin it belongs to \
              is unknown.\n\
-             Run `am auth login` against {target_base_url} (or `am auth login --token …`) \
-             to re-establish it."
+             Run `am auth login` against {target_base_url} (or `am auth login --device` / \
+             `am auth login --token …`) to re-establish it."
         ),
     }
 

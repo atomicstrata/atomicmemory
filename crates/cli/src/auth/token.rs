@@ -248,10 +248,9 @@ async fn complete_bearer_token(
         return Ok(tokens.id_token);
     }
 
-    let refresh = tokens
-        .refresh_token
-        .clone()
-        .ok_or_else(|| anyhow!("session expired — run `am auth login`"))?;
+    let Some(refresh) = tokens.refresh_token.clone() else {
+        return Err(unrefreshable_session_error(&tokens));
+    };
     let meta = discover_metadata(&issuer).await?;
     let refreshed = match refresh_tokens(&meta.token_endpoint, &client_id, &refresh).await {
         Ok(tokens) => tokens,
@@ -306,14 +305,59 @@ fn is_refresh_rejection(err: &anyhow::Error) -> bool {
     })
 }
 
-fn token_fresh(tokens: &OAuthTokens) -> bool {
-    match tokens.expires_at {
-        Some(exp) => Utc::now().timestamp() + 60 < exp,
-        None => decode_id_token(&tokens.id_token)
+/// Seconds before `exp` at which a refreshable OAuth session is treated as
+/// stale so refresh can run before the access/id token dies.
+///
+/// Applied only when a refresh token is present. Paste-login Clerk session
+/// JWTs have ~60s lifetimes and no refresh token; requiring this skew there
+/// rejected a just-issued JWT immediately (ATO-2308).
+const REFRESH_SKEW_SECS: i64 = 60;
+
+fn token_expiry(tokens: &OAuthTokens) -> Option<i64> {
+    tokens.expires_at.or_else(|| {
+        decode_id_token(&tokens.id_token)
             .ok()
-            .and_then(|c| c.exp)
-            .map(|exp| Utc::now().timestamp() + 60 < exp)
-            .unwrap_or(true),
+            .and_then(|claims| claims.exp)
+    })
+}
+
+/// Whether the stored id/access token can be used as a bearer without refresh.
+///
+/// Refreshable sessions use a lead-time skew so refresh runs before expiry.
+/// Unrefreshable sessions (pasted Clerk JWTs) are fresh for their full
+/// remaining lifetime — still-unexpired is enough.
+fn token_fresh(tokens: &OAuthTokens) -> bool {
+    let Some(exp) = token_expiry(tokens) else {
+        // No expiry claim: treat as usable (caller still subject to API 401).
+        return true;
+    };
+    let now = Utc::now().timestamp();
+    if tokens.refresh_token.is_some() {
+        now + REFRESH_SKEW_SECS < exp
+    } else {
+        now < exp
+    }
+}
+
+fn unrefreshable_session_error(tokens: &OAuthTokens) -> anyhow::Error {
+    match token_expiry(tokens) {
+        Some(exp) if Utc::now().timestamp() >= exp => anyhow!(
+            "session JWT is expired — paste a fresh Clerk session JWT \
+             (`am auth login --token`) or run browser `am auth login`"
+        ),
+        Some(exp) => {
+            // Remaining life was shorter than REFRESH_SKEW_SECS would demand,
+            // but this path is for tokens without a refresh token — after
+            // ATO-2308 they are accepted while `now < exp`, so this branch is
+            // defensive (clock race / future skew changes).
+            let remaining = (exp - Utc::now().timestamp()).max(0);
+            anyhow!(
+                "session JWT has only {remaining}s remaining and cannot be refreshed \
+                 (pasted tokens have no refresh token) — paste a fresh JWT or run \
+                 `am auth login`"
+            )
+        }
+        None => anyhow!("session expired — run `am auth login`"),
     }
 }
 
@@ -546,6 +590,36 @@ mod tests {
     }
 
     #[test]
+    fn device_session_on_dev_api_authorizes_without_config_oauth() {
+        // ATO-2321: after device login against api.dev, whoami must not bail on
+        // "requires explicit OAuth issuer" when config.toml has empty [oauth].
+        let mut config = ConfigFile::default();
+        config.profiles.insert(
+            "qa-dev".into(),
+            crate::config::ProfileConfig {
+                base_url: Some("https://api.dev.atomicstrata.ai".into()),
+                ..Default::default()
+            },
+        );
+        let mut creds = CredentialsFile::default();
+        creds.oauth.insert(
+            "qa-dev".into(),
+            OAuthTokens {
+                id_token: "header.payload.sig".into(),
+                refresh_token: Some("refresh".into()),
+                expires_at: Some(Utc::now().timestamp() + 3600),
+                issuer: Some(Environment::PROD_OAUTH_ISSUER.into()),
+                api_origin: Some("https://api.dev.atomicstrata.ai".into()),
+            },
+        );
+        let session =
+            authorize_stored_session(&config, &creds, "qa-dev", "https://api.dev.atomicstrata.ai")
+                .expect("first-party Dev must resolve OAuth without config");
+        assert_eq!(session.issuer, Environment::PROD_OAUTH_ISSUER);
+        assert_eq!(session.client_id, Environment::PROD_OAUTH_CLIENT_ID);
+    }
+
+    #[test]
     fn stored_session_is_refused_for_a_shared_issuer_on_another_origin() {
         // Both origins use the SAME configured issuer, so only the recorded
         // API origin can distinguish them — issuer comparison alone passed
@@ -621,5 +695,105 @@ mod tests {
         // rejection — that would force a re-login after a network blip.
         let err = anyhow!("token refresh").context("operation timed out");
         assert!(!is_refresh_rejection(&err));
+    }
+
+    /// Synthetic unsigned JWT for expiry tests (decode path only; no verify).
+    fn synthetic_jwt(iat: i64, exp: i64) -> String {
+        use base64::Engine;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let payload = format!(r#"{{"sub":"user_test","iat":{iat},"exp":{exp}}}"#);
+        let encoded = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        format!("hdr.{encoded}.sig")
+    }
+
+    fn paste_tokens(iat: i64, exp: i64) -> OAuthTokens {
+        OAuthTokens {
+            id_token: synthetic_jwt(iat, exp),
+            refresh_token: None,
+            expires_at: Some(exp),
+            issuer: Some(Environment::PROD_OAUTH_ISSUER.into()),
+            api_origin: Some(Environment::PROD_BASE_URL.into()),
+        }
+    }
+
+    fn oauth_tokens(exp: i64, with_refresh: bool) -> OAuthTokens {
+        OAuthTokens {
+            id_token: synthetic_jwt(exp - 3600, exp),
+            refresh_token: with_refresh.then(|| "refresh-token".into()),
+            expires_at: Some(exp),
+            issuer: Some(Environment::PROD_OAUTH_ISSUER.into()),
+            api_origin: Some(Environment::PROD_BASE_URL.into()),
+        }
+    }
+
+    #[test]
+    fn sixty_second_clerk_paste_jwt_is_fresh_without_refresh() {
+        // ATO-2308: Clerk dashboard session JWTs often have exp-iat = 60 and
+        // no refresh token. The old `now + 60 < exp` skew rejected them at once.
+        let now = Utc::now().timestamp();
+        let tokens = paste_tokens(now, now + 60);
+        assert!(
+            token_fresh(&tokens),
+            "just-issued 60s-lifetime paste JWT must be usable for project setup"
+        );
+    }
+
+    #[test]
+    fn sixty_second_paste_jwt_fresh_via_claim_when_expires_at_unset() {
+        let now = Utc::now().timestamp();
+        let mut tokens = paste_tokens(now, now + 60);
+        tokens.expires_at = None;
+        assert!(token_fresh(&tokens));
+    }
+
+    #[test]
+    fn already_expired_paste_jwt_is_not_fresh() {
+        let now = Utc::now().timestamp();
+        let tokens = paste_tokens(now - 120, now - 1);
+        assert!(!token_fresh(&tokens));
+        let err = unrefreshable_session_error(&tokens).to_string();
+        assert!(
+            err.contains("session JWT is expired"),
+            "expired paste must say the JWT is expired, got: {err}"
+        );
+        assert!(
+            !err.contains("cannot be refreshed"),
+            "expired path must not use the remaining-life / skew message: {err}"
+        );
+    }
+
+    #[test]
+    fn oauth_with_refresh_applies_skew_before_expiry() {
+        let now = Utc::now().timestamp();
+        // 30s remaining: without skew this would still be valid; with refresh
+        // skew we must refresh early instead of using the dying access token.
+        let with_refresh = oauth_tokens(now + 30, true);
+        assert!(
+            !token_fresh(&with_refresh),
+            "refreshable OAuth must treat token inside the {REFRESH_SKEW_SECS}s skew as stale"
+        );
+        let long_lived = oauth_tokens(now + 3600, true);
+        assert!(token_fresh(&long_lived));
+    }
+
+    #[test]
+    fn unrefreshable_error_distinguishes_remaining_life_from_expired() {
+        let now = Utc::now().timestamp();
+        let still_valid = paste_tokens(now, now + 15);
+        let err = unrefreshable_session_error(&still_valid).to_string();
+        assert!(
+            err.contains("remaining") && err.contains("cannot be refreshed"),
+            "unexpired-but-unusable path must mention remaining life, got: {err}"
+        );
+        assert!(!err.contains("session JWT is expired"));
+    }
+
+    #[test]
+    fn oauth_without_refresh_inside_skew_window_still_usable() {
+        // Same remaining life as the refresh skew case, but paste/no-refresh:
+        // still-unexpired must win so short-lived Clerk JWTs work.
+        let now = Utc::now().timestamp();
+        let tokens = oauth_tokens(now + 30, false);
+        assert!(token_fresh(&tokens));
     }
 }

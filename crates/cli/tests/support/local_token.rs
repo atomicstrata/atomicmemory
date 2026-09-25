@@ -37,6 +37,8 @@ pub struct Request {
 pub struct Api {
     pub requests: Vec<Request>,
     pub fail_first_discovery: bool,
+    /// `iss` claim on device-flow id_tokens (None omits the claim).
+    pub device_iss: Option<String>,
 }
 
 pub struct Fixture {
@@ -196,6 +198,11 @@ impl Drop for Fixture {
     }
 }
 
+fn token_with_iss(iss: &str) -> String {
+    let payload = format!(r#"{{"sub":"user_member","iss":"{iss}","exp":4102444800}}"#);
+    format!("hdr.{}.sig", URL_SAFE_NO_PAD.encode(payload.as_bytes()))
+}
+
 fn token() -> String {
     let payload = URL_SAFE_NO_PAD.encode(br#"{"sub":"user_member","exp":4102444800}"#);
     format!("hdr.{payload}.sig")
@@ -241,6 +248,18 @@ async fn handle(
                 );
             }
             json!({"authorization_endpoint":format!("{base}/authorize"), "token_endpoint":format!("{base}/oauth/token")})
+        }
+        "/api/oauth/device/authorize" => json!({
+            "device_code":"fixture_device_code",
+            "user_code":"FIX-TURE",
+            "verification_uri":format!("{base}/activate"),
+            "verification_uri_complete":format!("{base}/activate?code=FIX-TURE"),
+            "expires_in":600,
+            "interval":1
+        }),
+        "/api/oauth/device/token" => {
+            let id_token = api.device_iss.as_deref().map_or_else(token, token_with_iss);
+            json!({"id_token":id_token, "refresh_token":"fixture_device_refresh", "token_type":"Bearer", "expires_in":3600})
         }
         "/oauth/token" => {
             json!({"id_token":token(), "refresh_token":"fixture_refresh", "expires_in":3600})

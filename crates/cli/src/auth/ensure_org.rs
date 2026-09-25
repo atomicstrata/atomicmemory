@@ -70,6 +70,7 @@ pub async fn ensure_org_context(
                 "no organization available and org bootstrap is not deployed on {} \
                  (POST /api/onboarding/ensure → 404).\n\
                  • Ensure org bootstrap is deployed on the Cloud API, then re-run `am init`\n\
+                 • Or finish device login: `am auth login --device`\n\
                  • Or paste a dashboard JWT with an org selected: `am auth login --token <jwt>`\n\
                  • Or finish onboarding at memory.dev, then `am auth login --token <jwt>`",
                 profile.base_url

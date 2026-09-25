@@ -922,9 +922,10 @@ async fn ensure_authenticated(
         io::stdin().is_terminal(),
     ) {
         bail!(
-            "sign-in required — run `am auth login --token <dashboard-jwt>` first, \
-             or `am init --device` to sign in with a device code. Browser sign-in \
-             needs an interactive terminal, and --yes never opens one."
+            "sign-in required — run `am auth login --device` (preferred on remote/VPS), \
+             `am auth login --token <dashboard-jwt>` for a short paste session, \
+             or `am init --device`. Browser sign-in needs an interactive terminal, \
+             and --yes never opens one."
         );
     }
 
@@ -935,8 +936,10 @@ async fn ensure_authenticated(
                 profile: cloud_profile.to_string(),
                 base_url: cloud_api_url.to_string(),
                 client_id: None,
+                issuer: None,
                 quiet: global.quiet,
                 verbose: global.verbose > 0,
+                skip_project_select: true,
             },
             Some(progress),
             Some("identity"),
@@ -948,7 +951,6 @@ async fn ensure_authenticated(
             LoginOptions {
                 profile: cloud_profile.to_string(),
                 port: None,
-                no_browser: false,
                 issuer: None,
                 client_id: None,
                 skip_project_select: true,

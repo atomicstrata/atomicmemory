@@ -208,12 +208,19 @@ machines therefore keep independent credentials.
 
 ### Token fallback
 
-Paste a dashboard session JWT when browser OAuth is unavailable:
+On a remote or headless host, prefer device login (refreshable Cloud session):
+
+```bash
+am auth login --device
+```
+
+Paste a dashboard session JWT only for a short session (no refresh token):
 
 ```bash
 am auth login --token "eyJ..."
 ```
 
+`--no-browser` uses the same device flow as `--device`.
 ## Defaults
 
 | Setting | Default |

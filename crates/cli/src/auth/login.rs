@@ -12,7 +12,9 @@ use axum::routing::get;
 use tokio::sync::{Mutex, oneshot};
 
 use crate::auth::auth_wait::wait_for_oneshot;
-use crate::auth::clerk_oauth::{invalid_client_help, resolve_oauth_pair, resolve_public_client_id};
+use crate::auth::clerk_oauth::{
+    invalid_client_help, reject_blank_oauth_overrides, resolve_oauth_pair, resolve_public_client_id,
+};
 use crate::auth::doctor::{DoctorOverrides, require_login_ready};
 use crate::auth::login_feedback::LoginFeedback;
 use crate::auth::pkce::{generate_pkce_pair, generate_state};
@@ -26,11 +28,26 @@ use crate::progress::ProgressReporter;
 
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Next steps when loopback browser OAuth cannot finish on this host.
+pub fn headless_login_next_steps(open_error: Option<&str>) -> String {
+    let mut msg = String::new();
+    if let Some(err) = open_error {
+        msg.push_str(&format!("Could not open a browser ({err}).\n"));
+    }
+    msg.push_str(
+        "Browser OAuth uses a loopback callback on this machine, so opening the authorize \
+         URL on another host cannot finish login.\n\
+         On a remote or headless host, use device login (stores a refreshable Cloud session):\n\
+           am auth login --device\n\
+         Short paste session (no refresh token): am auth login --token <dashboard-jwt>",
+    );
+    msg
+}
+
 #[derive(Debug, Clone)]
 pub struct LoginOptions {
     pub profile: String,
     pub port: Option<u16>,
-    pub no_browser: bool,
     pub issuer: Option<String>,
     pub client_id: Option<String>,
     pub skip_project_select: bool,
@@ -50,6 +67,9 @@ pub async fn run_login(
 ) -> Result<()> {
     let feedback = LoginFeedback::detect(opts.verbose, opts.quiet);
     let step_id = progress_step.unwrap_or("identity");
+    // Before any config write: browser login persists overrides into the
+    // global [oauth] table, so a blank one would replace a working pair.
+    reject_blank_oauth_overrides(opts.issuer.as_deref(), opts.client_id.as_deref())?;
 
     let mut config = load_config()?;
     if let Some(issuer) = opts.issuer.clone() {
@@ -127,33 +147,15 @@ pub async fn run_login(
     if feedback.show_authorize_url() {
         eprintln!("Authorize URL:\n{authorize_url}\n");
     }
-    if opts.no_browser {
-        if feedback.show_recovery_hints() {
-            eprintln!(
-                "Open that URL in your browser (private window works if a shared session misroutes)."
-            );
-        } else if feedback.concise_tty() {
-            eprintln!("Open the authorize URL from `am auth login --verbose` if needed.");
-        }
-    } else if let Err(err) = open::that(authorize_url.as_str()) {
-        // Failing the login here would strand the user: on a plain interactive
-        // TTY show_authorize_url() is false, so the URL was never printed and
-        // a bare "open browser" error leaves nothing to act on. The callback
-        // server is already listening, so print the URL unconditionally (even
-        // under --quiet — login cannot proceed without it) and keep waiting.
-        eprintln!("Could not open a browser ({err}).");
-        if !feedback.show_authorize_url() {
-            eprintln!("Authorize URL:\n{authorize_url}\n");
-        }
-        // The redirect targets 127.0.0.1 on THIS machine, so a browser on
-        // another device would send the callback to its own loopback and this
-        // process would wait until timeout. Remote/headless users need the
-        // token fallback instead.
-        eprintln!(
-            "Open that URL in a browser on this machine to continue. On a remote or headless \
-             host, cancel and run `am auth login --token <your-session-jwt>` from the web console."
-        );
-    } else if feedback.concise_tty() {
+    // Loopback OAuth only works when a browser on THIS host hits redirect_uri.
+    // A failed open would leave the process stranded — exit with the supported
+    // remote path instead of waiting on 127.0.0.1. (`--no-browser` never reaches
+    // here: it selects the device flow before browser login starts.)
+    if let Err(err) = open::that(authorize_url.as_str()) {
+        server.abort();
+        bail!("{}", headless_login_next_steps(Some(&err.to_string())));
+    }
+    if feedback.concise_tty() {
         eprintln!("Complete sign-in in your browser…");
     } else if feedback.show_waiting_message() {
         eprintln!("Waiting for browser login on {redirect_uri} …");
@@ -173,11 +175,7 @@ pub async fn run_login(
         progress,
         step_id,
         CALLBACK_TIMEOUT,
-        if opts.no_browser {
-            "waiting for authorization"
-        } else {
-            "waiting for browser"
-        },
+        "waiting for browser",
     )
     .await
     .map_err(|err| {
@@ -185,13 +183,15 @@ pub async fn run_login(
             anyhow::anyhow!(
                 "{err} — no callback received at {redirect_uri}.\n\
                  Paste the Authorize URL printed above into a private/incognito window and approve access.\n\
-                 Fallback: am auth login --token <jwt from memory.dev with an org selected>"
+                 Remote/headless: am auth login --device\n\
+                 Short paste: am auth login --token <jwt from memory.dev with an org selected>"
             )
         } else {
             anyhow::anyhow!(
                 "{err} — no callback received at {redirect_uri}.\n\
                  Re-run with --verbose for the authorize URL and recovery steps.\n\
-                 Fallback: am auth login --token <jwt from memory.dev with an org selected>"
+                 Remote/headless: am auth login --device\n\
+                 Short paste: am auth login --token <jwt from memory.dev with an org selected>"
             )
         }
     })?;
@@ -209,7 +209,8 @@ pub async fn run_login(
                     "oauth error: {error} — {description}\n\
                      Omit --no-org for now, or enable the user:org:read scope on the \
                      Atomic Strata Cloud CLI OAuth app in Clerk Dashboard.\n\
-                     Fallback: am auth login --token <jwt from memory.dev with an org selected>"
+                     Remote/headless: am auth login --device\n\
+                     Short paste: am auth login --token <jwt from memory.dev with an org selected>"
                 );
             }
             bail!("oauth error: {error} — {description}");
