@@ -48,7 +48,7 @@ pub fn token_has_active_org(id_token: &str) -> bool {
 
 pub fn missing_org_login_hint() -> &'static str {
     "Session has no active organization — run `am init` to bootstrap a personal workspace, \
-     or `am auth login --token <jwt>` from memory.dev with an org selected."
+     `am auth login --device`, or `am auth login --token <jwt>` from memory.dev with an org selected."
 }
 
 pub fn decode_id_token(id_token: &str) -> Result<IdClaims> {

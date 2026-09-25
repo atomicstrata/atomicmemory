@@ -11,7 +11,7 @@ use crate::auth::token::discover_metadata;
 use crate::config::{
     DEFAULT_OAUTH_CALLBACK_PORT, ensure_config_initialized, load_config, resolve_profile,
 };
-use crate::environment::is_production_api_url;
+use crate::environment::{is_first_party_cloud_api_url, is_production_api_url};
 
 const API_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -68,7 +68,7 @@ pub async fn run_doctor(
             "ATOMICMEMORY_OAUTH_CLIENT_ID={env_id} is set but ignored on production — login uses shipped client {client_id}. Run: unset ATOMICMEMORY_OAUTH_CLIENT_ID"
         ));
     }
-    if !is_production_api_url(&api_base) {
+    if !is_first_party_cloud_api_url(&api_base) {
         hints.push(
             "Using a custom Cloud API URL — OAuth issuer and client_id must be configured explicitly."
                 .into(),
@@ -136,7 +136,11 @@ pub async fn run_doctor(
                  and the API JWT audience includes {client_id}."
             ));
         }
-        hints.push("Until fixed, use `am auth login --token <dashboard-jwt>`.".into());
+        hints.push(
+            "Until fixed, use `am auth login --device` (remote/VPS) or \
+             `am auth login --token <dashboard-jwt>` (short paste)."
+                .into(),
+        );
     }
 
     let api_health_ok = match probe_api_health(&api_base).await {

@@ -11,10 +11,27 @@ pub const ENV_CORE_IMAGE: &str = "ATOMICMEMORY_CORE_IMAGE";
 /// Hostnames treated as production Cloud API endpoints (exact match, lowercase).
 pub const PROD_API_HOSTS: [&str; 1] = ["api.atomicstrata.ai"];
 
+/// Hostnames treated as first-party Atomic Strata Cloud API endpoints.
+///
+/// These share the shipped Clerk OAuth pair (`PROD_OAUTH_*`). Dev/staging are
+/// not production for health/tier labels, but they are first-party for OAuth
+/// baking so `am auth whoami` / `doctor` work against `--base-url
+/// https://api.dev…` / `https://api.staging…` without requiring a
+/// non-production issuer in config.toml (ATO-2321).
+pub const FIRST_PARTY_API_HOSTS: [&str; 3] = [
+    "api.atomicstrata.ai",
+    "api.dev.atomicstrata.ai",
+    "api.staging.atomicstrata.ai",
+];
+
 /// Sanctioned API hostname → memory web hostname for automatic browser open.
-const SANCTIONED_MEMORY_WEB_HOSTS: [(&str, &str); 2] = [
+const SANCTIONED_MEMORY_WEB_HOSTS: [(&str, &str); 3] = [
     ("api.atomicstrata.ai", "memory.atomicstrata.ai"),
     ("api.dev.atomicstrata.ai", "memory.dev.atomicstrata.ai"),
+    (
+        "api.staging.atomicstrata.ai",
+        "memory.staging.atomicstrata.ai",
+    ),
 ];
 
 /// Named Cloud tier — production preset only in the public CLI.
@@ -74,14 +91,8 @@ pub fn parse_api_base_url(raw: &str) -> Result<Url, url::ParseError> {
     Ok(url)
 }
 
-/// True when the URL is the canonical production Cloud API origin.
-///
-/// This gates whether the shipped production OAuth identity is used and,
-/// downstream, whether a bearer token is attached to the request. Matching on
-/// hostname alone would treat `http://api.atomicstrata.ai` (cleartext, so the
-/// token is exposed to anyone on path) and non-default ports as production, so
-/// the scheme and port must be canonical too.
-pub fn is_production_api_url(raw: &str) -> bool {
+/// True when `url` is HTTPS on the default port with a host in `hosts`.
+fn is_canonical_https_api_host(raw: &str, hosts: &[&str]) -> bool {
     let Ok(url) = parse_api_base_url(raw) else {
         return false;
     };
@@ -94,9 +105,24 @@ pub fn is_production_api_url(raw: &str) -> bool {
     }
     url.host_str()
         .map(str::to_ascii_lowercase)
-        .is_some_and(|host| PROD_API_HOSTS.contains(&host.as_str()))
+        .is_some_and(|host| hosts.contains(&host.as_str()))
 }
 
+/// True when the URL is the canonical production Cloud API origin.
+///
+/// Matching on hostname alone would treat `http://api.atomicstrata.ai`
+/// (cleartext, so the token is exposed to anyone on path) and non-default
+/// ports as production, so the scheme and port must be canonical too.
+pub fn is_production_api_url(raw: &str) -> bool {
+    is_canonical_https_api_host(raw, &PROD_API_HOSTS)
+}
+
+/// True when the URL is a first-party Atomic Strata Cloud API origin (prod,
+/// Dev, or staging). Gates the shipped Clerk OAuth pair — not production-only
+/// policy.
+pub fn is_first_party_cloud_api_url(raw: &str) -> bool {
+    is_canonical_https_api_host(raw, &FIRST_PARTY_API_HOSTS)
+}
 /// True when the URL targets a remote Cloud API (HTTPS, not loopback).
 ///
 /// Used to honor dashboard shell exports (`ATOMICMEMORY_API_URL` + `amc_` key)
@@ -319,6 +345,28 @@ mod tests {
     fn is_production_api_url_rejects_custom_hosts() {
         assert!(!is_production_api_url("https://api.staging.example.com"));
         assert!(!is_production_api_url("http://127.0.0.1:8080"));
+        // Dev/staging are first-party for OAuth, but not the production origin.
+        assert!(!is_production_api_url("https://api.dev.atomicstrata.ai"));
+        assert!(!is_production_api_url(
+            "https://api.staging.atomicstrata.ai"
+        ));
+    }
+
+    #[test]
+    fn is_first_party_cloud_api_url_accepts_prod_dev_and_staging() {
+        assert!(is_first_party_cloud_api_url("https://api.atomicstrata.ai"));
+        assert!(is_first_party_cloud_api_url(
+            "https://api.dev.atomicstrata.ai/"
+        ));
+        assert!(is_first_party_cloud_api_url(
+            "https://api.staging.atomicstrata.ai"
+        ));
+        assert!(!is_first_party_cloud_api_url(
+            "https://api.staging.example.com"
+        ));
+        assert!(!is_first_party_cloud_api_url(
+            "http://api.dev.atomicstrata.ai"
+        ));
     }
 
     #[test]
@@ -379,6 +427,9 @@ mod tests {
 
         let dev = memory_web_origin("https://api.dev.atomicstrata.ai").unwrap();
         assert_eq!(dev, "https://memory.dev.atomicstrata.ai/");
+
+        let staging = memory_web_origin("https://api.staging.atomicstrata.ai").unwrap();
+        assert_eq!(staging, "https://memory.staging.atomicstrata.ai/");
     }
 
     #[test]
