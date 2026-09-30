@@ -1,5 +1,5 @@
 name: atomicmemory
-version: 0.2.2
+version: 0.2.3
 author:
   name: AtomicMemory
   url: https://atomicmem.ai
@@ -12,6 +12,9 @@ description: |
 
 permissions:
   network:
+    - https://api.atomicstrata.ai
+    - https://api.dev.atomicstrata.ai
+    - https://api.staging.atomicstrata.ai
     - http://127.0.0.1:17350
     - http://localhost:17350
   credentials: []

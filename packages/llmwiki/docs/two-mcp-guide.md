@@ -52,6 +52,8 @@ want write tools to be opt-in for the agent surface.
     "atomicmemory": {
       "command": "atomicmemory-mcp",
       "env": {
+        "ATOMICMEMORY_API_URL": "http://127.0.0.1:17350",
+        "ATOMICMEMORY_API_KEY": "local-dev-key",
         // Verify this is honored by your installed @atomicmemory/mcp-server.
         "ATOMICMEMORY_MCP_READ_ONLY": "true"
       }

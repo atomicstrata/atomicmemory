@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 - 2026-09-24
+
+### Changed
+
+- URL resolution: explicit `ATOMICMEMORY_API_URL`, else Cloud when
+  `ATOMICMEMORY_API_KEY` is set, else local Core at `http://127.0.0.1:17350`.
+  Cloud requires a project API key.
+
 ## 0.2.0 - 2026-07-29
 
 ### Changed

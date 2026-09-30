@@ -1,0 +1,12 @@
+# Prefer building with repo-root context (see packages/mcp-server/Dockerfile).
+# This file applies only if someone builds with -f Dockerfile from this
+# directory as the context; keep it lean anyway.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.log
+.git
+coverage
+**/*.test.ts

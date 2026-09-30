@@ -1,5 +1,5 @@
 # Build-context exclusions for any Dockerfile that uses the workspace root as
-# its build context (e.g. packages/core/Dockerfile).
+# its build context (e.g. packages/core/Dockerfile, packages/mcp-server/Dockerfile).
 
 **/node_modules
 **/.turbo

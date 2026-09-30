@@ -24,6 +24,7 @@ test('bin stdout contains only JSON-RPC and exposes memory tools', async () => {
     cwd: process.cwd(),
     env: {
       ...env,
+      ATOMICMEMORY_API_URL: 'http://127.0.0.1:17350',
       USER: 'stdio-smoke',
     },
     stdio: ['pipe', 'pipe', 'pipe'],

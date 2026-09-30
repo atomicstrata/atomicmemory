@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Optional helper-to-core HTTP smoke for the metadata wire path.
-# **Not a CI gate** — runs only when `ATOMICMEMORY_API_URL` is
-# set; intended for local-stack verification before posting a PR.
+# Optional helper-to-service HTTP smoke for the metadata wire path.
+# **Not a CI gate** — runs only when `ATOMICMEMORY_API_KEY` or an explicit
+# `ATOMICMEMORY_API_URL` is set; intended for Cloud or local verification.
 #
 # Scope: helper smoke. Calls `am_ingest_verbatim` directly with
 # three representative payloads (one per lifecycle hook shape:
@@ -17,14 +17,14 @@
 # "triggered each lifecycle event against a dev core; confirmed
 # the row's metadata column matched."
 #
-# Required env (script exits cleanly if not set):
-#   ATOMICMEMORY_API_URL  — base URL of a running core, e.g.
-#                            http://localhost:17350
+# Optional env (script exits cleanly if neither is set):
+#   ATOMICMEMORY_API_KEY  — Cloud project API key; Cloud URL then defaults
+#   ATOMICMEMORY_API_URL  — explicit Cloud/custom/local service URL
 
 set -euo pipefail
 
-if [ -z "${ATOMICMEMORY_API_URL:-}" ]; then
-  printf '[smoke] ATOMICMEMORY_API_URL not set — skipping (this script is opt-in)\n'
+if [ -z "${ATOMICMEMORY_API_KEY:-}" ] && [ -z "${ATOMICMEMORY_API_URL:-}" ]; then
+  printf '[smoke] connection env not set — skipping (this script is opt-in)\n'
   exit 0
 fi
 
@@ -34,22 +34,24 @@ LIB_PATH="$SCRIPT_DIR/../lib/atomicmemory.sh"
 # UUID for this smoke run; lets us reliably list-and-clean.
 TEST_USER="00000000-0000-0000-0000-$(openssl rand -hex 6 2>/dev/null || printf '000000000abc')"
 
-export AM_SCOPE_USER="$TEST_USER"
-export AM_API_URL="$ATOMICMEMORY_API_URL"
+export ATOMICMEMORY_SCOPE_USER="$TEST_USER"
 export ATOMICMEMORY_PROVIDER="atomicmemory"
 export ATOMICMEMORY_CAPTURE_LEVEL="balanced"
 
 # shellcheck source=../lib/atomicmemory.sh
 source "$LIB_PATH"
+am_load_env
 
 PASS=0
 FAIL=0
 INSERTED_IDS=()
 
 cleanup() {
-  for id in "${INSERTED_IDS[@]}"; do
+  am_auth_curl_args
+  for id in ${INSERTED_IDS[@]+"${INSERTED_IDS[@]}"}; do
     curl -sS -X DELETE \
-      "$ATOMICMEMORY_API_URL/v1/memories/$id?user_id=$TEST_USER" >/dev/null 2>&1 || true
+      ${AM_AUTH_CURL_ARGS[@]+"${AM_AUTH_CURL_ARGS[@]}"} \
+      "$AM_API_URL/v1/memories/$id?user_id=$TEST_USER" >/dev/null 2>&1 || true
   done
 }
 trap cleanup EXIT
@@ -64,13 +66,15 @@ assert_roundtrip() {
   # Find the row via /list filtered by source_site; pluck the
   # most recent matching memory.
   local list_response
+  am_auth_curl_args
   list_response=$(curl -sS \
-    "$ATOMICMEMORY_API_URL/v1/memories/list?user_id=$TEST_USER&source_site=claude-code")
+    ${AM_AUTH_CURL_ARGS[@]+"${AM_AUTH_CURL_ARGS[@]}"} \
+    "$AM_API_URL/v1/memories/list?user_id=$TEST_USER&source_site=claude-code")
 
   local matched
   matched=$(printf '%s' "$list_response" \
     | jq -c --argjson md "$metadata_json" \
-      '.memories | map(select(.metadata == $md)) | first // null')
+      '.memories | map(select(.metadata | contains($md))) | first // null')
 
   if [ "$matched" = "null" ]; then
     printf '  ✗ %s: no row with matching metadata found\n' "$label" >&2

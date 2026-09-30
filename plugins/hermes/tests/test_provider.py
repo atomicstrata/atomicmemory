@@ -6,10 +6,12 @@ No subprocess, no time.sleep. Threaded code is synchronized via threading.Event.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -24,6 +26,129 @@ from plugins.hermes.client import (
 )
 from plugins.hermes.config import SOURCE_SITE
 from plugins.hermes.tests.fakes import FakeAtomicMemoryClient
+
+
+class AvailabilityUsesCanonicalCloudOrigin(unittest.TestCase):
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_equivalent_cloud_origins_require_a_key(self, _available: object) -> None:
+        provider = AtomicMemoryMemoryProvider()
+        urls = ["https://API.atomicstrata.ai", "https://api.atomicstrata.ai:443/v1"]
+
+        for api_url in urls:
+            for api_key in ["", "   "]:
+                with self.subTest(api_url=api_url, api_key=api_key), patch.dict(
+                    os.environ,
+                    {
+                        "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                        "ATOMICMEMORY_API_URL": api_url,
+                        "ATOMICMEMORY_API_KEY": api_key,
+                    },
+                    clear=True,
+                ):
+                    self.assertFalse(provider.is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_local_core_key_is_unavailable_for_cloud(self, _available: object) -> None:
+        provider = AtomicMemoryMemoryProvider()
+        for api_url in ["", "https://api.atomicstrata.ai", "https://api.dev.atomicstrata.ai"]:
+            with self.subTest(api_url=api_url), patch.dict(
+                os.environ,
+                {
+                    "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                    "ATOMICMEMORY_API_URL": api_url,
+                    "ATOMICMEMORY_API_KEY": " local-dev-key ",
+                },
+                clear=True,
+            ):
+                self.assertFalse(provider.is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_plain_http_cloud_hostname_is_unavailable(self, _available: object) -> None:
+        provider = AtomicMemoryMemoryProvider()
+        with patch.dict(
+            os.environ,
+            {
+                "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                "ATOMICMEMORY_API_URL": "http://api.atomicstrata.ai",
+                "ATOMICMEMORY_API_KEY": "amc_cloud_test",
+            },
+            clear=True,
+        ):
+            self.assertFalse(provider.is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_local_core_without_key_is_available(self, _available: object) -> None:
+        provider = AtomicMemoryMemoryProvider()
+        with patch.dict(
+            os.environ,
+            {
+                "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                "ATOMICMEMORY_API_URL": "http://127.0.0.1:17350",
+            },
+            clear=True,
+        ):
+            self.assertTrue(provider.is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_whitespace_url_uses_cloud_default_when_key_set(self, _available: object) -> None:
+        provider = AtomicMemoryMemoryProvider()
+        with patch.dict(
+            os.environ,
+            {
+                "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                "ATOMICMEMORY_API_URL": "   ",
+                "ATOMICMEMORY_API_KEY": "amc_cloud_test",
+            },
+            clear=True,
+        ):
+            self.assertTrue(provider.is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_key_alone_defaults_to_cloud(self, _available: object) -> None:
+        from plugins.hermes import _runtime_sdk_config
+        from plugins.hermes.python_sdk import DEFAULT_CLOUD_API_URL
+
+        with patch.dict(
+            os.environ,
+            {
+                "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                "ATOMICMEMORY_API_KEY": "amc_cloud_test",
+            },
+            clear=True,
+        ):
+            config = _runtime_sdk_config()
+            self.assertEqual(config.api_url, DEFAULT_CLOUD_API_URL)
+            self.assertTrue(AtomicMemoryMemoryProvider().is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_unset_url_and_key_default_to_local_core(self, _available: object) -> None:
+        from plugins.hermes import _runtime_sdk_config
+        from plugins.hermes.python_sdk import DEFAULT_LOCAL_API_URL
+
+        with patch.dict(
+            os.environ,
+            {"ATOMICMEMORY_PROVIDER": "atomicmemory"},
+            clear=True,
+        ):
+            config = _runtime_sdk_config()
+            self.assertEqual(config.api_url, DEFAULT_LOCAL_API_URL)
+            self.assertTrue(AtomicMemoryMemoryProvider().is_available())
+
+    @patch("plugins.hermes.sdk_is_available", return_value=True)
+    def test_explicit_url_wins_over_key_default(self, _available: object) -> None:
+        from plugins.hermes import _runtime_sdk_config
+
+        with patch.dict(
+            os.environ,
+            {
+                "ATOMICMEMORY_PROVIDER": "atomicmemory",
+                "ATOMICMEMORY_API_URL": "https://memory.example.com",
+                "ATOMICMEMORY_API_KEY": "amc_cloud_test",
+            },
+            clear=True,
+        ):
+            config = _runtime_sdk_config()
+            self.assertEqual(config.api_url, "https://memory.example.com")
 
 
 def _make_provider(

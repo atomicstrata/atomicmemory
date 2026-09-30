@@ -53,6 +53,8 @@ class InstallPathImportsResolve(unittest.TestCase):
             )
 
             self.assertIn(f"Installed AtomicMemory Hermes provider to {target}", result.stdout)
+            self.assertIn('ATOMICMEMORY_API_URL="https://api.atomicstrata.ai"', result.stdout)
+            self.assertNotIn('ATOMICMEMORY_API_URL="http://127.0.0.1:17350"', result.stdout)
             for name in _provider_install_files():
                 self.assertTrue((target / name).exists(), f"{name} was not installed")
             self.assertFalse((target / "install.mjs").exists())

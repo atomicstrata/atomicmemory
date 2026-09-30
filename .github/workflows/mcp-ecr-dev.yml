@@ -1,0 +1,346 @@
+name: MCP ECR Dev
+
+# Internal Dev lane for hosted MCP (ATO-2197). On push to `dev` that touches
+# packages/mcp-server or packages/sdk (or an operator dispatch), builds
+# packages/mcp-server/Dockerfile for linux/amd64, pushes to ECR
+# atomicmemory-mcp, updates SSM /am-cloud/dev/mcp_image, and rolls the Dev
+# ECS service am-cloud-mcp to an immutable sha-* tag.
+#
+# This is NOT a public release lane. Hosted listen contract (port 3100,
+# GET /healthz, CMD --http) is documented for operators in
+# packages/mcp-server/HOSTED.md.
+#
+# Naming contract with release-policy: scripts/ci/release-policy.mjs forbids
+# workflow_dispatch on every `.github/workflows/publish-*.yml`. This file is
+# deliberately named OUTSIDE that prefix so operators can dispatch rebuilds.
+# It is an enumerated image publisher pinned to the ECR MCP repository.
+#
+# Repo guard: mirrored into the public export, so jobs run ONLY on
+# atomicstrata/atomicmemory-internal. Keep this file free of secrets.
+#
+# Build context: repository root (workspace-aware turbo prune). First deploy
+# requires am-cloud-infra apply so ECR/ECS/SSM exist (do not terraform-apply
+# from this workflow).
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "packages/mcp-server/**"
+      # The SDK is a workspace dependency bundled into the image.
+      - "packages/sdk/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".dockerignore"
+      - ".github/workflows/mcp-ecr-dev.yml"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA of atomicmemory-internal to build (default: current SHA / dispatch ref)"
+        required: false
+        default: ""
+        type: string
+      deploy_dev:
+        description: "Roll ECS cluster/service after push (SSM + force-new-deployment)"
+        required: false
+        default: true
+        type: boolean
+      force:
+        description: "Rebuild and retag even when the VERSION tag already exists in ECR"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: mcp-ecr-dev-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE_NAME: 636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-mcp
+  ECR_REPOSITORY: atomicmemory-mcp
+  AWS_REGION_DEFAULT: us-east-1
+  PLATFORM: linux/amd64
+  SOURCE_LABEL: atomicmemory-internal
+  SSM_MCP_IMAGE_DEV_DEFAULT: /am-cloud/dev/mcp_image
+  ECS_CLUSTER_DEV_DEFAULT: atomicmemory-dev-cluster
+  ECS_SERVICE_DEFAULT: am-cloud-mcp
+
+jobs:
+  publish:
+    name: build, push ECR, roll Dev MCP
+    if: github.repository == 'atomicstrata/atomicmemory-internal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Resolve build metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && (inputs.force && 'true' || 'false') || 'false' }}
+          DEPLOY_DEV_INPUT: ${{ github.event_name == 'workflow_dispatch' && (inputs.deploy_dev && 'true' || 'false') || 'true' }}
+        run: |
+          set -euo pipefail
+
+          sha="$(git rev-parse HEAD)"
+          short_sha="${sha:0:7}"
+          version="$(node -p "require('./packages/mcp-server/package.json').version")"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::packages/mcp-server/package.json version '${version}' is not a usable image tag."
+            exit 1
+          fi
+
+          force=false
+          [[ "${FORCE_INPUT}" == "true" ]] && force=true
+
+          deploy_dev=true
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${DEPLOY_DEV_INPUT}" != "true" ]]; then
+            deploy_dev=false
+          fi
+
+          {
+            echo "sha=${sha}"
+            echo "short_sha=${short_sha}"
+            echo "version=${version}"
+            echo "force=${force}"
+            echo "deploy_dev=${deploy_dev}"
+            echo "image_sha_tag=sha-${short_sha}"
+            echo "image_version_tag=${version}"
+          } >>"${GITHUB_OUTPUT}"
+
+          echo "MCP ${version} at ${short_sha}; force=${force} deploy_dev=${deploy_dev}"
+
+      - name: Resolve AWS settings
+        id: aws
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          # Lane-scoped role only. No fallback to the shared publish role, so
+          # this lane can never assume broader credentials than it was granted.
+          ROLE_MCP: ${{ vars.AWS_MCP_ECR_PUBLISH_ROLE_ARN }}
+          SSM_DEV_VAR: ${{ vars.AWS_MCP_IMAGE_SSM_PARAM_DEV }}
+          ECS_CLUSTER_VAR: ${{ vars.AWS_MCP_ECS_CLUSTER }}
+          ECS_SERVICE_VAR: ${{ vars.AWS_MCP_ECS_SERVICE }}
+          SSM_DEV_DEFAULT: ${{ env.SSM_MCP_IMAGE_DEV_DEFAULT }}
+          ECS_CLUSTER_DEFAULT: ${{ env.ECS_CLUSTER_DEV_DEFAULT }}
+          ECS_SERVICE_DEFAULT: ${{ env.ECS_SERVICE_DEFAULT }}
+          AWS_REGION_DEFAULT: ${{ env.AWS_REGION_DEFAULT }}
+        run: |
+          set -euo pipefail
+
+          region="${AWS_REGION_VAR:-${AWS_REGION_DEFAULT}}"
+          role_publish="${ROLE_MCP:-}"
+          ssm_dev="${SSM_DEV_VAR:-${SSM_DEV_DEFAULT}}"
+          cluster="${ECS_CLUSTER_VAR:-${ECS_CLUSTER_DEFAULT}}"
+          service="${ECS_SERVICE_VAR:-${ECS_SERVICE_DEFAULT}}"
+
+          if [[ -z "${role_publish}" ]]; then
+            echo "::error::Set repository variable AWS_MCP_ECR_PUBLISH_ROLE_ARN - GitHub OIDC role for ECR/ECS/SSM scoped to the MCP lane."
+            exit 1
+          fi
+
+          {
+            echo "region=${region}"
+            echo "role_publish=${role_publish}"
+            echo "ssm_dev=${ssm_dev}"
+            echo "cluster=${cluster}"
+            echo "service=${service}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ steps.aws.outputs.role_publish }}
+          aws-region: ${{ steps.aws.outputs.region }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd
+
+      - name: Check existing VERSION tag
+        id: existing
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          FORCE: ${{ steps.meta.outputs.force }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        run: |
+          set -euo pipefail
+
+          exists=false
+          if aws ecr describe-images \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids "imageTag=${VERSION}" \
+            >/dev/null 2>&1; then
+            exists=true
+          fi
+
+          push_version=true
+          if [[ "${exists}" == "true" && "${FORCE}" != "true" ]]; then
+            push_version=false
+            echo "VERSION tag ${VERSION} already exists; will push sha-* and :dev only (set force=true to retag VERSION)."
+          fi
+
+          {
+            echo "version_tag_exists=${exists}"
+            echo "push_version=${push_version}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Build and verify linux/amd64 image
+        env:
+          PLATFORM: ${{ env.PLATFORM }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          MCP_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          verify_suffix="verify-${SHORT_SHA}-linux-amd64"
+
+          docker buildx build \
+            --platform "${PLATFORM}" \
+            --file packages/mcp-server/Dockerfile \
+            --load \
+            --tag "${IMAGE_NAME}:${verify_suffix}" \
+            .
+
+          image_version="$(docker run --rm --platform "${PLATFORM}" --entrypoint node "${IMAGE_NAME}:${verify_suffix}" -p "require('./package.json').version")"
+          if [[ "${image_version}" != "${MCP_VERSION}" ]]; then
+            echo "::error::image package version is ${image_version}, expected ${MCP_VERSION}"
+            exit 1
+          fi
+
+          container_id="$(docker run -d --platform "${PLATFORM}" \
+            -e ATOMICMEMORY_API_URL=https://api.example.invalid \
+            -p 3100:3100 \
+            "${IMAGE_NAME}:${verify_suffix}")"
+          cleanup() { docker rm -f "${container_id}" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          for attempt in {1..30}; do
+            if body="$(curl -fsS http://127.0.0.1:3100/healthz 2>/dev/null)"; then
+              test "$(jq -r .ok <<<"${body}")" = "true"
+              echo "Verified /healthz on ${PLATFORM}"
+              break
+            fi
+            if [[ "${attempt}" == "30" ]]; then
+              docker logs "${container_id}" >&2 || true
+              echo "::error::MCP image failed /healthz smoke"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          trap - EXIT
+          cleanup
+          docker image rm --force "${IMAGE_NAME}:${verify_suffix}" >/dev/null
+          echo "Verified @atomicmemory/mcp-server ${image_version} on ${PLATFORM}"
+
+      - name: Build and push ECR tags
+        env:
+          PLATFORM: ${{ env.PLATFORM }}
+          GIT_SHA: ${{ steps.meta.outputs.sha }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          MCP_VERSION: ${{ steps.meta.outputs.version }}
+          PUSH_VERSION: ${{ steps.existing.outputs.push_version }}
+          SOURCE_LABEL: ${{ env.SOURCE_LABEL }}
+        run: |
+          set -euo pipefail
+
+          tag_args=(
+            --tag "${IMAGE_NAME}:sha-${SHORT_SHA}"
+            --tag "${IMAGE_NAME}:dev"
+          )
+          if [[ "${PUSH_VERSION}" == "true" ]]; then
+            tag_args+=(--tag "${IMAGE_NAME}:${MCP_VERSION}")
+          fi
+
+          docker buildx build \
+            --platform "${PLATFORM}" \
+            --file packages/mcp-server/Dockerfile \
+            --label "org.opencontainers.image.source=${SOURCE_LABEL}" \
+            --label "org.opencontainers.image.revision=${GIT_SHA}" \
+            --label "org.opencontainers.image.version=${MCP_VERSION}" \
+            --label "org.opencontainers.image.title=@atomicmemory/mcp-server (Dev ECR)" \
+            "${tag_args[@]}" \
+            --push \
+            .
+
+      - name: Resolve immutable image URI for ECS
+        id: image
+        env:
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          uri="${IMAGE_NAME}:sha-${SHORT_SHA}"
+          {
+            echo "tag=sha-${SHORT_SHA}"
+            echo "uri=${uri}"
+          } >>"${GITHUB_OUTPUT}"
+          echo "ECS will track ${uri}"
+
+      - name: Roll Dev ECS
+        if: steps.meta.outputs.deploy_dev == 'true'
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          SSM_PARAM: ${{ steps.aws.outputs.ssm_dev }}
+          CLUSTER: ${{ steps.aws.outputs.cluster }}
+          SERVICE: ${{ steps.aws.outputs.service }}
+          IMAGE_REPO: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          scripts/ci/roll-core-ecs-image.sh \
+            "${IMAGE_URI}" \
+            "${IMAGE_REPO}" \
+            "${SSM_PARAM}" \
+            "${CLUSTER}" \
+            "${SERVICE}"
+
+      - name: Summary
+        if: always() && steps.meta.outcome == 'success'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          GIT_SHA: ${{ steps.meta.outputs.sha }}
+          IMAGE_URI: ${{ steps.image.outputs.uri || '' }}
+          DEPLOY_DEV: ${{ steps.meta.outputs.deploy_dev }}
+          PUSH_VERSION: ${{ steps.existing.outputs.push_version || '' }}
+          CLUSTER: ${{ steps.aws.outputs.cluster || '' }}
+          SERVICE: ${{ steps.aws.outputs.service || '' }}
+          SSM_PARAM: ${{ steps.aws.outputs.ssm_dev || '' }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## MCP ECR Dev"
+            echo ""
+            echo "- package version: \`${VERSION}\`"
+            echo "- revision: \`${GIT_SHA}\`"
+            echo "- ECS image URI: \`${IMAGE_URI}\`"
+            echo "- push_version_tag: \`${PUSH_VERSION}\`"
+            echo "- tags:"
+            echo "  - \`${IMAGE_NAME}:sha-${SHORT_SHA}\`"
+            echo "  - \`${IMAGE_NAME}:dev\`"
+            if [[ "${PUSH_VERSION}" == "true" ]]; then
+              echo "  - \`${IMAGE_NAME}:${VERSION}\`"
+            fi
+            echo "- deploy_dev: \`${DEPLOY_DEV}\` (\`${CLUSTER}/${SERVICE}\`, SSM \`${SSM_PARAM}\`)"
+            echo ""
+            echo "Build context: repository root. Dockerfile: \`packages/mcp-server/Dockerfile\`."
+            echo "First deploy requires am-cloud-infra apply (ECR \`atomicmemory-mcp\`, ECS \`am-cloud-mcp\`, SSM \`/am-cloud/dev/mcp_image\`)."
+          } >>"${GITHUB_STEP_SUMMARY}"

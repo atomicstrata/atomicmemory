@@ -16,12 +16,12 @@
  *   pushes images (docker push / buildx --push / output exporters /
  *   imagetools create / docker/build-push-action) must be either a
  *   publish-*.yml release lane (covered by the invariants above) or one of
- *   the enumerated operator publishers (private GHCR internal image, or
- *   Dev/Staging ECR). Each enumerated publisher's workflow YAML is parsed
- *   structurally and must guard every job on the atomicmemory-internal
- *   repository, assign IMAGE_NAME exactly once at the workflow level
- *   (pinned to that publisher's registry path), and push only via
- *   buildx --push with every --tag deriving from that pin.
+ *   the enumerated operator publishers (private GHCR internal image,
+ *   Core Dev/Staging ECR, or MCP Dev ECR). Each enumerated publisher's
+ *   workflow YAML is parsed structurally and must guard every job on the
+ *   atomicmemory-internal repository, assign IMAGE_NAME exactly once at
+ *   the workflow level (pinned to that publisher's registry path), and
+ *   push only via buildx --push with every --tag deriving from that pin.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -37,9 +37,12 @@ const GUARD_REL_PATH = "scripts/guards/guard-npm-publish.mjs";
 const PUBLISH_WORKFLOW_FILENAME_PREFIX = "publish-";
 const INTERNAL_IMAGE_WORKFLOW_FILENAME = "internal-core-docker-image.yml";
 const ECR_DEV_STAGING_WORKFLOW_FILENAME = "core-ecr-dev-staging.yml";
+const MCP_ECR_DEV_WORKFLOW_FILENAME = "mcp-ecr-dev.yml";
 const INTERNAL_IMAGE_NAME = "ghcr.io/atomicstrata/atomicmemory-core-internal";
 const ECR_CORE_IMAGE_NAME =
   "636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-core-enterprise";
+const ECR_MCP_IMAGE_NAME =
+  "636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-mcp";
 // The job-level `if` must equal this exactly (whitespace-normalized): a
 // compound condition (e.g. `A || B`) could satisfy a substring match while
 // still running in the mirrored public repository.
@@ -52,7 +55,7 @@ const OTHER_PUSH_SINKS_RE = /\b(docker\s+image\s+push|docker\s+compose\s+push|do
 // Reusable-workflow refs that publish; a job-level `uses:` of one of these
 // from outside the audited release lane would launder a publish.
 const PUBLISHING_WORKFLOW_REF_RE =
-  /(^|\/)(publish-[^/@\s]*\.ya?ml|internal-core-docker-image\.yml|core-ecr-dev-staging\.yml)(@|$)/i;
+  /(^|\/)(publish-[^/@\s]*\.ya?ml|internal-core-docker-image\.yml|core-ecr-dev-staging\.yml|mcp-ecr-dev\.yml)(@|$)/i;
 const EXPRESSION_MARKER = "$" + "{{";
 const COMPOSITE_SCAN_SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".turbo", ".worktrees"]);
 // Enumerated operator image publishers (outside publish-*.yml). Each pin
@@ -74,6 +77,18 @@ const ENUMERATED_IMAGE_PUBLISHERS = new Map([
     ECR_DEV_STAGING_WORKFLOW_FILENAME,
     {
       imageName: ECR_CORE_IMAGE_NAME,
+      allowedActions: [
+        "actions/checkout@",
+        "docker/setup-buildx-action@",
+        "aws-actions/configure-aws-credentials@",
+        "aws-actions/amazon-ecr-login@",
+      ],
+    },
+  ],
+  [
+    MCP_ECR_DEV_WORKFLOW_FILENAME,
+    {
+      imageName: ECR_MCP_IMAGE_NAME,
       allowedActions: [
         "actions/checkout@",
         "docker/setup-buildx-action@",
@@ -454,6 +469,7 @@ function checkCodeownersCovers(root) {
     ...checkCodeownersText(text, PUBLISH_WORKFLOW),
     ...checkCodeownersText(text, `.github/workflows/${INTERNAL_IMAGE_WORKFLOW_FILENAME}`),
     ...checkCodeownersText(text, `.github/workflows/${ECR_DEV_STAGING_WORKFLOW_FILENAME}`),
+    ...checkCodeownersText(text, `.github/workflows/${MCP_ECR_DEV_WORKFLOW_FILENAME}`),
   ];
 }
 

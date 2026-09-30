@@ -1,0 +1,5 @@
+# Test artifacts are built into dist/ for `pnpm test` but must not ship.
+**/*.test.js
+**/*.test.d.ts
+**/*.test.js.map
+**/*.test.d.ts.map

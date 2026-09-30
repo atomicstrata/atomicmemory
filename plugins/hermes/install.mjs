@@ -82,8 +82,12 @@ function printNextSteps(target) {
   console.log(`Installed AtomicMemory Hermes provider to ${target}`);
   console.log('');
   console.log('Next:');
-  console.log('  export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"');
-  console.log('  export ATOMICMEMORY_API_KEY="local-dev-key"');
+  console.log("  curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh");
+  console.log('  export PATH="$HOME/.local/bin:$PATH"');
+  console.log('  am init --cloud');
+  console.log('  am key create atomicmemory-hermes');
+  console.log('  export ATOMICMEMORY_API_URL="https://api.atomicstrata.ai"');
+  console.log('  export ATOMICMEMORY_API_KEY="<project-api-key-shown-once>"');
   console.log('  hermes memory setup');
   console.log('  hermes memory status');
 }

@@ -129,6 +129,18 @@ export interface HandlerOptions {
    * preserves the documented single-server-many-users behavior.
    */
   scopeLock?: boolean;
+  /**
+   * When true, every tool call must resolve an explicit scope user (from
+   * the call or the server config). Hosted HTTP sets this because it has
+   * no trustworthy end-user identity to fall back to.
+   */
+  requireScopeUser?: boolean;
+}
+
+/** Resolved scope rules applied by `mergeScope`. */
+interface ScopePolicy {
+  scopeLock: boolean;
+  requireScopeUser: boolean;
 }
 
 /**
@@ -139,10 +151,13 @@ export function createHandlers(
   defaultScope: Scope | undefined,
   options: HandlerOptions = {},
 ) {
-  const scopeLock = options.scopeLock ?? false;
+  const policy: ScopePolicy = {
+    scopeLock: options.scopeLock ?? false,
+    requireScopeUser: options.requireScopeUser ?? false,
+  };
   return {
     memory_search: (args: SearchArgs) => {
-      const scope = mergeScope(defaultScope, args.scope, scopeLock);
+      const scope = mergeScope(defaultScope, args.scope, policy);
       if (args.sourceSite) {
         return atomicmemoryNamespace(client).search(
           {
@@ -168,12 +183,12 @@ export function createHandlers(
       }
       assertNoReservedMetadataKeys(args.metadata);
       return args.mode === 'verbatim'
-        ? ingestVerbatim(client, args, defaultScope, scopeLock)
-        : client.ingest(buildIngestInput(args, defaultScope, scopeLock));
+        ? ingestVerbatim(client, args, defaultScope, policy)
+        : client.ingest(buildIngestInput(args, defaultScope, policy));
     },
 
     memory_package: (args: PackageArgs) => {
-      const scope = mergeScope(defaultScope, args.scope, scopeLock);
+      const scope = mergeScope(defaultScope, args.scope, policy);
       if (args.sourceSite) {
         // AtomicMemory namespace's `search` with retrievalMode=tiered + tokenBudget
         // is the package-equivalent path that supports sourceSite — `client.atomicmemory`
@@ -200,7 +215,7 @@ export function createHandlers(
     },
 
     memory_list: (args: ListArgs) => {
-      const scope = mergeScope(defaultScope, args.scope, scopeLock);
+      const scope = mergeScope(defaultScope, args.scope, policy);
       if (args.sourceSite) {
         return atomicmemoryNamespace(client).list(
           toUserMemoryScope(scope, 'sourceSite'),
@@ -254,9 +269,9 @@ function toUserMemoryScope(scope: Scope, feature: string): { kind: 'user'; userI
 function mergeScope(
   base: Scope | undefined,
   override: Scope | undefined,
-  scopeLock = false,
+  policy: ScopePolicy,
 ): Scope {
-  if (scopeLock && override) {
+  if (policy.scopeLock && override) {
     for (const key of Object.keys(override) as (keyof Scope)[]) {
       if (override[key] !== undefined && override[key] !== base?.[key]) {
         throw new Error(
@@ -266,6 +281,13 @@ function mergeScope(
     }
   }
   const merged = { ...(base ?? {}), ...(override ?? {}) };
+  // Checked first so a hosted caller that sent no scope at all gets the
+  // actionable message rather than the generic one below.
+  if (policy.requireScopeUser && !merged.user) {
+    throw new Error(
+      'scope.user required: this hosted MCP server does not infer an end-user identity; pass scope.user (the end user this memory belongs to) on every tool call',
+    );
+  }
   if (!merged.user && !merged.agent && !merged.namespace && !merged.thread) {
     throw new Error(
       'scope required: provide at least one of user, agent, namespace, thread',
@@ -308,9 +330,9 @@ export function assertEntityScopeAllowed(
 function buildIngestInput(
   args: IngestArgs,
   defaultScope: Scope | undefined,
-  scopeLock = false,
+  policy: ScopePolicy,
 ): Parameters<MemoryClient['ingest']>[0] {
-  const scope = mergeScope(defaultScope, args.scope, scopeLock);
+  const scope = mergeScope(defaultScope, args.scope, policy);
   if (args.mode === 'text') {
     if (!args.content) throw new Error('content required when mode=text');
     return {
@@ -336,9 +358,9 @@ async function ingestVerbatim(
   client: MemoryClient,
   args: IngestArgs,
   defaultScope: Scope | undefined,
-  scopeLock = false,
+  policy: ScopePolicy,
 ): Promise<unknown> {
-  const scope = mergeScope(defaultScope, args.scope, scopeLock);
+  const scope = mergeScope(defaultScope, args.scope, policy);
   if (!args.content) throw new Error('content required when mode=verbatim');
 
   const callerMetadata: Record<string, unknown> = args.metadata ?? {};

@@ -9,6 +9,14 @@ am_debug() {
   fi
 }
 
+am_error() {
+  printf '[atomicmemory-hook] %s\n' "$*" >&2
+}
+
+am_trim() {
+  printf '%s' "${1:-}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
 am_require() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -30,6 +38,61 @@ am_default_scope_user() {
   printf 'local-machine'
 }
 
+am_canonical_url_origin() {
+  node -e '
+    try {
+      const url = new URL(process.argv[1]);
+      const protocol = url.protocol.slice(0, -1);
+      const hostname = url.hostname.toLowerCase().replace(/\.$/u, "");
+      process.stdout.write(`${protocol}|${hostname}|${url.port || "0"}`);
+    } catch {
+      process.exit(1);
+    }
+  ' "${1:-}"
+}
+
+# First-party Cloud hostname check on the canonical origin, ignoring scheme and
+# port. Keep this host list in sync with CLOUD_API_HOSTNAMES elsewhere; the
+# cloud-origin-gates CI script compares every copy.
+am_is_cloud_api_host() {
+  local origin host
+  origin=$(am_canonical_url_origin "${1:-}") || return 1
+  host="${origin#*|}"
+  host="${host%|*}"
+  case "$host" in
+    api.atomicstrata.ai|api.dev.atomicstrata.ai|api.staging.atomicstrata.ai) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+am_is_cloud_api_url() {
+  local origin
+  am_is_cloud_api_host "${1:-}" || return 1
+  origin=$(am_canonical_url_origin "${1:-}") || return 1
+  case "$origin" in
+    "https|"*"|0") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# A first-party Cloud hostname reached over anything but https would send the
+# project key in cleartext.
+am_is_insecure_cloud_api_url() {
+  local origin
+  am_is_cloud_api_host "${1:-}" || return 1
+  origin=$(am_canonical_url_origin "${1:-}") || return 1
+  case "$origin" in
+    "https|"*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+am_is_local_api_url() {
+  local origin
+  origin=$(am_canonical_url_origin "${1:-}") || return 1
+  [ "$origin" = "http|127.0.0.1|17350" ] || [ "$origin" = "http|localhost|17350" ]
+}
+
 am_load_env() {
   am_require jq || {
     am_debug "jq not found"
@@ -39,10 +102,22 @@ am_load_env() {
     am_debug "curl not found"
     return 1
   }
+  am_require node || {
+    am_error "node not found; Node.js is required by the AtomicMemory plugin"
+    return 1
+  }
 
   AM_PROVIDER="${ATOMICMEMORY_PROVIDER:-atomicmemory}"
-  AM_API_URL="${ATOMICMEMORY_API_URL:-http://127.0.0.1:17350}"
-  AM_API_KEY="${ATOMICMEMORY_API_KEY:-}"
+  AM_API_URL=$(am_trim "${ATOMICMEMORY_API_URL:-}")
+  AM_API_KEY=$(am_trim "${ATOMICMEMORY_API_KEY:-}")
+  # Explicit URL wins; else Cloud when a key is set; else local Core.
+  if [ -z "$AM_API_URL" ]; then
+    if [ -n "$AM_API_KEY" ]; then
+      AM_API_URL="https://api.atomicstrata.ai"
+    else
+      AM_API_URL="http://127.0.0.1:17350"
+    fi
+  fi
   AM_SCOPE_USER="${ATOMICMEMORY_SCOPE_USER:-$(am_default_scope_user)}"
   AM_SCOPE_AGENT="${ATOMICMEMORY_SCOPE_AGENT:-}"
   AM_SCOPE_NAMESPACE="${ATOMICMEMORY_SCOPE_NAMESPACE:-}"
@@ -50,9 +125,30 @@ am_load_env() {
   AM_CAPTURE_LEVEL="${ATOMICMEMORY_CAPTURE_LEVEL:-balanced}"
 
   AM_API_URL="${AM_API_URL%/}"
+  case "$AM_API_URL" in
+    *\\*)
+      am_error "ATOMICMEMORY_API_URL must not contain backslashes"
+      return 1
+      ;;
+  esac
 
-  if [ -z "$AM_API_KEY" ] && [ "$AM_PROVIDER" = "atomicmemory" ] && [ "$AM_API_URL" = "http://127.0.0.1:17350" ]; then
+  if am_is_insecure_cloud_api_url "$AM_API_URL"; then
+    am_error "ATOMICMEMORY_API_URL must use https for AtomicMemory Cloud; refusing to send the API key in cleartext"
+    return 1
+  fi
+
+  if [ -z "$AM_API_KEY" ] && [ "$AM_PROVIDER" = "atomicmemory" ] && am_is_local_api_url "$AM_API_URL"; then
     AM_API_KEY="local-dev-key"
+  fi
+
+  if [ "$AM_API_KEY" = "local-dev-key" ] && am_is_cloud_api_url "$AM_API_URL"; then
+    am_error "ATOMICMEMORY_API_KEY=local-dev-key is the local Core key and is not valid for AtomicMemory Cloud; for local Core set ATOMICMEMORY_API_URL=http://127.0.0.1:17350, otherwise use a Cloud project API key"
+    return 1
+  fi
+
+  if [ -z "$AM_API_KEY" ] && am_is_cloud_api_url "$AM_API_URL"; then
+    am_error "ATOMICMEMORY_API_KEY is required for AtomicMemory Cloud; local Core users should set ATOMICMEMORY_API_URL=http://127.0.0.1:17350"
+    return 1
   fi
 
   if [ -z "$AM_API_URL" ] || [ -z "$AM_SCOPE_USER" ] || [ -z "$AM_PROVIDER" ] || [ -z "$AM_CAPTURE_LEVEL" ]; then
@@ -145,6 +241,22 @@ am_auth_curl_args() {
   fi
 }
 
+am_curl_2xx_body() {
+  local operation="$1"
+  shift
+  local response_file
+  local http_code
+  response_file=$(mktemp "${TMPDIR:-/tmp}/atomicmemory-response.XXXXXX") || return 1
+  http_code=$(curl "$@" -o "$response_file" -w "%{http_code}") || {
+    rm -f "$response_file"
+    return 1
+  }
+  case "$http_code" in
+    2??) cat "$response_file"; rm -f "$response_file"; return 0 ;;
+    *) am_error "$operation failed with status $http_code"; rm -f "$response_file"; return 1 ;;
+  esac
+}
+
 am_search_fast() {
   local query="${1:-}"
   local limit="${2:-5}"
@@ -171,7 +283,7 @@ am_search_fast() {
   timeout_seconds=$(am_positive_int ATOMICMEMORY_SEARCH_TIMEOUT_SECONDS 3) || return 1
 
   am_auth_curl_args
-  curl -s --max-time "$timeout_seconds" \
+  am_curl_2xx_body "memory search" -sS --max-time "$timeout_seconds" \
     -X POST "$AM_API_URL/v1/memories/search/fast" \
     -H "Content-Type: application/json" \
     ${AM_AUTH_CURL_ARGS[@]+"${AM_AUTH_CURL_ARGS[@]}"} \
@@ -600,7 +712,7 @@ am_post_quick_ingest() {
   case "$http_code" in
     200|201) return 0 ;;
     *)
-      am_debug "quick ingest failed with status $http_code"
+      am_error "quick ingest failed with status $http_code"
       return 1
       ;;
   esac

@@ -1,7 +1,7 @@
 {
   "id": "atomicmemory",
   "name": "AtomicMemory",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Persistent semantic memory for OpenClaw agents — cross-channel user memory and deterministic session snapshots via the AtomicMemory SDK's pluggable MemoryProvider model.",
   "kind": "memory",
   "skills": ["./skills/atomicmemory"],
@@ -14,17 +14,17 @@
     "properties": {
       "apiUrl": {
         "type": "string",
-        "description": "Optional provider base URL. Defaults to the local AtomicMemory core. The shipped skill permissions allow http://127.0.0.1:17350 and http://localhost:17350."
+        "description": "Provider base URL. When unset: Cloud if apiKey is set, otherwise local Core at http://127.0.0.1:17350. mem0 requires an explicit URL."
       },
       "apiKey": {
         "type": "string",
-        "description": "Optional bearer credential forwarded to an allowed local AtomicMemory core as Authorization: Bearer <apiKey>."
+        "description": "AtomicMemory Cloud project API key, forwarded as Authorization: Bearer <apiKey>. Required for Cloud; local Core defaults to local-dev-key."
       },
       "provider": {
         "type": "string",
         "enum": ["atomicmemory", "mem0"],
         "default": "atomicmemory",
-        "description": "Provider name dispatched through the SDK's MemoryProvider model. Defaults to AtomicMemory local core; remote providers require a separately permissioned plugin manifest."
+        "description": "Provider name dispatched through the SDK's MemoryProvider model. mem0 requires an explicit API URL."
       },
       "scope": {
         "type": "object",

@@ -6,7 +6,8 @@ Persistent semantic memory that survives across Claude Code sessions. Ships the 
 
 ### 1. Install dependencies
 
-The hook scripts are bash and depend on `jq` (for safe JSON input/output parsing) and `curl` (for `on_user_prompt.sh`'s direct HTTP search).
+The plugin requires Node.js 20+ (including `npx`), `jq` for safe JSON
+input/output parsing, and `curl` for direct lifecycle-hook HTTP calls.
 
 ```bash
 # macOS
@@ -16,23 +17,19 @@ brew install jq
 sudo apt-get install -y jq
 ```
 
-### 2. Configure (optional in local mode)
+### 2. Connect AtomicMemory Cloud (recommended)
 
-The MCP server and the lifecycle hook scripts read their config from the shell environment. None of the `ATOMICMEMORY_*` variables are required to run the plugin against a local AtomicMemory core — the documented defaults are:
-
-| Var | Local-mode default |
-|---|---|
-| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:17350` |
-| `ATOMICMEMORY_API_KEY` | `local-dev-key` for the local URL |
-| `ATOMICMEMORY_PROVIDER` | `atomicmemory` |
-| `ATOMICMEMORY_SCOPE_USER` | derived from the host OS user |
-| `ATOMICMEMORY_CAPTURE_LEVEL` | `balanced` |
-
-Set them only when you need to override a default (for example, to talk to a hosted AtomicMemory service):
+With a project API key and no URL, the plugin targets AtomicMemory Cloud (no
+local Core process). Initialize a Cloud project, create a host-specific project
+API key, and expose that key to the Claude Code process:
 
 ```bash
-export ATOMICMEMORY_API_URL="https://memory.yourco.com"
-export ATOMICMEMORY_API_KEY="am_live_…"
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+am init --cloud
+am key create claude-code
+
+export ATOMICMEMORY_API_KEY="<project-api-key-shown-once>"
 export ATOMICMEMORY_SCOPE_USER="$USER"
 export ATOMICMEMORY_CAPTURE_LEVEL="balanced" # minimal|balanced|full
 # Optional scope:
@@ -41,7 +38,24 @@ export ATOMICMEMORY_CAPTURE_LEVEL="balanced" # minimal|balanced|full
 # export ATOMICMEMORY_SCOPE_THREAD="<thread-id>"
 ```
 
-Set `ATOMICMEMORY_SCOPE_USER` explicitly when multiple operators share a machine or when you need a stable cross-machine identity; otherwise the MCP server derives one from the host OS.
+URL resolution: explicit `ATOMICMEMORY_API_URL` wins; else Cloud when
+`ATOMICMEMORY_API_KEY` is set; else local Core at `http://127.0.0.1:17350`.
+The project API key is required for Cloud and is never synthesized. Set
+`ATOMICMEMORY_SCOPE_USER` explicitly when multiple operators share a machine or
+when you need a stable cross-machine identity; otherwise the plugin derives one
+from the host OS.
+
+To use local Core, omit both URL and key, or set them explicitly:
+
+```bash
+export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"
+export ATOMICMEMORY_API_KEY="local-dev-key"
+```
+
+If you previously exported `ATOMICMEMORY_API_KEY=local-dev-key` without a URL,
+set `ATOMICMEMORY_API_URL=http://127.0.0.1:17350` as well: `local-dev-key` is the
+local Core key and is refused for Cloud origins, and Cloud hostnames are refused
+over plain `http`, so a project key is never sent in cleartext.
 
 #### Local extraction with Claude Code auth
 
@@ -62,7 +76,7 @@ for hosted/team deployments where a server would run under one operator's
 Claude Code subscription. Embeddings still use core's configured embedding
 provider; select a local embedding provider separately for a fully local setup.
 
-- `_API_URL` / `_API_KEY` / `_PROVIDER` / `_SCOPE_USER` — read by **both** the MCP server (for `memory_search` / `memory_ingest` / `memory_package` tool calls) and lifecycle hooks. All optional in local mode (see defaults above).
+- `_API_URL` / `_API_KEY` / `_PROVIDER` / `_SCOPE_USER` — read by **both** the MCP server (for `memory_search` / `memory_ingest` / `memory_package` tool calls) and lifecycle hooks. URL resolution is explicit URL, else Cloud when a key is set, else local Core. Cloud requires a project API key; local Core keeps `local-dev-key` as a convenience default for the standard loopback URL.
 - `_CAPTURE_LEVEL` — controls lifecycle write volume. Valid values are `minimal`, `balanced`, and `full`. Defaults to `balanced` when unset; invalid values still fail closed.
 - `_SCOPE_NAMESPACE` — used by both, as a per-project isolation boundary.
 - `_SCOPE_AGENT` / `_SCOPE_THREAD` — forwarded to the MCP server as the request scope. The direct prompt-search path uses the core fast-search endpoint's supported user/namespace scope.
@@ -175,7 +189,7 @@ plugins/claude-code/
 └── README.md
 ```
 
-The plugin spawns [`@atomicmemory/mcp-server`](../../packages/mcp-server) from the npm registry via `npx -y --package=@atomicmemory/mcp-server@^0.1.2 atomicmemory-mcp`, so a `claude plugin install` is self-contained — no local clone or build required. Most semantic memory operations go through the MCP tools. Latency-sensitive prompt retrieval uses `/v1/memories/search/fast` directly, and lifecycle scripts write deterministic records to `/v1/memories/ingest/quick` with `skip_extraction=true` and `content_class: "summary"` because command hooks cannot talk to Claude Code's already-running stdio MCP child. Hook record content is a distilled summary, not a raw transcript; lifecycle provenance, scope, dedupe keys, session IDs, cwd, transcript paths, tool counts, and validation details are sent separately in request `metadata` and persisted to the memory's `metadata` JSONB column, with `sourceSite` / `sourceUrl` continuing to carry the provider/route identity.
+The plugin spawns [`@atomicmemory/mcp-server`](../../packages/mcp-server) from the npm registry via `npx -y --package=@atomicmemory/mcp-server@^0.1.6 atomicmemory-mcp`, so a `claude plugin install` is self-contained: no local clone or build required. These plugin versions require that npm publish: publish `@atomicmemory/mcp-server@0.1.6` before the 0.2.3 plugins. Most semantic memory operations go through the MCP tools. Latency-sensitive prompt retrieval uses `/v1/memories/search/fast` directly, and lifecycle scripts write deterministic records to `/v1/memories/ingest/quick` with `skip_extraction=true` and `content_class: "summary"` because command hooks cannot talk to Claude Code's already-running stdio MCP child. Hook record content is a distilled summary, not a raw transcript; lifecycle provenance, scope, dedupe keys, session IDs, cwd, transcript paths, tool counts, and validation details are sent separately in request `metadata` and persisted to the memory's `metadata` JSONB column, with `sourceSite` / `sourceUrl` continuing to carry the provider/route identity.
 
 ## Lifecycle hooks
 

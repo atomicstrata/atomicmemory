@@ -60,6 +60,15 @@ interface McpTextContent {
 }
 
 const TOOL_NAMES = ['memory_search', 'memory_ingest', 'memory_package', 'memory_list'] as const;
+const DEFAULT_CLOUD_API_URL = 'https://api.atomicstrata.ai';
+const CLOUD_API_HOSTNAMES = new Set([
+  'api.atomicstrata.ai',
+  'api.dev.atomicstrata.ai',
+  'api.staging.atomicstrata.ai',
+]);
+const DEFAULT_LOCAL_API_URL = 'http://127.0.0.1:17350';
+const DEFAULT_LOCAL_API_KEY = 'local-dev-key';
+const LOCAL_API_HOSTNAMES = new Set(['127.0.0.1', 'localhost']);
 
 export function createOpenClawPlugin(createCaller: CreateMcpToolCaller = createEmbeddedMcpToolCaller): Plugin {
   return {
@@ -215,8 +224,9 @@ function normalizeConfig(config: AtomicMemoryConfig): {
 } {
   const provider = config.provider ?? 'atomicmemory';
   const scope = normalizeScope(config.scope);
-  const apiKey = cleanOptional(config.apiKey);
-  const result = { apiUrl: resolveApiUrl(config.apiUrl, provider), provider, scope };
+  const apiUrl = resolveApiUrl(config.apiUrl, config.apiKey, provider);
+  const apiKey = resolveApiKey(config.apiKey, apiUrl, provider);
+  const result = { apiUrl, provider, scope };
 
   if (apiKey) return { ...result, apiKey };
   return result;
@@ -255,11 +265,84 @@ function defaultScopeUser(): string {
   );
 }
 
-function resolveApiUrl(apiUrl: string | undefined, provider: 'atomicmemory' | 'mem0'): string {
+/**
+ * Resolve the provider base URL.
+ *
+ * 1. Explicit `apiUrl` wins.
+ * 2. Else, if `apiKey` is present, default to AtomicMemory Cloud.
+ * 3. Else, fall back to local Core on loopback.
+ */
+function resolveApiUrl(
+  apiUrl: string | undefined,
+  apiKey: string | undefined,
+  provider: 'atomicmemory' | 'mem0',
+): string {
   const normalized = cleanOptional(apiUrl);
   if (normalized) return normalized.replace(/\/+$/, '');
-  if (provider === 'atomicmemory') return 'http://127.0.0.1:17350';
-  throw new Error('AtomicMemory OpenClaw plugin requires config.apiUrl when provider=mem0');
+  if (provider !== 'atomicmemory') {
+    throw new Error('AtomicMemory OpenClaw plugin requires config.apiUrl when provider=mem0');
+  }
+  if (cleanOptional(apiKey)) return DEFAULT_CLOUD_API_URL;
+  return DEFAULT_LOCAL_API_URL;
+}
+
+function resolveApiKey(
+  apiKey: string | undefined,
+  apiUrl: string,
+  provider: 'atomicmemory' | 'mem0',
+): string | undefined {
+  if (isInsecureCloudApiUrl(apiUrl)) {
+    throw new Error(
+      'AtomicMemory OpenClaw plugin requires https for AtomicMemory Cloud; refusing to send the API key in cleartext',
+    );
+  }
+  const normalized = cleanOptional(apiKey);
+  if (normalized === DEFAULT_LOCAL_API_KEY && isCloudApiUrl(apiUrl)) {
+    throw new Error(
+      `AtomicMemory OpenClaw plugin config.apiKey "${DEFAULT_LOCAL_API_KEY}" is the local Core key and is not valid for AtomicMemory Cloud; for local Core set config.apiUrl to ${DEFAULT_LOCAL_API_URL}, otherwise use a Cloud project API key`,
+    );
+  }
+  if (normalized) return normalized;
+  if (provider !== 'atomicmemory') return undefined;
+  if (isLocalApiUrl(apiUrl)) return DEFAULT_LOCAL_API_KEY;
+  if (isCloudApiUrl(apiUrl)) {
+    throw new Error(
+      `AtomicMemory OpenClaw plugin requires config.apiKey for AtomicMemory Cloud; local Core users should set config.apiUrl to ${DEFAULT_LOCAL_API_URL}`,
+    );
+  }
+  return undefined;
+}
+
+function cloudApiHostname(apiUrl: string): { protocol: string; hostname: string; port: string } | undefined {
+  try {
+    const url = new URL(apiUrl);
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+    if (!CLOUD_API_HOSTNAMES.has(hostname)) return undefined;
+    return { protocol: url.protocol, hostname, port: url.port };
+  } catch {
+    return undefined;
+  }
+}
+
+function isCloudApiUrl(apiUrl: string): boolean {
+  const cloud = cloudApiHostname(apiUrl);
+  return cloud !== undefined && cloud.protocol === 'https:' && !cloud.port;
+}
+
+// A first-party Cloud hostname over anything but https would leak the key.
+function isInsecureCloudApiUrl(apiUrl: string): boolean {
+  const cloud = cloudApiHostname(apiUrl);
+  return cloud !== undefined && cloud.protocol !== 'https:';
+}
+
+function isLocalApiUrl(apiUrl: string): boolean {
+  try {
+    const url = new URL(apiUrl);
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+    return url.protocol === 'http:' && LOCAL_API_HOSTNAMES.has(hostname) && url.port === '17350';
+  } catch {
+    return false;
+  }
 }
 
 function readOsUsername(): string | undefined {

@@ -32,15 +32,27 @@ project or into your global Cursor MCP config.
 Set these variables before launching Cursor. Cursor resolves `${env:...}` placeholders from its environment when it starts the MCP server.
 
 ```bash
-export ATOMICMEMORY_API_URL="https://memory.yourco.com"
-export ATOMICMEMORY_API_KEY="am_live_..."
+export ATOMICMEMORY_API_KEY="amc_..."
 export ATOMICMEMORY_PROVIDER="atomicmemory"
 export ATOMICMEMORY_SCOPE_USER="$USER"
 export ATOMICMEMORY_SCOPE_AGENT="cursor"
 export ATOMICMEMORY_SCOPE_NAMESPACE="repo-or-project"
 ```
 
-`ATOMICMEMORY_API_URL`, `ATOMICMEMORY_API_KEY`, and `ATOMICMEMORY_PROVIDER` are required. At least one `ATOMICMEMORY_SCOPE_*` variable must be set; `ATOMICMEMORY_SCOPE_USER` is the normal baseline.
+URL resolution: explicit `ATOMICMEMORY_API_URL` wins; else Cloud when
+`ATOMICMEMORY_API_KEY` is set; else local Core at `http://127.0.0.1:17350`.
+With only a Cloud project API key set, the Cloud URL is selected automatically.
+`ATOMICMEMORY_PROVIDER` defaults to `atomicmemory`. `ATOMICMEMORY_SCOPE_USER`
+defaults to the OS user; set it explicitly for a stable cross-machine identity.
+
+For local Core, omit URL and key, or set the URL explicitly (the key defaults
+to `local-dev-key` there):
+
+```bash
+export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"
+```
+
+`local-dev-key` is the local Core key and is refused for Cloud origins, and Cloud hostnames are refused over plain `http`.
 
 ## Install in a Cursor project
 

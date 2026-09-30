@@ -2,11 +2,11 @@
 //!
 //! `--version` prints the machine-readable contract documented in
 //! `crates/cli/VERSION.md`. Latest published metadata is fetched from the
-//! install mirror's `version.json` for the future upgrade gate (ATO-1843);
-//! this module does not enforce upgrades.
+//! install mirror's `version.json` by `am update` (see `update::fetch`, which
+//! owns the hardened HTTP client); this module only parses and validates it
+//! and does not enforce upgrades.
 
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -36,8 +36,6 @@ pub const DEFAULT_BUILD_ENV: &str = "dev";
 pub const fn stamp_env_vars() -> (&'static str, &'static str) {
     (GIT_SHA_ENV, BUILD_ENV_ENV)
 }
-
-const LATEST_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Machine-readable identity printed by `am --version` / `am -V`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,33 +119,6 @@ pub fn latest_version_url(base_url: &str) -> String {
 #[allow(dead_code)] // ATO-1843 discovery entrypoint
 pub fn default_latest_version_url() -> String {
     latest_version_url(DEFAULT_LATEST_VERSION_BASE_URL)
-}
-
-/// Fetch and parse latest CLI version metadata (no upgrade enforcement).
-#[allow(dead_code)] // ATO-1843 calls this; no enforcement in this ticket
-pub async fn fetch_latest_version(base_url: &str) -> Result<LatestVersionInfo> {
-    let url = latest_version_url(base_url);
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("am/", env!("CARGO_PKG_VERSION")))
-        .timeout(LATEST_FETCH_TIMEOUT)
-        .build()
-        .context("build HTTP client for latest version discovery")?;
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .with_context(|| format!("fetch latest version from {url}"))?;
-    if !response.status().is_success() {
-        bail!(
-            "latest version discovery returned HTTP {}",
-            response.status()
-        );
-    }
-    let body = response
-        .text()
-        .await
-        .context("read latest version response body")?;
-    parse_latest_version_json(&body)
 }
 
 /// Parse a `version.json` body into [`LatestVersionInfo`].

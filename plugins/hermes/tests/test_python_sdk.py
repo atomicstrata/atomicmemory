@@ -20,6 +20,154 @@ from plugins.hermes.python_sdk import (
 
 
 class PythonSdkAdapterRouting(unittest.TestCase):
+    def test_cloud_api_key_is_normalized_before_validation(self) -> None:
+        blank = PythonSdkConfig(api_key="   ")
+        padded = PythonSdkConfig(api_key="  amc_padded_test  ")
+
+        self.assertIsNone(blank.api_key)
+        self.assertEqual(padded.api_key, "amc_padded_test")
+
+    def test_cloud_url_normalization_cannot_bypass_required_key(self) -> None:
+        urls = [
+            " https://api.atomicstrata.ai/ ",
+            "https://API.atomicstrata.ai",
+            "https://api.atomicstrata.ai:443/v1",
+            "https://api.dev.atomicstrata.ai",
+            "https://api.staging.atomicstrata.ai",
+            "https://api。atomicstrata。ai",
+            "https://api．atomicstrata．ai",
+            "https://api｡atomicstrata｡ai",
+            "https://ａｐｉ.atomicstrata.ai",
+            "https://ⓐⓟⓘ.atomicstrata.ai",
+        ]
+        for api_url in urls:
+            with self.subTest(api_url=api_url):
+                client = PythonSdkAtomicMemoryClient(
+                    config=PythonSdkConfig(api_url=api_url),
+                    sdk_types=PythonSdkTypes(
+                        MemoryClient=FakeMemoryClient,
+                        UserScope=FakeUserScope,
+                        AtomicMemorySearchRequest=FakeAtomicSearchRequest,
+                        AtomicMemoryListOptions=FakeAtomicListOptions,
+                    ),
+                )
+                with self.assertRaisesRegex(BridgeError, "API_KEY is required"):
+                    client.initialize()
+
+    def test_missing_cloud_key_error_points_local_core_users_at_local_url(self) -> None:
+        client = PythonSdkAtomicMemoryClient(config=PythonSdkConfig(), sdk_types=_fake_types())
+        with self.assertRaisesRegex(BridgeError, r"ATOMICMEMORY_API_URL=http://127\.0\.0\.1:17350"):
+            client.initialize()
+
+    def test_local_core_key_is_refused_for_cloud_origins(self) -> None:
+        urls = [
+            "https://api.atomicstrata.ai",
+            "https://API.atomicstrata.ai:443/v1",
+            "https://api.dev.atomicstrata.ai",
+            "https://api.staging.atomicstrata.ai",
+        ]
+        for api_url in urls:
+            for api_key in ["local-dev-key", "  local-dev-key  "]:
+                with self.subTest(api_url=api_url, api_key=api_key):
+                    FakeMemoryClient.constructed = 0
+                    client = PythonSdkAtomicMemoryClient(
+                        config=PythonSdkConfig(api_url=api_url, api_key=api_key),
+                        sdk_types=_fake_types(),
+                    )
+                    with self.assertRaisesRegex(
+                        BridgeError,
+                        r"local Core key.*ATOMICMEMORY_API_URL=http://127\.0\.0\.1:17350",
+                    ):
+                        client.initialize()
+                    self.assertEqual(FakeMemoryClient.constructed, 0)
+
+    def test_plain_http_to_cloud_hostname_fails_closed(self) -> None:
+        urls = [
+            "http://api.atomicstrata.ai",
+            "HTTP://API.atomicstrata.ai:80/v1",
+            "http://api.dev.atomicstrata.ai:8080",
+            "http://api.staging.atomicstrata.ai.",
+        ]
+        for api_url in urls:
+            with self.subTest(api_url=api_url):
+                FakeMemoryClient.constructed = 0
+                client = PythonSdkAtomicMemoryClient(
+                    config=PythonSdkConfig(api_url=api_url, api_key="amc_cloud_test"),
+                    sdk_types=_fake_types(),
+                )
+                with self.assertRaisesRegex(BridgeError, "must use https"):
+                    client.initialize()
+                self.assertEqual(FakeMemoryClient.constructed, 0)
+
+    def test_local_core_url_defaults_to_local_dev_key(self) -> None:
+        for api_url in [
+            "http://127.0.0.1:17350",
+            "http://localhost:17350/",
+            "HTTP://LOCALHOST:17350",
+            "http://localhost:017350",
+        ]:
+            with self.subTest(api_url=api_url):
+                self.assertEqual(PythonSdkConfig(api_url=api_url).api_key, "local-dev-key")
+                self.assertEqual(
+                    PythonSdkConfig(api_url=api_url, api_key="  ").api_key, "local-dev-key"
+                )
+
+    def test_local_dev_key_is_never_synthesized_elsewhere(self) -> None:
+        cases = [
+            PythonSdkConfig(),
+            PythonSdkConfig(api_url="https://api.atomicstrata.ai"),
+            PythonSdkConfig(api_url="https://memory.example.com"),
+            PythonSdkConfig(api_url="http://127.0.0.1:8080"),
+            PythonSdkConfig(api_url="https://127.0.0.1:17350"),
+            PythonSdkConfig(provider="mem0", api_url="http://127.0.0.1:17350"),
+        ]
+        for config in cases:
+            with self.subTest(provider=config.provider, api_url=config.api_url):
+                self.assertIsNone(config.api_key)
+
+    def test_local_core_initializes_with_local_dev_key(self) -> None:
+        client = PythonSdkAtomicMemoryClient(
+            config=PythonSdkConfig(api_url="http://127.0.0.1:17350"),
+            sdk_types=_fake_types(),
+        )
+        client.initialize()
+        self.assertEqual(
+            FakeMemoryClient.last_instance.providers["atomicmemory"],
+            {"api_url": "http://127.0.0.1:17350", "api_key": "local-dev-key"},
+        )
+        client.shutdown()
+
+    def test_default_config_targets_atomicmemory_cloud(self) -> None:
+        config = PythonSdkConfig(api_key="amc_cloud_test")
+        client = PythonSdkAtomicMemoryClient(
+            config=config,
+            sdk_types=PythonSdkTypes(
+                MemoryClient=FakeMemoryClient,
+                UserScope=FakeUserScope,
+                AtomicMemorySearchRequest=FakeAtomicSearchRequest,
+                AtomicMemoryListOptions=FakeAtomicListOptions,
+            ),
+        )
+
+        client.initialize()
+        client.ingest_messages(
+            messages=[Message(role="user", content="prefers concise answers")],
+            scope={"user": "u1"},
+            provenance=Provenance(source="hermes"),
+        )
+        page = client.search(query="answer preference", scope={"user": "u1"}, limit=3)
+
+        self.assertEqual(
+            FakeMemoryClient.last_instance.providers["atomicmemory"],
+            {"api_url": "https://api.atomicstrata.ai", "api_key": "amc_cloud_test"},
+        )
+        self.assertEqual(page.memories[0].content, "generic")
+        self.assertEqual(
+            [call[0] for call in FakeMemoryClient.last_instance.calls],
+            ["initialize", "ingest", "search"],
+        )
+        client.shutdown()
+
     def test_initialize_is_idempotent(self) -> None:
         client, sdk = _client_with_fakes()
 
@@ -130,6 +278,15 @@ class PythonSdkPathResolution(unittest.TestCase):
 
         self.assertEqual(first.MemoryClient.__name__, "MemoryClient")
         self.assertEqual(second.MemoryClient.__name__, "MemoryClient")
+
+
+def _fake_types() -> PythonSdkTypes:
+    return PythonSdkTypes(
+        MemoryClient=FakeMemoryClient,
+        UserScope=FakeUserScope,
+        AtomicMemorySearchRequest=FakeAtomicSearchRequest,
+        AtomicMemoryListOptions=FakeAtomicListOptions,
+    )
 
 
 def _client_with_fakes(*, has_atomic: bool = True) -> tuple[PythonSdkAtomicMemoryClient, "FakeMemoryClient"]:
