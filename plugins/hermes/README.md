@@ -25,8 +25,8 @@ hooks, tool schemas. Memory semantics flow through the published Python SDK.
 ## Prerequisites
 
 - Hermes Agent installed
-- AtomicMemory core URL exported as `ATOMICMEMORY_API_URL`
-- AtomicMemory bearer key exported as `ATOMICMEMORY_API_KEY` when using the Core Quickstart or any protected service
+- The AtomicMemory CLI (the install command below adds it if needed)
+- An AtomicMemory Cloud project API key exported as `ATOMICMEMORY_API_KEY`
 
 ## Install
 
@@ -35,10 +35,17 @@ Python provider files into Hermes' memory-provider directory; no repository
 clone is required.
 
 ```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
 npx -y @atomicmemory/hermes-plugin install
-export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"
-export ATOMICMEMORY_API_KEY="local-dev-key"
+am init --cloud
+am key create atomicmemory-hermes
+export ATOMICMEMORY_API_KEY="<project-api-key-shown-once>"
 ```
+
+With a project API key and no URL, the provider targets AtomicMemory Cloud (no
+local Core process or URL export). With neither set, it falls back to local
+Core at `http://127.0.0.1:17350`.
 
 Then select and verify the provider:
 
@@ -63,15 +70,31 @@ Hermes' setup wizard prompts for a minimal pair (`scope_user`, `memory_scope`).
 Advanced settings live in `$HERMES_HOME/atomicmemory.json`.
 
 Connection details (`ATOMICMEMORY_API_URL`, `ATOMICMEMORY_API_KEY`) flow
-through environment variables into the Python SDK. The provider does not
-have a default API URL and fails to start if `ATOMICMEMORY_API_URL` is unset.
+through environment variables into the Python SDK. URL resolution: explicit
+URL, else Cloud when a key is set, else local Core. The Cloud project API key
+is required when Cloud is selected.
+
+To use local Core, omit URL and key, or set them explicitly:
+
+```bash
+export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"
+export ATOMICMEMORY_API_KEY="local-dev-key"
+```
+
+`ATOMICMEMORY_API_KEY` may be omitted for the local Core URL; it defaults to
+`local-dev-key`.
+
+If you previously exported `ATOMICMEMORY_API_KEY=local-dev-key` without a URL,
+set `ATOMICMEMORY_API_URL=http://127.0.0.1:17350` as well: `local-dev-key` is the
+local Core key and is refused for Cloud origins, and Cloud hostnames are refused
+over plain `http`, so a project key is never sent in cleartext.
 
 ### Environment
 
 | Env var | Purpose |
 |---|---|
-| `ATOMICMEMORY_API_URL` | AtomicMemory core URL. Required. |
-| `ATOMICMEMORY_API_KEY` | Bearer credential for the Core Quickstart service or any protected AtomicMemory core. |
+| `ATOMICMEMORY_API_URL` | AtomicMemory service URL. When unset: Cloud if `ATOMICMEMORY_API_KEY` is set, otherwise `http://127.0.0.1:17350`. |
+| `ATOMICMEMORY_API_KEY` | Cloud project API key. Required for Cloud; use the configured Core key for local Core. |
 | `ATOMICMEMORY_PROVIDER` | SDK provider name. Defaults to `atomicmemory`. |
 | `ATOMICMEMORY_SCOPE_USER` | Hermes user identity. Defaults to `$USER`. |
 | `ATOMICMEMORY_MEMORY_SCOPE` | `shared` (default) or `siloed`. |
@@ -154,7 +177,7 @@ run while AtomicMemory is temporarily unavailable.
 | Symptom | Likely cause |
 |---|---|
 | Provider does not appear in `hermes memory setup` | Wrong install path. User-installed memory providers must live directly under `$HERMES_HOME/plugins/<name>/` (the `plugins/memory/` layout is for providers bundled inside hermes-agent itself). |
-| `is_available()` returns False | `ATOMICMEMORY_API_URL` unset, or the Hermes Python environment did not install the `atomicmemory` dependency from `plugin.yaml`. |
+| `is_available()` returns False | `ATOMICMEMORY_API_KEY` is unset on the Cloud path, or the Hermes Python environment did not install the `atomicmemory` dependency from `plugin.yaml`. |
 | Import fails at startup | The Hermes Python environment is missing the SDK dependency from `plugin.yaml`. |
 | Calls fail with `PROVIDER_UNSUPPORTED` while `memory_scope=siloed` | The configured SDK provider is not the AtomicMemory core (e.g. it's `mem0`). Either switch `ATOMICMEMORY_PROVIDER=atomicmemory` or move to `memory_scope=shared`. |
 

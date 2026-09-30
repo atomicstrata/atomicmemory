@@ -24,6 +24,7 @@ const PUBLISH_PACKAGES_WORKFLOW = ".github/workflows/publish-packages.yml";
 const PUBLISH_CORE_DOCKER_WORKFLOW = ".github/workflows/publish-core-docker.yml";
 const INTERNAL_CORE_DOCKER_WORKFLOW = ".github/workflows/internal-core-docker-image.yml";
 const CORE_ECR_DEV_STAGING_WORKFLOW = ".github/workflows/core-ecr-dev-staging.yml";
+const MCP_ECR_DEV_WORKFLOW = ".github/workflows/mcp-ecr-dev.yml";
 const CLI_INSTALL_SMOKE_WORKFLOW = ".github/workflows/cli-install-smoke.yml";
 const CLI_PUBLIC_INSTALL_SMOKE_WORKFLOW =
   ".github/workflows/cli-public-install-smoke.yml";
@@ -110,6 +111,13 @@ const RELEASE_LANE_ALLOW_TABLE = new Map([
   ],
   [
     CORE_ECR_DEV_STAGING_WORKFLOW,
+    {
+      workflow: ECR_OIDC_PUBLISH_PERMISSIONS,
+      jobs: {},
+    },
+  ],
+  [
+    MCP_ECR_DEV_WORKFLOW,
     {
       workflow: ECR_OIDC_PUBLISH_PERMISSIONS,
       jobs: {},

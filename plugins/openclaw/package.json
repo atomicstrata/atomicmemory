@@ -1,6 +1,6 @@
 {
   "name": "@atomicmemory/openclaw-plugin",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "AtomicMemory plugin for OpenClaw — persistent semantic memory and deterministic session snapshots across channels.",
   "type": "module",
   "main": "dist/index.js",
@@ -18,6 +18,10 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "!dist/**/*.test.js.map",
+    "!dist/**/*.test.d.ts.map",
     "openclaw.plugin.json",
     "skills",
     "README.md"
@@ -31,7 +35,7 @@
     "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs"
   },
   "dependencies": {
-    "@atomicmemory/mcp-server": "^0.1.4"
+    "@atomicmemory/mcp-server": "^0.1.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -29,6 +29,16 @@ test('manifest declares contracts.tools matching the tools register() exposes', 
   );
 });
 
+test('skill permissions include every first-party Cloud origin', () => {
+  const manifest = readFileSync(
+    resolve(PLUGIN_ROOT, 'skills/atomicmemory/skill.yaml'),
+    'utf8',
+  );
+  for (const hostname of ['api.atomicstrata.ai', 'api.dev.atomicstrata.ai', 'api.staging.atomicstrata.ai']) {
+    assert.match(manifest, new RegExp(`^\\s*- https://${hostname.replaceAll('.', '\\.')}\\s*$`, 'm'));
+  }
+});
+
 test('register exposes memory tools without requiring provider config', () => {
   const tools: Array<{ name: string }> = [];
 
@@ -44,6 +54,218 @@ test('register exposes memory tools without requiring provider config', () => {
   );
 });
 
+test('explicit apiUrl wins over an API key default', async () => {
+  const testPlugin = createOpenClawPlugin(async (config) => {
+    assert.equal((config as { apiUrl: string }).apiUrl, 'https://memory.example.com');
+    return { async callTool() { return { content: [] }; } };
+  });
+  const tools = registerWithConfig(testPlugin, {
+    apiUrl: 'https://memory.example.com',
+    apiKey: 'amc_cloud_test',
+    provider: 'atomicmemory',
+    scope: { user: 'pip' },
+  });
+
+  await tools.find((tool) => tool.name === 'memory_list')?.execute('list', {});
+});
+
+test('apiKey alone defaults the URL to AtomicMemory Cloud', async () => {
+  const testPlugin = createOpenClawPlugin(async (config) => {
+    assert.deepEqual(config, cloudConfig());
+    return { async callTool() { return { content: [] }; } };
+  });
+  const tools = registerWithConfig(testPlugin, {
+    apiKey: 'amc_cloud_test',
+    provider: 'atomicmemory',
+    scope: { user: 'pip', namespace: 'repo' },
+  });
+
+  await tools.find((tool) => tool.name === 'memory_list')?.execute('list', {});
+});
+
+test('unset apiUrl and apiKey default to local Core with local-dev-key', async () => {
+  const testPlugin = createOpenClawPlugin(async (config) => {
+    assert.equal((config as { apiUrl: string }).apiUrl, 'http://127.0.0.1:17350');
+    assert.equal((config as { apiKey?: string }).apiKey, 'local-dev-key');
+    return { async callTool() { return { content: [] }; } };
+  });
+  const tools = registerWithConfig(testPlugin, {
+    provider: 'atomicmemory',
+    scope: { user: 'pip' },
+  });
+
+  await tools.find((tool) => tool.name === 'memory_list')?.execute('list', {});
+});
+
+test('explicit Cloud URL fails closed without a project API key', async () => {
+  const tools = registerWithConfig(plugin, {
+    apiUrl: 'https://api.atomicstrata.ai',
+    provider: 'atomicmemory',
+    scope: { user: 'pip' },
+  });
+  const search = tools.find((tool) => tool.name === 'memory_search');
+  assert.ok(search);
+
+  await assert.rejects(
+    () => search.execute('call-1', { query: 'remembered preference' }),
+    /config\.apiKey for AtomicMemory Cloud/,
+  );
+});
+
+test('equivalent Cloud origins cannot bypass the required project API key', async () => {
+  const urls = [
+    'https://API.atomicstrata.ai',
+    'https://api.atomicstrata.ai:443/v1',
+    'https://api.dev.atomicstrata.ai',
+    'https://api.staging.atomicstrata.ai',
+  ];
+  for (const apiUrl of urls) {
+    const tools = registerWithConfig(plugin, {
+      apiUrl,
+      provider: 'atomicmemory',
+      scope: { user: 'pip' },
+    });
+    const search = tools.find((tool) => tool.name === 'memory_search');
+    assert.ok(search);
+
+    await assert.rejects(
+      () => search.execute('call-1', { query: 'remembered preference' }),
+      /config\.apiKey for AtomicMemory Cloud/,
+    );
+  }
+});
+
+test('Cloud missing-key error points local Core users at the local URL', async () => {
+  const tools = registerWithConfig(plugin, {
+    apiUrl: 'https://api.atomicstrata.ai',
+    provider: 'atomicmemory',
+    scope: { user: 'pip' },
+  });
+  await assert.rejects(
+    () => tools.find((tool) => tool.name === 'memory_search')!.execute('call-1', { query: 'q' }),
+    /local Core users should set config\.apiUrl to http:\/\/127\.0\.0\.1:17350/,
+  );
+});
+
+test('the local Core key is refused for Cloud origins before any MCP caller starts', async () => {
+  const urls = [
+    undefined,
+    'https://api.atomicstrata.ai',
+    'https://API.atomicstrata.ai:443/v1',
+    'https://api.dev.atomicstrata.ai',
+    'https://api.staging.atomicstrata.ai',
+  ];
+  for (const apiUrl of urls) {
+    for (const apiKey of ['local-dev-key', '  local-dev-key  ']) {
+      let started = false;
+      const testPlugin = createOpenClawPlugin(async () => {
+        started = true;
+        return { async callTool() { return { content: [] }; } };
+      });
+      const tools = registerWithConfig(testPlugin, {
+        ...(apiUrl ? { apiUrl } : {}),
+        apiKey,
+        provider: 'atomicmemory',
+        scope: { user: 'pip' },
+      });
+      await assert.rejects(
+        () => tools.find((tool) => tool.name === 'memory_list')!.execute('list', {}),
+        /local Core key[\s\S]*http:\/\/127\.0\.0\.1:17350/,
+      );
+      assert.equal(started, false, `MCP caller must not start for ${apiUrl ?? 'default'}`);
+    }
+  }
+});
+
+test('plain http to a Cloud hostname fails closed', async () => {
+  for (const apiUrl of [
+    'http://api.atomicstrata.ai',
+    'HTTP://API.atomicstrata.ai:80/v1',
+    'http://api.dev.atomicstrata.ai:8080',
+    'http://api.staging.atomicstrata.ai.',
+  ]) {
+    let started = false;
+    const testPlugin = createOpenClawPlugin(async () => {
+      started = true;
+      return { async callTool() { return { content: [] }; } };
+    });
+    const tools = registerWithConfig(testPlugin, {
+      apiUrl,
+      apiKey: 'amc_cloud_test',
+      provider: 'atomicmemory',
+      scope: { user: 'pip' },
+    });
+    await assert.rejects(
+      () => tools.find((tool) => tool.name === 'memory_list')!.execute('list', {}),
+      /requires https for AtomicMemory Cloud/,
+    );
+    assert.equal(started, false, `MCP caller must not start for ${apiUrl}`);
+  }
+});
+
+test('both documented local Core origins receive the development key', async () => {
+  const urls = [
+    'http://127.0.0.1:17350',
+    'http://localhost:17350',
+    'HTTP://LOCALHOST:17350',
+    'http://localhost:017350',
+  ];
+  for (const apiUrl of urls) {
+    const testPlugin = createOpenClawPlugin(async (config) => {
+      assert.equal((config as { apiKey?: string }).apiKey, 'local-dev-key');
+      return { async callTool() { return { content: [] }; } };
+    });
+    const tools = registerWithConfig(testPlugin, {
+      apiUrl,
+      provider: 'atomicmemory',
+      scope: { user: 'pip' },
+    });
+
+    await tools.find((tool) => tool.name === 'memory_list')?.execute('list', {});
+  }
+});
+
+test('custom deployments retain their own authentication policy', async () => {
+  const testPlugin = createOpenClawPlugin(async (config) => {
+    assert.equal((config as { apiKey?: string }).apiKey, undefined);
+    return { async callTool() { return { content: [] }; } };
+  });
+  const tools = registerWithConfig(testPlugin, {
+    apiUrl: 'https://memory.example.com',
+    provider: 'atomicmemory',
+    scope: { user: 'pip' },
+  });
+
+  await tools.find((tool) => tool.name === 'memory_list')?.execute('list', {});
+});
+
+test('Cloud config routes write and retrieve through the embedded MCP caller', async () => {
+  const calls: Array<{ name: string; arguments?: Record<string, unknown> }> = [];
+  const testPlugin = createOpenClawPlugin(async (config) => {
+    assert.deepEqual(config, cloudConfig());
+    return {
+      async callTool(input) {
+        calls.push(input);
+        return { content: [{ type: 'text', text: '{"ok":true}' }] };
+      },
+    };
+  });
+  const tools = registerWithConfig(testPlugin, {
+    apiKey: 'amc_cloud_test',
+    provider: 'atomicmemory',
+    scope: { user: 'pip', namespace: 'repo' },
+  });
+
+  await tools.find((tool) => tool.name === 'memory_ingest')?.execute('write', {
+    mode: 'text', content: 'prefers concise answers',
+  });
+  await tools.find((tool) => tool.name === 'memory_search')?.execute('read', {
+    query: 'answer preference',
+  });
+
+  assert.deepEqual(calls.map((call) => call.name), ['memory_ingest', 'memory_search']);
+});
+
 test('execute lazily creates one MCP caller and parses result details', async () => {
   const createdConfigs: unknown[] = [];
   const toolCalls: Array<{ name: string; arguments?: Record<string, unknown> }> = [];
@@ -56,7 +278,11 @@ test('execute lazily creates one MCP caller and parses result details', async ()
       },
     };
   });
-  const tools = registerWithConfig(testPlugin);
+  const tools = registerWithConfig(testPlugin, {
+    apiKey: ' amc_cloud_test ',
+    provider: 'atomicmemory',
+    scope: { user: 'pip', namespace: 'repo' },
+  });
   const list = tools.find((tool) => tool.name === 'memory_list');
   assert.ok(list);
   assert.equal(createdConfigs.length, 0);
@@ -64,7 +290,7 @@ test('execute lazily creates one MCP caller and parses result details', async ()
   const first = await list.execute('call-1', { limit: 1 });
   const second = await list.execute('call-2', { limit: 2 });
 
-  assert.deepEqual(createdConfigs, [normalizedConfig()]);
+  assert.deepEqual(createdConfigs, [cloudConfig()]);
   assert.deepEqual(toolCalls, [
     { name: 'memory_list', arguments: { limit: 1 } },
     { name: 'memory_list', arguments: { limit: 2 } },
@@ -145,15 +371,18 @@ test('memory_ingest forwards contentClass to MCP as a top-level argument', async
   );
 });
 
-function registerWithConfig(testPlugin: typeof plugin) {
+function registerWithConfig(
+  testPlugin: typeof plugin,
+  pluginConfig: NonNullable<Parameters<typeof testPlugin.register>[0]['pluginConfig']> = {
+    apiUrl: 'http://127.0.0.1:17350///',
+    apiKey: ' local-dev-key ',
+    provider: 'atomicmemory' as const,
+    scope: { user: 'pip', namespace: 'repo' },
+  },
+) {
   const tools: Array<Parameters<Parameters<typeof testPlugin.register>[0]['registerTool']>[0]> = [];
   testPlugin.register({
-    pluginConfig: {
-      apiUrl: 'http://127.0.0.1:17350///',
-      apiKey: ' local-dev-key ',
-      provider: 'atomicmemory',
-      scope: { user: 'pip', namespace: 'repo' },
-    },
+    pluginConfig,
     registerTool(tool) {
       tools.push(tool);
     },
@@ -161,10 +390,10 @@ function registerWithConfig(testPlugin: typeof plugin) {
   return tools;
 }
 
-function normalizedConfig() {
+function cloudConfig() {
   return {
-    apiUrl: 'http://127.0.0.1:17350',
-    apiKey: 'local-dev-key',
+    apiUrl: 'https://api.atomicstrata.ai',
+    apiKey: 'amc_cloud_test',
     provider: 'atomicmemory',
     scope: { user: 'pip', namespace: 'repo' },
   };

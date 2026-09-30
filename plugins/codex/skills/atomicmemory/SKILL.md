@@ -10,14 +10,14 @@ description: >
 license: Apache-2.0
 metadata:
   author: AtomicMemory
-  version: "0.2.2"
+  version: "0.2.3"
   category: ai-memory
   tags: "memory, semantic-search, codex, pluggable"
 ---
 
 # AtomicMemory Memory Protocol for Codex
 
-You have access to persistent memory through the `atomicmemory` MCP server's four tools: `memory_search`, `memory_ingest`, `memory_package`, `memory_list`. Memory survives across sessions and is scoped by `user` / `agent` / `namespace` / `thread`.
+You have access to persistent memory through the `atomicmemory` MCP server's tools, including `memory_search`, `memory_ingest`, `memory_package`, `memory_list`, `entity_profile`, and `entity_attributes`. Memory survives across sessions and is scoped by `user` / `agent` / `namespace` / `thread`.
 
 ## On every new task
 

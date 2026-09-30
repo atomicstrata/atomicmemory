@@ -48,7 +48,14 @@ object shape). Document body:
 `tag` is installer metadata; parsers for the upgrade gate may ignore it.
 `version` / `gitSha` / `env` / `surface` match `--version`.
 
-Rust helper (no enforcement): `crate::version::fetch_latest_version(base_url)` in the CLI crate.
+Rust helpers (no enforcement): `crate::version::parse_latest_version_json(body)` validates the
+document; `am update` fetches it through its own https-only, same-origin-redirect,
+64 KiB-capped client (`crate::update`).
+
+`am update` on a production binary (`env` is `production`) uses this document
+to download and replace itself after `SHA256SUMS` verification. Dev, internal,
+and canary builds refuse that command. The idle upgrade gate (ATO-1843) is
+still separate: other `am` commands do not check for a newer release.
 
 ## CI stamp
 

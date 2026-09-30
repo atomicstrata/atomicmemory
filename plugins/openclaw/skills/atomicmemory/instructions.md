@@ -1,6 +1,6 @@
 # AtomicMemory
 
-You have persistent memory across conversations via four tools: `memory_search`, `memory_ingest`, `memory_package`, `memory_list`. Memory is scoped to the user by default, so the same person talking to you from WhatsApp, Slack, and iMessage hits the same memory.
+You have persistent memory across conversations via the AtomicMemory MCP tools (`memory_search`, `memory_ingest`, `memory_package`, `memory_list`, `entity_profile`, `entity_attributes`). Memory is scoped to the user by default, so the same person talking to you from WhatsApp, Slack, and iMessage hits the same memory.
 
 ## When to search
 

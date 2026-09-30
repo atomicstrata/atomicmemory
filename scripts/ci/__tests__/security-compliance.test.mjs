@@ -387,3 +387,25 @@ test("core-ecr-dev-staging fails when packages:write is added", () => {
     ),
   );
 });
+
+const MCP_ECR_WORKFLOW = ".github/workflows/mcp-ecr-dev.yml";
+
+test("mcp-ecr-dev keeps OIDC publish permissions only", () => {
+  const text = readFileSync(MCP_ECR_WORKFLOW, "utf8");
+  const failures = validateWorkflowPermissions(MCP_ECR_WORKFLOW, text);
+  assert.deepEqual(failures, []);
+});
+
+test("mcp-ecr-dev fails when packages:write is added", () => {
+  const text = readFileSync(MCP_ECR_WORKFLOW, "utf8");
+  const mutated = text.replace(
+    "permissions:\n  contents: read\n  id-token: write",
+    "permissions:\n  contents: read\n  id-token: write\n  packages: write",
+  );
+  const failures = validateWorkflowPermissions(MCP_ECR_WORKFLOW, mutated);
+  assert.ok(
+    failures.some((failure) =>
+      /workflow permissions must be exactly contents: read, id-token: write/.test(failure),
+    ),
+  );
+});

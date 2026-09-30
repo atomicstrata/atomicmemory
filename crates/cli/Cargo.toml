@@ -19,6 +19,13 @@ authors = ["Atomic Strata"]
 name = "am"
 path = "src/main.rs"
 
+[features]
+default = []
+# Internal/canary release lane only. Enables refusal text that names the private
+# GitHub release repo. Public and contributor builds must leave this off so the
+# private repo slug is not compiled into the binary.
+internal-release = []
+
 [dependencies]
 async-trait.workspace = true
 am-cloud-client.workspace = true

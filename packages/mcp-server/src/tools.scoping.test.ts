@@ -306,3 +306,34 @@ test('assertEntityScopeAllowed — session maps to the thread dimension under lo
 test('assertEntityScopeAllowed — no-op when scopeLock is off (multi-user default)', () => {
   assert.doesNotThrow(() => assertEntityScopeAllowed({ user: 'server-user' }, 'user', 'anyone', false));
 });
+
+// Hosted HTTP has no trustworthy end-user identity (the container user is
+// shared by every tenant), so it sets requireScopeUser and every tool call
+// must name the end user explicitly. Stdio keeps its inferred default.
+test('requireScopeUser rejects tool calls without an explicit scope.user', async () => {
+  const fake = makeFake();
+  const handlers = createHandlers(fake.client, { namespace: 'shared' }, { requireScopeUser: true });
+  const bare = createHandlers(fake.client, {}, { requireScopeUser: true });
+  assert.throws(() => bare.memory_search({ query: 'q' }), /scope\.user required/);
+
+  assert.throws(() => handlers.memory_search({ query: 'q' }), /scope\.user required/);
+  assert.throws(() => handlers.memory_list({ scope: { agent: 'a' } }), /scope\.user required/);
+  assert.throws(
+    () => handlers.memory_ingest({ mode: 'text', content: 'c' }),
+    /scope\.user required/,
+  );
+  assert.equal(fake.genericCalls.length, 0);
+
+  await handlers.memory_search({ query: 'q', scope: { user: 'end-user-1' } });
+  assert.deepEqual(
+    (fake.genericCalls[0]?.args as { scope: unknown }).scope,
+    { namespace: 'shared', user: 'end-user-1' },
+  );
+});
+
+test('without requireScopeUser a non-user scope still resolves (stdio default)', async () => {
+  const fake = makeFake();
+  const handlers = createHandlers(fake.client, { namespace: 'shared' });
+  await handlers.memory_search({ query: 'q' });
+  assert.deepEqual((fake.genericCalls[0]?.args as { scope: unknown }).scope, { namespace: 'shared' });
+});

@@ -54,22 +54,28 @@ If you don't want plugin-system installation, register the MCP server directly i
 
 The MCP config forwards optional environment variables with `env_vars`, so
 hosted overrides can come from the shell or Codex environment rather than being
-copied into the plugin file. With no overrides, the MCP server uses the local
-AtomicMemory core URL and local quickstart key.
+copied into the plugin file. URL resolution: explicit `ATOMICMEMORY_API_URL`,
+else Cloud when `ATOMICMEMORY_API_KEY` is set, else local Core at
+`http://127.0.0.1:17350`.
 
 ## Configure
 
-For local core, no provider connection variables are required. The MCP server
-defaults to:
+Initialize Cloud and export a host-specific project API key before starting
+Codex:
 
-| Var | Local-mode default |
-|---|---|
-| `ATOMICMEMORY_API_URL` | `http://127.0.0.1:17350` |
-| `ATOMICMEMORY_API_KEY` | `local-dev-key` |
-| `ATOMICMEMORY_PROVIDER` | `atomicmemory` |
-| `ATOMICMEMORY_SCOPE_USER` | derived from the host OS user |
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+am init --cloud
+am key create atomicmemory-codex
+export ATOMICMEMORY_API_KEY="<project-api-key-shown-once>"
+export ATOMICMEMORY_SCOPE_USER="$USER"
+```
 
-For hosted or team services, export scope and credentials in your shell:
+`ATOMICMEMORY_PROVIDER` defaults to `atomicmemory`. URL resolution: explicit
+`ATOMICMEMORY_API_URL`, else Cloud when `ATOMICMEMORY_API_KEY` is set, else
+local Core at `http://127.0.0.1:17350`. For a custom deployment, export its URL
+and credentials explicitly:
 
 ```bash
 export ATOMICMEMORY_API_URL="https://memory.yourco.com"
@@ -82,10 +88,17 @@ export ATOMICMEMORY_SCOPE_USER="pip"
 # export ATOMICMEMORY_SCOPE_THREAD="<session-id>"
 ```
 
+For local Core, omit URL and key, or set them explicitly:
+
+```bash
+export ATOMICMEMORY_API_URL="http://127.0.0.1:17350"
+export ATOMICMEMORY_API_KEY="local-dev-key"
+```
+
 Set `ATOMICMEMORY_SCOPE_USER` explicitly when multiple operators share a machine
 or when you need a stable cross-machine identity. The MCP server itself is
 fetched from npm on first use via
-`npx -y --package=@atomicmemory/mcp-server@^0.1.2 atomicmemory-mcp`, so no local
+`npx -y --package=@atomicmemory/mcp-server@^0.1.6 atomicmemory-mcp`, so no local
 clone or build is required.
 
 ### Default extraction mode: Codex login

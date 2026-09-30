@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 - 2026-09-24
+
+### Changed
+
+- Released in lockstep with `@atomicmemory/mcp-server` 0.1.6.
+
 ## 0.1.1 - 2026-05-14
 
 ### Fixed

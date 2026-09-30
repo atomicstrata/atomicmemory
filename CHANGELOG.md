@@ -49,9 +49,22 @@ or publish pending.
 - Codex and OpenClaw plugin skills now direct agents to record lineage in
   `provenance` and reserve `metadata` for integration keys, matching the MCP
   guidance above (plugin packages 0.2.2).
+- `am update` (CLI 0.4.0 and later) replaces a production `am` with the latest
+  release from `get.atomicstrata.ai` after `SHA256SUMS` verification, with
+  GitHub attestation when an authenticated `gh` is available (it warns when it
+  falls back to checksum-only). Dev, internal, and canary builds refuse it. See
+  [`crates/cli/README.md`](crates/cli/README.md).
+- Hosted Streamable HTTP mode for `@atomicmemory/mcp-server` 0.1.6 with
+  per-request project key auth. See
+  [`packages/mcp-server/CHANGELOG.md`](packages/mcp-server/CHANGELOG.md) and
+  [`packages/mcp-server/HOSTED.md`](packages/mcp-server/HOSTED.md).
 
 ### Fixed
 
+- Tool family 0.1.6 makes the shared MCP configuration fail closed when
+  AtomicMemory Cloud is selected without a project API key, and resolves the
+  stdio default URL as explicit `ATOMICMEMORY_API_URL`, else Cloud when a key
+  is set, else local Core (`http://127.0.0.1:17350`).
 - Core OpenAI chat parameter selection and retry mitigations for reasoning and
   token-limit SKUs (no public API change). See
   [`packages/core/CHANGELOG.md`](packages/core/CHANGELOG.md).
@@ -62,6 +75,16 @@ or publish pending.
 
 ### Changed
 
+- Plugin family 0.2.3 documents Cloud as the key-selected default for Claude
+  Code, OpenClaw, and Hermes: an API key without a URL selects Cloud, while
+  neither URL nor key falls back to local Core. Cloud credentials fail closed
+  when Cloud is selected, and each host documents a no-local-process install
+  path. The local Core key `local-dev-key` and plain `http://` are refused for
+  Cloud hosts. Plugin manifests and the OpenClaw dependency pin
+  `@atomicmemory/mcp-server@^0.1.6`. Publish `@atomicmemory/mcp-server@0.1.6`
+  on npm before publishing the 0.2.3 plugins. `am integrate` still pins the
+  last published `@atomicmemory/mcp-server@0.1.5` until that command's pin is
+  bumped after the 0.1.6 publish.
 - `@atomicmemory/cli` (`atomicmemory`) is **deprecated** in favor of `am`; see
   consolidation doc for command mapping and smoke-contract updates. It stays
   published and supported for `import --type llmwiki` (not yet ported to `am`

@@ -45,8 +45,8 @@ CONFIG_FILE_KEYS = {
 }
 """Keys allowed in $HERMES_HOME/atomicmemory.json.
 
-`api_url`/`api_key` are intentionally absent: SDK connection config lives in env.
-No hardcoded service endpoints.
+`api_url`/`api_key` are intentionally absent: SDK connection config lives in env
+and Cloud supplies the runtime URL default.
 """
 
 

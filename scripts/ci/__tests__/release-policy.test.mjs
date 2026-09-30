@@ -192,6 +192,36 @@ test("ECR image publisher may use aws-actions OIDC and ECR login", () => {
   assert.deepEqual(checkImagePublisherText(yaml, ".github/workflows/core-ecr-dev-staging.yml"), []);
 });
 
+const VALID_MCP_ECR_IMAGE_YAML = [
+  "env:",
+  "  IMAGE_NAME: 636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-mcp",
+  "jobs:",
+  "  publish:",
+  "    if: github.repository == 'atomicstrata/atomicmemory-internal'",
+  "    steps:",
+  '      - run: docker buildx build --tag "${IMAGE_NAME}:sha-abc1234" --push .',
+  "",
+].join("\n");
+
+test("valid MCP ECR Dev image publisher fixture passes", () => {
+  assert.deepEqual(checkImagePublisherText(VALID_MCP_ECR_IMAGE_YAML, ".github/workflows/mcp-ecr-dev.yml"), []);
+});
+
+test("MCP ECR image publisher pinned to the wrong image name is rejected", () => {
+  const yaml = VALID_MCP_ECR_IMAGE_YAML.replace(
+    "636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-mcp",
+    "636941960505.dkr.ecr.us-east-1.amazonaws.com/atomicmemory-core-enterprise",
+  );
+  const failures = checkImagePublisherText(yaml, ".github/workflows/mcp-ecr-dev.yml");
+  assert.ok(failures.some((failure) => /assign env IMAGE_NAME exactly once/.test(failure)));
+});
+
+test("MCP ECR image publisher without the repository guard is rejected", () => {
+  const yaml = VALID_MCP_ECR_IMAGE_YAML.replace(/^.*github\.repository.*\n/m, "");
+  const failures = checkImagePublisherText(yaml, ".github/workflows/mcp-ecr-dev.yml");
+  assert.ok(failures.some((failure) => /repository guard|github\.repository/.test(failure)));
+});
+
 test("workflow pushing via --output=type=registry is treated as a publisher", () => {
   const failures = checkImagePublisherText("jobs:\n  x:\n    steps:\n      - run: docker buildx build --output=type=registry,name=ghcr.io/x/y .\n", ".github/workflows/nightly.yml");
   assert.ok(failures.some((failure) => /neither a publish-\*\.yml release lane/.test(failure)));

@@ -3,7 +3,7 @@
     "atomicmemory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@atomicmemory/mcp-server"],
+      "args": ["-y", "--package=@atomicmemory/mcp-server@^0.1.6", "atomicmemory-mcp"],
       "env": {
         "ATOMICMEMORY_API_URL": "${env:ATOMICMEMORY_API_URL}",
         "ATOMICMEMORY_API_KEY": "${env:ATOMICMEMORY_API_KEY}",

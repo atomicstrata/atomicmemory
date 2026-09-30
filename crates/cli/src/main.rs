@@ -18,6 +18,7 @@ mod output;
 mod progress;
 mod slm;
 mod telemetry;
+mod update;
 mod validation;
 mod verification;
 mod version;
@@ -161,6 +162,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Migrate(cmd) => commands::migrate::run(cmd, &cli.global).await,
         Command::Integrate(opts) => commands::integrate::run(opts, &cli.global).await,
         Command::Hooks(cmd) => commands::hooks::run(cmd, &cli.global).await,
+        Command::Update(opts) => commands::update::run(opts, &cli.global).await,
     }
 }
 

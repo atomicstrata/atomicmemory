@@ -1,28 +1,37 @@
 # AtomicMemory for OpenClaw
 
-Persistent semantic memory for OpenClaw agents. Installed from a local clone of this repo — not distributed through ClawHub or any other marketplace.
+Persistent semantic memory for OpenClaw agents. With an `apiKey` and no
+`apiUrl`, the plugin targets AtomicMemory Cloud (no local Core process). With
+neither set, it falls back to local Core at `http://127.0.0.1:17350`.
 
-The plugin embeds the shared [`@atomicmemory/mcp-server`](../../packages/mcp-server) in-process and registers the same four tools as the other integrations: `memory_search`, `memory_ingest`, `memory_package`, and `memory_list`.
+The plugin embeds the shared [`@atomicmemory/mcp-server`](../../packages/mcp-server) in-process and registers the same six tools as the other integrations: `memory_search`, `memory_ingest`, `memory_package`, `memory_list`, `entity_profile`, and `entity_attributes`. Requires `@atomicmemory/mcp-server@0.1.6` published on npm before this 0.2.3 plugin.
 
 ## Install
 
 ```bash
-git clone https://github.com/atomicstrata/atomicmemory.git
-cd atomicmemory/plugins/openclaw
-
-openclaw plugins install .
+openclaw plugins install @atomicmemory/openclaw-plugin
 ```
 
 See the [full documentation](https://docs.atomicstrata.ai/integrations/coding-agents/openclaw) for config details.
 
 ## Configure
 
-OpenClaw passes config from `openclaw.plugin.json` into the plugin entrypoint:
+Initialize a Cloud project and create a host-specific project API key:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.atomicstrata.ai/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+am init --cloud
+am key create atomicmemory-openclaw
+```
+
+OpenClaw passes config from `openclaw.plugin.json` into the plugin entrypoint.
+Copy the key printed once by `am key create` into `apiKey`:
 
 ```json
 {
-  "apiUrl": "http://127.0.0.1:17350",
-  "apiKey": "local-dev-key",
+  "apiUrl": "https://api.atomicstrata.ai",
+  "apiKey": "amc_…",
   "provider": "atomicmemory",
   "scope": {
     "user": "pip",
@@ -32,11 +41,33 @@ OpenClaw passes config from `openclaw.plugin.json` into the plugin entrypoint:
 }
 ```
 
-The shipped skill permissions allow only local AtomicMemory core origins:
-`http://127.0.0.1:17350` and `http://localhost:17350`. Remote providers require
-a separately permissioned plugin manifest and host validation.
+URL resolution: explicit `apiUrl` wins; else Cloud when `apiKey` is set; else
+local Core at `http://127.0.0.1:17350` (with `local-dev-key`). `apiKey` is
+required on the Cloud path. The local Core key `local-dev-key` is refused for
+Cloud origins, and Cloud hostnames are refused over plain `http`. The shipped
+skill permissions allow the Cloud origins and the two local Core origins.
 
-`scope.user` is required and should be the stable channel-agnostic user identity. Optional `agent`, `namespace`, and `thread` narrow memory when needed. The plugin normalizes the API URL, strips whitespace from the API key, and drops empty optional scope fields before spawning the MCP server.
+For `provider=mem0` or an AtomicMemory deployment at a custom origin, also copy
+or override the skill manifest and add that exact origin under
+`permissions.network`. The shipped manifest intentionally does not grant
+network access to arbitrary remote providers.
+
+For local Core, omit both `apiUrl` and `apiKey`, or set them explicitly:
+
+```json
+{
+  "apiUrl": "http://127.0.0.1:17350",
+  "apiKey": "local-dev-key",
+  "provider": "atomicmemory",
+  "scope": { "user": "pip" }
+}
+```
+
+`scope.user` should be the stable channel-agnostic user identity and defaults to
+the local machine user. Optional `agent`, `namespace`, and `thread` narrow
+memory when needed. The plugin normalizes the API URL, strips whitespace from
+the API key, and drops empty optional scope fields before spawning the MCP
+server.
 
 ## What's in this directory
 

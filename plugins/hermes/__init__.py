@@ -35,8 +35,11 @@ from .config import (
     save_config,
 )
 from .python_sdk import (
+    DEFAULT_CLOUD_API_URL,
+    DEFAULT_LOCAL_API_URL,
     PythonSdkAtomicMemoryClient,
     PythonSdkConfig,
+    connection_config_error,
     sdk_is_available,
 )
 from .tools import (
@@ -98,7 +101,7 @@ class AtomicMemoryMemoryProvider(MemoryProvider):
         return "atomicmemory"
 
     def is_available(self) -> bool:
-        if not os.environ.get("ATOMICMEMORY_API_URL"):
+        if connection_config_error(_runtime_sdk_config()) is not None:
             return False
         return sdk_is_available()
 
@@ -313,12 +316,25 @@ class AtomicMemoryMemoryProvider(MemoryProvider):
 
 
 def _default_client_factory(config: ProviderConfig) -> AtomicMemoryClient:
+    del config
     return PythonSdkAtomicMemoryClient(
-        config=PythonSdkConfig(
-            provider=os.environ.get("ATOMICMEMORY_PROVIDER", "atomicmemory"),
-            api_url=os.environ.get("ATOMICMEMORY_API_URL"),
-            api_key=os.environ.get("ATOMICMEMORY_API_KEY"),
-        )
+        config=_runtime_sdk_config()
+    )
+
+
+def _runtime_sdk_config() -> PythonSdkConfig:
+    provider = os.environ.get("ATOMICMEMORY_PROVIDER", "atomicmemory")
+    raw_api_url = os.environ.get("ATOMICMEMORY_API_URL")
+    api_url = raw_api_url.strip() if raw_api_url else None
+    raw_api_key = os.environ.get("ATOMICMEMORY_API_KEY")
+    api_key = raw_api_key.strip() if raw_api_key else None
+    # Explicit URL wins; else Cloud when a key is set; else local Core.
+    if not api_url and provider == "atomicmemory":
+        api_url = DEFAULT_CLOUD_API_URL if api_key else DEFAULT_LOCAL_API_URL
+    return PythonSdkConfig(
+        provider=provider,
+        api_url=api_url or "",
+        api_key=api_key,
     )
 
 

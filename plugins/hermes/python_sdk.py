@@ -13,6 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from .client import (
     AtomicMemoryClient,
@@ -29,13 +30,34 @@ from .client import (
 )
 
 
+DEFAULT_CLOUD_API_URL = "https://api.atomicstrata.ai"
+DEFAULT_LOCAL_API_URL = "http://127.0.0.1:17350"
+CLOUD_API_HOSTNAMES = frozenset(
+    {"api.atomicstrata.ai", "api.dev.atomicstrata.ai", "api.staging.atomicstrata.ai"}
+)
+DEFAULT_LOCAL_API_KEY = "local-dev-key"
+LOCAL_API_HOSTNAMES = frozenset({"127.0.0.1", "localhost"})
+LOCAL_API_PORT = 17350
+
+
 @dataclass(frozen=True)
 class PythonSdkConfig:
     """Runtime config needed to construct the Python SDK MemoryClient."""
 
     provider: str = "atomicmemory"
-    api_url: str | None = None
+    api_url: str = DEFAULT_CLOUD_API_URL
     api_key: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "api_url", self.api_url.strip().rstrip("/"))
+        normalized_key = self.api_key.strip() if self.api_key else None
+        if (
+            not normalized_key
+            and self.provider == "atomicmemory"
+            and _is_local_api_url(self.api_url)
+        ):
+            normalized_key = DEFAULT_LOCAL_API_KEY
+        object.__setattr__(self, "api_key", normalized_key or None)
 
 
 @dataclass(frozen=True)
@@ -50,6 +72,68 @@ class PythonSdkTypes:
     UserScope: Any
     AtomicMemorySearchRequest: Any
     AtomicMemoryListOptions: Any
+
+
+def _canonical_origin(api_url: str) -> tuple[str, str, int | None] | None:
+    """Return (scheme, hostname, port) with the hostname IDNA-normalized."""
+    try:
+        parsed = urlsplit(api_url)
+        hostname = unquote(parsed.hostname or "").encode("idna").decode("ascii")
+        return parsed.scheme.lower(), hostname.lower().rstrip("."), parsed.port
+    except (UnicodeError, ValueError):
+        return None
+
+
+def _is_insecure_cloud_api_url(api_url: str) -> bool:
+    """A first-party Cloud hostname over anything but https would leak the key."""
+    origin = _canonical_origin(api_url)
+    return origin is not None and origin[1] in CLOUD_API_HOSTNAMES and origin[0] != "https"
+
+
+def _is_cloud_api_url(api_url: str) -> bool:
+    origin = _canonical_origin(api_url)
+    if origin is None:
+        return False
+    scheme, hostname, port = origin
+    return scheme == "https" and hostname in CLOUD_API_HOSTNAMES and port in (None, 443)
+
+
+def _is_local_api_url(api_url: str) -> bool:
+    origin = _canonical_origin(api_url)
+    if origin is None:
+        return False
+    scheme, hostname, port = origin
+    return scheme == "http" and hostname in LOCAL_API_HOSTNAMES and port == LOCAL_API_PORT
+
+
+def connection_config_error(config: PythonSdkConfig) -> BridgeError | None:
+    """Return why ``config`` must not connect, checked before any network call."""
+    if not config.api_url:
+        return BridgeError("ATOMICMEMORY_API_URL is required", code="CONFIG_REQUIRED")
+    if _is_insecure_cloud_api_url(config.api_url):
+        return BridgeError(
+            "ATOMICMEMORY_API_URL must use https for AtomicMemory Cloud; "
+            "refusing to send the API key in cleartext",
+            code="CONFIG_INVALID",
+        )
+    if config.api_key == DEFAULT_LOCAL_API_KEY and _is_cloud_api_url(config.api_url):
+        return BridgeError(
+            f"ATOMICMEMORY_API_KEY={DEFAULT_LOCAL_API_KEY} is the local Core key and is not "
+            "valid for AtomicMemory Cloud; for local Core set "
+            f"ATOMICMEMORY_API_URL={DEFAULT_LOCAL_API_URL}, otherwise use a Cloud project API key",
+            code="CONFIG_INVALID",
+        )
+    if (
+        config.provider == "atomicmemory"
+        and _is_cloud_api_url(config.api_url)
+        and not config.api_key
+    ):
+        return BridgeError(
+            "ATOMICMEMORY_API_KEY is required for AtomicMemory Cloud; local Core users "
+            f"should set ATOMICMEMORY_API_URL={DEFAULT_LOCAL_API_URL}",
+            code="CONFIG_REQUIRED",
+        )
+    return None
 
 
 def sdk_is_available() -> bool:
@@ -77,8 +161,9 @@ class PythonSdkAtomicMemoryClient:
     def initialize(self) -> None:
         if self._client is not None:
             return
-        if not self._config.api_url:
-            raise BridgeError("ATOMICMEMORY_API_URL is required", code="CONFIG_REQUIRED")
+        error = connection_config_error(self._config)
+        if error is not None:
+            raise error
         types = self._types or _load_sdk_types()
         providers = {self._config.provider: _provider_config(self._config)}
         self._client = types.MemoryClient(providers=providers, default_provider=self._config.provider)

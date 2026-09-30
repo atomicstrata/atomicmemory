@@ -211,10 +211,25 @@ const TOOL_DEFINITIONS = [
   },
 ] as const;
 
-export async function buildServer(config: ServerConfig): Promise<Server> {
-  const client = await initClient(config);
-  const handlers = createHandlers(client, config.scope, { scopeLock: config.scopeLock });
-  const entities = initEntitiesClient(config);
+/**
+ * Optional overrides for client construction. Hosted HTTP mode and tests
+ * inject these so each session can bind its own Bearer project API key.
+ */
+export interface BuildServerDeps {
+  initClient?: (config: ServerConfig) => Promise<MemoryClient>;
+  initEntities?: (config: ServerConfig) => EntitiesClient | null;
+}
+
+export async function buildServer(
+  config: ServerConfig,
+  deps: BuildServerDeps = {},
+): Promise<Server> {
+  const client = await (deps.initClient ?? defaultInitClient)(config);
+  const handlers = createHandlers(client, config.scope, {
+    scopeLock: config.scopeLock,
+    requireScopeUser: config.requireScopeUser ?? false,
+  });
+  const entities = (deps.initEntities ?? defaultInitEntities)(config);
 
   const server = new Server(
     { name: 'atomicmemory', version: PACKAGE_VERSION },
@@ -236,12 +251,23 @@ export async function buildServer(config: ServerConfig): Promise<Server> {
   return server;
 }
 
-function initEntitiesClient(config: ServerConfig): EntitiesClient | null {
+/**
+ * Build a per-session config that always uses the caller's Bearer key.
+ * Hosted HTTP must never fall back to a process-wide shared tenant key.
+ */
+export function sessionConfigFromBearer(
+  base: ServerConfig,
+  apiKey: string,
+): ServerConfig {
+  return { ...base, apiKey };
+}
+
+function defaultInitEntities(config: ServerConfig): EntitiesClient | null {
   if (!config.apiKey) return null;
   return new EntitiesClient({ apiUrl: config.apiUrl, apiKey: config.apiKey });
 }
 
-async function initClient(config: ServerConfig): Promise<MemoryClient> {
+async function defaultInitClient(config: ServerConfig): Promise<MemoryClient> {
   const providerConfig = {
     apiUrl: config.apiUrl,
     ...(config.apiKey ? { apiKey: config.apiKey } : {}),

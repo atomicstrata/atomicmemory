@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
     auth, config_cmd, connect, doctor_cmd, hooks, init, instance, integrate, key, link, memory,
-    migrate, org, project, slm, trace, usage,
+    migrate, org, project, slm, trace, update, usage,
 };
 use crate::environment::Environment;
 
@@ -152,6 +152,8 @@ pub enum Command {
     /// Lifecycle hooks for Codex and Claude Code (complements `am integrate` MCP)
     #[command(subcommand)]
     Hooks(hooks::HooksCommand),
+    /// Replace this production install with the latest published binary
+    Update(update::UpdateOptions),
 }
 
 pub fn command_path(command: &Command) -> String {
@@ -175,6 +177,7 @@ pub fn command_path(command: &Command) -> String {
         Command::Migrate(_) => "migrate".into(),
         Command::Integrate(_) => "integrate".into(),
         Command::Hooks(cmd) => format!("hooks {}", hooks::command_label(cmd)),
+        Command::Update(_) => "update".into(),
     }
 }
 

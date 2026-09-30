@@ -22,4 +22,5 @@ pub mod org;
 pub mod project;
 pub mod slm;
 pub mod trace;
+pub mod update;
 pub mod usage;

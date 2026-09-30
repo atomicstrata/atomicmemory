@@ -248,7 +248,10 @@ jobs:
         env:
           AM_GIT_SHA: ${{ needs.resolve.outputs.sha }}
           AM_BUILD_ENV: ${{ needs.resolve.outputs.build_env }}
-        run: cargo build --release -p atomicmemory --bin am --target ${{ matrix.target }} --locked
+        # internal-release compiles the private-repo reinstall hint used by
+        # AM_BUILD_ENV=internal/canary refusals. Public release-cli.yml must
+        # never pass this feature.
+        run: cargo build --release -p atomicmemory --bin am --target ${{ matrix.target }} --locked --features internal-release
 
       - name: Package
         env:

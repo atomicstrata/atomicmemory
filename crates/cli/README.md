@@ -40,8 +40,41 @@ cargo install --path crates/cli --force
 am --help
 ```
 
+## Update
+
+Available in **am 0.4.0 and later**. On earlier versions, rerun the installer
+(the subcommand is unrecognized before 0.4.0).
+
+Production installs (`am --version` reports `"env":"production"`) can replace
+themselves from the public mirror:
+
+```bash
+am update --check
+am update
+```
+
+`am update` reads `https://get.atomicstrata.ai/version.json`, downloads
+`cli/vX.Y.Z/am-X.Y.Z-<target>.tar.gz`, and checks `SHA256SUMS` before replacing
+the binary. It refuses a document or staged binary whose `env` is not
+`production`. It honors `AM_VERIFY_ATTESTATION` the same way as the installer:
+`1` requires a GitHub artifact attestation and fails closed without `gh`,
+`auto` verifies when `gh` is authenticated and otherwise prints a
+checksum-only warning on stderr (suppressed by `--quiet`), and `0` stays
+checksum-only. Downloads are https-only, follow redirects only within
+`get.atomicstrata.ai`, and are size-capped. The new binary is staged and
+probed in a private directory beside the installed one, so a `noexec` `/tmp`
+does not block the update. It does not ask for a password. If the install
+directory is not writable, it exits with the install command above. On
+platforms without a published build, `am update --check` fails with the same
+unsupported-platform error as `am update`.
+
+Dev, internal, and canary builds refuse `am update`. Dev builds reinstall with
+`cargo install --path crates/cli --force`. Internal and canary builds reinstall
+from your internal channel (see `scripts/install-cli-internal.sh`). This
+command is not the idle upgrade gate (ATO-1843).
+
 This is the **CLI** (`am`): auth, org/project/key, connect, instance,
-slm, memory, migrate, doctor, integrate (MCP), and lifecycle hooks.
+slm, memory, migrate, doctor, integrate (MCP), lifecycle hooks, and `am update`.
 
 Consolidation of the npm `@atomicmemory/cli` package into `am` is **in
 progress**: `am` covers Cloud, memory, MCP integration, and lifecycle hooks,
