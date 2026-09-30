@@ -82,9 +82,8 @@ or publish pending.
   path. The local Core key `local-dev-key` and plain `http://` are refused for
   Cloud hosts. Plugin manifests and the OpenClaw dependency pin
   `@atomicmemory/mcp-server@^0.1.6`. Publish `@atomicmemory/mcp-server@0.1.6`
-  on npm before publishing the 0.2.3 plugins. `am integrate` still pins the
-  last published `@atomicmemory/mcp-server@0.1.5` until that command's pin is
-  bumped after the 0.1.6 publish.
+  on npm before publishing the 0.2.3 plugins. `am integrate` in `am` 0.4.0 pins
+  `@atomicmemory/mcp-server@0.1.6`.
 - `@atomicmemory/cli` (`atomicmemory`) is **deprecated** in favor of `am`; see
   consolidation doc for command mapping and smoke-contract updates. It stays
   published and supported for `import --type llmwiki` (not yet ported to `am`

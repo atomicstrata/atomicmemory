@@ -325,7 +325,7 @@ am integrate uninstall --host cursor
 ```
 
 Installs set `ATOMICMEMORY_SCOPE_LOCK=true` in the generated MCP server env and
-pin `@atomicmemory/mcp-server@0.1.5`. Project-scoped configs (for example
+pin `@atomicmemory/mcp-server@0.1.6`. Project-scoped configs (for example
 `.cursor/mcp.json` in a repo) are not supported yet — use global install only.
 OpenCode uses its V2 global `mcp.servers.atomicmemory` configuration under
 `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`.
