@@ -21,7 +21,7 @@ use crate::integrate::path_util::require_npx;
 // "actually resolvable on npm". The build-time test alone does not prove the
 // pin is published, so a bump belongs in the same release train as the publish
 // and must not land ahead of it.
-pub const MCP_SERVER_PACKAGE: &str = "@atomicmemory/mcp-server@0.1.5";
+pub const MCP_SERVER_PACKAGE: &str = "@atomicmemory/mcp-server@0.1.6";
 
 /// Resolved credentials for writing into host MCP configs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

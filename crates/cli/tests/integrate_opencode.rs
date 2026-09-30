@@ -101,7 +101,7 @@ fn opencode_install_update_doctor_and_uninstall_lifecycle() {
     assert!(
         command
             .iter()
-            .any(|part| part == "@atomicmemory/mcp-server@0.1.5")
+            .any(|part| part == "@atomicmemory/mcp-server@0.1.6")
     );
     assert!(command.iter().any(|part| part == "atomicmemory-mcp"));
     assert_eq!(installed["mcp"]["servers"]["other"]["type"], "remote");
