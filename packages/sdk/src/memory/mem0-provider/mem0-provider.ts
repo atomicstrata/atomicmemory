@@ -111,7 +111,7 @@ export class Mem0Provider extends BaseMemoryProvider implements Health {
     const raw = await fetchJson<unknown>(
       this.http,
       this.path('/memories/'),
-      { method: 'POST', body: JSON.stringify(body) }
+      { method: 'POST', body: JSON.stringify(body), signal: input.signal }
     );
 
     const memories = unwrapMem0Array<Record<string, unknown>>(raw)
@@ -122,7 +122,7 @@ export class Mem0Provider extends BaseMemoryProvider implements Health {
       }));
 
     if (shouldDefer) {
-      this.fireBackgroundInference(body);
+      this.fireBackgroundInference(body, input.signal);
     }
 
     return toIngestResult(memories);
@@ -133,13 +133,14 @@ export class Mem0Provider extends BaseMemoryProvider implements Health {
    * Logs errors but never blocks the caller.
    */
   private fireBackgroundInference(
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
   ): void {
     const inferBody = { ...body, infer: true };
     fetchJson<unknown>(
       this.http,
       this.path('/memories/'),
-      { method: 'POST', body: JSON.stringify(inferBody) }
+      { method: 'POST', body: JSON.stringify(inferBody), signal }
     ).catch((err) => {
       console.error('[Mem0Provider] deferred AUDN failed:', err);
     });
@@ -158,7 +159,7 @@ export class Mem0Provider extends BaseMemoryProvider implements Health {
     const raw = await fetchJson<unknown>(
       this.http,
       this.searchPath(),
-      { method: 'POST', body: JSON.stringify(body) }
+      { method: 'POST', body: JSON.stringify(body), signal: request.signal }
     );
 
     const results = unwrapMem0Array<Record<string, unknown>>(raw)

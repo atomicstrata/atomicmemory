@@ -41,7 +41,51 @@ Also works with `npm install` / `yarn add`.
 
 ## Quick start
 
-Prerequisite: start `atomicmemory-core` first. The full SDK walkthrough is in the [SDK Quickstart](https://docs.atomicstrata.ai/sdk/quickstart).
+For memory operations on a Node server, set `ATOMICMEMORY_API_KEY` in your
+environment. No URL or provider configuration is needed for AtomicMemory Cloud.
+
+```ts
+import { MemoryClient } from '@atomicmemory/sdk';
+
+const client = new MemoryClient();
+await client.initialize();
+
+await client.ingest({
+  mode: 'text',
+  content: 'I prefer aisle seats.',
+  scope: { user: 'demo-user' },
+});
+const results = await client.search({
+  query: 'seat preference',
+  scope: { user: 'demo-user' },
+});
+```
+
+Call `await client.initialize()` before any memory operation. The default provider
+uses `https://api.atomicstrata.ai` and reads `ATOMICMEMORY_API_KEY` at initialization
+in Node server contexts. A missing or blank Cloud key fails initialization before
+any request. Cloud also rejects the local Core development key. Use a Cloud project
+key or configure `providers.atomicmemory.apiUrl` for local Core.
+The application sets `scope.user` explicitly. The API key does not select a memory user.
+
+Explicit provider configuration takes precedence. An omitted AtomicMemory URL
+still selects Cloud, and an explicit `apiKey` overrides the environment key.
+The environment key also works with explicit dev and staging Cloud URLs,
+`https://api.dev.atomicstrata.ai` and `https://api.staging.atomicstrata.ai`.
+Cloud URLs must use HTTPS. Local or custom URLs, other providers, nondefault Cloud
+ports, and URLs with embedded credentials never inherit the environment key.
+Local endpoints can remain unauthenticated. An explicit `defaultProvider` must
+name a provider in the configuration.
+
+Browser callers use `@atomicmemory/sdk/browser` and configure credentials explicitly.
+Do not put a server API key in browser code. Use only credentials safe for that
+browser session, or send requests through your authenticated server instead.
+
+### Memory and storage
+
+Use `AtomicMemoryClient` when you also need storage. Its configuration is unchanged.
+Start a local `atomicmemory-core` for the following example. The full SDK walkthrough
+is in the [SDK Quickstart](https://docs.atomicstrata.ai/sdk/quickstart).
 
 ```ts
 import { AtomicMemoryClient } from '@atomicmemory/sdk';
@@ -78,9 +122,7 @@ const artifact = await client.storage.put({
 console.log(artifact.artifactId);
 ```
 
-Applications that only need memory operations can still use
-`MemoryClient` directly. New integrations should prefer the
-namespaced `AtomicMemoryClient.memory` surface.
+Applications that only need memory operations can use `MemoryClient` directly.
 
 ## Providers
 

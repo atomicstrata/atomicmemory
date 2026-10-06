@@ -258,7 +258,7 @@ Status labels are part of the public docs contract:
 
 | Package | Path | Status |
 | --- | --- | --- |
-| `@atomicmemory/vercel-ai` | `adapters/vercel-ai` | published |
+| `@atomicmemory/vercel-ai-sdk` | `adapters/vercel-ai-sdk` | implemented, publish pending |
 | `@atomicmemory/openai-agents` | `adapters/openai-agents` | published |
 | `@atomicmemory/langchain` | `adapters/langchain` | published |
 | `@atomicmemory/langgraph` | `adapters/langgraph` | published |

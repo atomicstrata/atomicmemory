@@ -247,10 +247,11 @@ async function postIngest(
     body.skip_extraction = true;
   }
 
-  const raw = await fetchJson<RawIngestResponse>(http, path, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  const raw = await fetchJson<RawIngestResponse>(
+    { ...http, rejectAccepted: true },
+    path,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
   return toIngestResult(raw);
 }
 

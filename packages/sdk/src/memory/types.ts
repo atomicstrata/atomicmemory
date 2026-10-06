@@ -78,6 +78,8 @@ export interface IngestBase {
   scope: Scope;
   provenance?: Provenance;
   metadata?: Record<string, unknown>;
+  /** Cancel AtomicMemory or Mem0 HTTP requests; does not undo server-side writes. */
+  signal?: AbortSignal;
 }
 
 /** Raw text: conversation transcript, document, note. */
@@ -138,6 +140,8 @@ export interface SearchRequest {
   threshold?: number;
   filter?: FilterExpr;
   reranker?: string;
+  /** Cancel AtomicMemory or Mem0 HTTP requests, in addition to the provider timeout. */
+  signal?: AbortSignal;
 }
 
 export interface SearchResult {

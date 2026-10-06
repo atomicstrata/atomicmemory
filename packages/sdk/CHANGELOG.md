@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Support `new MemoryClient()` with AtomicMemory Cloud defaults and
+  `ATOMICMEMORY_API_KEY` in Node server contexts. Explicit credentials and providers
+  take precedence, and local or custom endpoints never inherit the environment key.
+- Require nonblank Cloud credentials and reject the local Core development key
+  before Cloud requests. Preserve explicit browser credentials without a `process`
+  global and remove the Node-only URL validation import so browsers can bundle.
+
+### Added
+- Optional `AbortSignal` on generic ingest and search requests for AtomicMemory
+  and Mem0. Existing method signatures and successful response shapes remain
+  source-compatible. Hindsight does not honor this option.
+
+### Fixed
+- Compose caller cancellation with the provider's configured HTTP timeout.
+- Reject AtomicMemory HTTP 202 ingest responses with `PendingIngestError`,
+  including namespace full and quick ingestion, even when the response has IDs.
+  Accepted writes are not reported as completed. No polling or terminal receipts
+  are added, and cancellation cannot undo server-side writes.
+
 ## [1.1.1] - 2026-06-16
 
 ### Security
