@@ -18,6 +18,20 @@ export class MemoryProviderError extends Error {
   }
 }
 
+/** Ingest was accepted, but the response does not establish a completed write. */
+export class PendingIngestError extends MemoryProviderError {
+  readonly status = 202;
+
+  constructor(provider: string, operation: string) {
+    super(
+      'HTTP 202: ingest accepted but completion is not confirmed',
+      provider,
+      operation,
+    );
+    this.name = 'PendingIngestError';
+  }
+}
+
 /** Caller invoked an extension the provider does not support. */
 export class UnsupportedOperationError extends MemoryProviderError {
   constructor(provider: string, operation: string) {

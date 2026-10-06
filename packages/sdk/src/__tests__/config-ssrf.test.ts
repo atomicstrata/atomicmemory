@@ -44,10 +44,10 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-/** Source files that declare an `apiUrl: string` config/transport field. */
+/** Source files that declare a required or optional string apiUrl field. */
 function filesDeclaringApiUrlField(): string[] {
   return sourceFiles(SRC_ROOT)
-    .filter((file) => /apiUrl: string/.test(readFileSync(file, 'utf8')))
+    .filter((file) => /apiUrl\??: string/.test(readFileSync(file, 'utf8')))
     .map((file) => relative(SRC_ROOT, file));
 }
 

@@ -1,0 +1,30 @@
+{
+  "name": "@atomicmemory/example-vercel-ai-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace-linked AtomicMemory tools example for Vercel AI SDK 6.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "node --test --import tsx src/*.test.ts",
+    "smoke": "tsx src/smoke.ts",
+    "check:docs": "node scripts/check-doc-examples.mjs",
+    "start": "tsx src/live.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "3.0.124",
+    "@atomicmemory/sdk": "^1.1.2",
+    "@atomicmemory/vercel-ai-sdk": "^0.1.2",
+    "ai": "6.0.300",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
+  }
+}
