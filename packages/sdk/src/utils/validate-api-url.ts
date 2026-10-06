@@ -18,7 +18,6 @@
  * deployments that must defend against hostname-based metadata access should pin
  * `api_url` to a vetted host.
  */
-import { isIP } from 'node:net';
 
 export interface ValidateApiUrlOptions {
   /**
@@ -118,10 +117,13 @@ export function validateApiUrl(value: string, options: ValidateApiUrlOptions = {
   const host = parsed.hostname.replace(/^\[|\]$/g, '');
   if (!host) throw new Error('api_url must include a host');
 
-  const kind = isIP(host);
-  if (kind === 0) return stripped; // hostname — intentionally not DNS-resolved
+  // URL has already validated and normalized IP literals. A colon identifies
+  // IPv6; normalized IPv4 has four decimal octets. No Node-only parser is needed.
+  const isIpv6 = host.includes(':');
+  const isIpv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host);
+  if (!isIpv6 && !isIpv4) return stripped; // hostname — intentionally not DNS-resolved
 
-  const ipClass = kind === 4 ? classifyIpv4(host) : classifyIpv6(host);
+  const ipClass = isIpv4 ? classifyIpv4(host) : classifyIpv6(host);
   if (ipClass.linkLocal) {
     throw new Error('api_url must not target a link-local or cloud-metadata address');
   }

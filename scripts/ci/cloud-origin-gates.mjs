@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CLOUD_ERROR_MARKER = 'AtomicMemory Cloud';
 const CANONICAL_SOURCE = 'crates/cli/src/environment.rs';
-const SOURCE_ROOTS = ['packages/mcp-server/src', 'plugins/claude-code/scripts', 'plugins/hermes', 'plugins/openclaw/src'];
+const SOURCE_ROOTS = ['packages/mcp-server/src', 'packages/sdk/src', 'plugins/claude-code/scripts', 'plugins/hermes', 'plugins/openclaw/src'];
 const HOST_INVENTORIES = new Map([
   ['plugins/openclaw/skills/atomicmemory/skill.yaml', 'plugins/openclaw/src/index.test.ts'],
 ]);
@@ -27,6 +27,7 @@ const HOST_INVENTORIES = new Map([
  */
 export const GATES = new Map([
   ['packages/mcp-server/src/config.ts', { test: 'packages/mcp-server/src/config.test.ts', extract: extractTsHostSet }],
+  ['packages/sdk/src/memory/atomicmemory-provider/config.ts', { test: 'packages/sdk/src/client/__tests__/memory-client-cloud.test.ts', extract: extractTsHostSet }],
   [
     'plugins/claude-code/scripts/lib/atomicmemory.sh',
     { test: 'plugins/claude-code/scripts/__tests__/load-env-defaults.sh', extract: extractBashHostSet },
@@ -127,7 +128,10 @@ function discoverCredentialGates(read, cloudHosts) {
   return SOURCE_ROOTS.flatMap(sourceFiles)
     .filter((path) => ['.ts', '.py', '.sh'].includes(extname(path)))
     .filter((path) => !path.includes('/tests/') && !path.includes('/__tests__/') && !path.endsWith('.test.ts'))
-    .filter((path) => cloudHosts.some((hostname) => read(path).includes(hostname)))
+    .filter((path) => {
+      const code = stripComments(read(path), extname(path) === '.ts' ? C_STYLE_COMMENTS : HASH_COMMENTS);
+      return cloudHosts.some((hostname) => code.includes(hostname));
+    })
     .sort();
 }
 

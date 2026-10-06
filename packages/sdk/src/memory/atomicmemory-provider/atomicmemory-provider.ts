@@ -33,9 +33,8 @@ import type {
   SearchResult,
 } from '../types';
 import type { AtomicMemoryProviderConfig } from './types';
-import { validateApiUrl } from '../../utils/validate-api-url.js';
+import { resolveAtomicMemoryHttpConfig } from './config';
 import {
-  ATOMICMEMORY_DEFAULT_TIMEOUT as DEFAULT_TIMEOUT,
   ATOMICMEMORY_DEFAULT_API_VERSION as DEFAULT_API_VERSION,
 } from './types';
 import { normalizeApiVersion } from './path';
@@ -75,13 +74,7 @@ export class AtomicMemoryProvider
 
   constructor(config: AtomicMemoryProviderConfig) {
     super();
-    this.http = {
-      apiUrl: validateApiUrl(config.apiUrl, {
-        allowPrivateNetworks: config.allowPrivateNetworks,
-      }).replace(/\/+$/, ''),
-      apiKey: config.apiKey,
-      timeout: config.timeout ?? DEFAULT_TIMEOUT,
-    };
+    this.http = resolveAtomicMemoryHttpConfig(config);
     this.apiPrefix = normalizeApiVersion(
       config.apiVersion ?? DEFAULT_API_VERSION,
     );
@@ -164,9 +157,9 @@ export class AtomicMemoryProvider
     // extraction pipeline).
     const path = isVerbatim ? '/memories/ingest/quick' : '/memories/ingest';
     const raw = await fetchJson<Record<string, unknown>>(
-      this.http,
+      { ...this.http, rejectAccepted: true },
       this.route(path),
-      { method: 'POST', body: JSON.stringify(body) }
+      { method: 'POST', body: JSON.stringify(body), signal: input.signal }
     );
 
     return toIngestResult(raw as any);
@@ -187,7 +180,7 @@ export class AtomicMemoryProvider
     const raw = await fetchJson<{ memories: any[]; count: number; retrieval?: any }>(
       this.http,
       this.route('/memories/search/fast'),
-      { method: 'POST', body: JSON.stringify(body) }
+      { method: 'POST', body: JSON.stringify(body), signal: request.signal }
     );
 
     return {
@@ -395,6 +388,7 @@ export class AtomicMemoryProvider
         }>(this.http, this.route('/memories/search'), {
           method: 'POST',
           body: JSON.stringify(body),
+          signal: request.signal,
         });
 
         return {
