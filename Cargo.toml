@@ -40,7 +40,7 @@ regex = "1.12.3"
 uuid = { version = "1.23.1", features = ["v7", "serde"] }
 time = { version = "0.3.55", features = ["formatting", "parsing", "macros", "large-dates"] }
 tz = { package = "tz-rs", version = "0.7.3", default-features = false, features = ["std"] }
-url = "2.5.8"
+url = "2.5.9"
 thiserror = "2.0.18"
 anyhow = "1.0.102"
 tracing = "0.1.44"

@@ -30,6 +30,8 @@ COPY --from=pruner /repo/out/json/ ./
 COPY --from=pruner /repo/out/pnpm-lock.yaml ./pnpm-lock.yaml
 RUN pnpm install --frozen-lockfile --filter @atomicmemory/core --ignore-scripts
 COPY --from=pruner /repo/out/full/ ./
+# Optional: CPU-only CI skips only the vendor CUDA download. Unset preserves the default.
+ARG ONNXRUNTIME_NODE_INSTALL_CUDA
 RUN pnpm --filter @atomicmemory/core build \
   && pnpm deploy --filter @atomicmemory/core --prod /deploy
 
