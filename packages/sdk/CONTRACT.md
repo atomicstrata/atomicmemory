@@ -112,3 +112,34 @@ per-response object plus two per-result fields:
 The receipt is always present on search responses; it is not gated on retrieval
 tracing. It exists so a retrieval can be logged and replayed bit-for-bit, which
 is what makes an audited path deterministic.
+
+## 7. Request cancellation and ingest acceptance
+
+SDK 1.1.2 adds optional `signal?: AbortSignal` to `IngestBase` and
+`SearchRequest`. Existing method signatures, calls without a signal, and
+successful v1 response shapes remain source-compatible. The signal is a local
+transport option and is never serialized into the request body.
+
+AtomicMemory text, messages, and verbatim ingest, search, and temporal search
+forward this signal to HTTP. Mem0 text/messages ingest and search also forward
+it, including optional deferred inference. The shared HTTP client composes caller
+cancellation with the configured provider timeout. Cancellation and timeouts use
+the existing typed SDK errors. Cancellation cannot undo an accepted server-side
+write or guarantee that extraction stopped on the server.
+
+Hindsight does not honor the new signal field. Custom ingestion/search
+preprocessors must preserve the signal when constructing replacement requests.
+The AtomicMemory namespace handle does not expose per-call cancellation in this
+patch; its configured timeout still applies.
+
+AtomicMemory generic ingest and namespace `ingestFull`/`ingestQuick` reject HTTP
+202 with `PendingIngestError`, a `MemoryProviderError` carrying `status: 202`.
+This applies even when the accepted response includes memory IDs. The error
+does not include the response body or credentials. Other successful 202
+responses retain their current behavior, including Mem0's immediate asynchronous
+response semantics. This patch does not add polling or terminal write receipts.
+
+Normal AtomicMemory v1 responses still report the backend's created/updated IDs.
+They do not prove deferred correction resolution or that a previous claim was
+superseded. Read subsequent search results and backend evidence before claiming
+that a correction completed.

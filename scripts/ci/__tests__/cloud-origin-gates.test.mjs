@@ -71,6 +71,20 @@ test("TS host present only in a DEFAULT_*_URL constant fails", () => {
   assert.ok(failures.some((f) => f === `${path} omits api.atomicstrata.ai`), failures.join("\n"));
 });
 
+test("SDK host removed from the set but kept in a comment fails", () => {
+  const path = "packages/sdk/src/memory/atomicmemory-provider/config.ts";
+  const read = mutate(path, "  'api.dev.atomicstrata.ai',\n", "  // 'api.dev.atomicstrata.ai',\n");
+  const failures = validateCloudOriginGates(read);
+  assert.ok(failures.includes(`${path} omits api.dev.atomicstrata.ai`), failures.join("\n"));
+});
+
+test("a new SDK Cloud gate cannot bypass the inventory", () => {
+  const path = "packages/sdk/src/client/memory-client.ts";
+  const read = readerWith({ [path]: `${readRepo(path)}\nconst CLOUD_API_HOSTNAMES = new Set(['api.atomicstrata.ai']);` });
+  const failures = validateCloudOriginGates(read);
+  assert.ok(failures.some((failure) => failure.startsWith("credential gate inventory changed")), failures.join("\n"));
+});
+
 test("Python host removed from the set but kept in a comment fails", () => {
   const path = "plugins/hermes/python_sdk.py";
   const read = mutate(

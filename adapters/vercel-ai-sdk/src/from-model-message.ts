@@ -17,7 +17,7 @@ import type { Message } from '@atomicmemory/sdk';
 
 /**
  * Structural shape matching AI SDK v5 `ModelMessage`. Kept local so
- * the adapter does not import from `ai` — avoids version coupling.
+ * the root helper does not import from `ai` — avoids version coupling.
  */
 export interface ModelMessageLike {
   role: 'user' | 'assistant' | 'system' | 'tool';

@@ -8,12 +8,19 @@
  * errors are automatically tagged with the correct provider name.
  */
 
-import { MemoryProviderError, MemoryTransportError, RateLimitError } from '../errors';
+import {
+  MemoryProviderError,
+  MemoryTransportError,
+  PendingIngestError,
+  RateLimitError,
+} from '../errors';
 
 export interface HttpOptions {
   apiUrl: string;
   apiKey?: string;
   timeout: number;
+  /** Ingest-only policy: accepted responses cannot be mapped to completed writes. */
+  rejectAccepted?: boolean;
 }
 
 // fallow-ignore-next-line unused-type
@@ -59,29 +66,72 @@ function buildHeaders(
 }
 
 /**
- * Perform a raw fetch with the provider's auth/timeout plumbing.
- * Transport-level failures (connection refused, DNS, timeout, abort) are
+ * Perform fetch and consume its response with the provider's auth/timeout plumbing.
+ * Transport-level failures (connection refused, DNS, timeout, abort, body read) are
  * re-thrown as `MemoryTransportError` so callers see an actionable
  * "cannot reach <provider> at <url>" message instead of bare "fetch failed".
  */
-async function performFetch(
+async function performRequest<T>(
   options: HttpOptions,
   providerName: string,
   path: string,
-  init: RequestInit
-): Promise<Response> {
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+): Promise<T> {
   const url = `${options.apiUrl}${path}`;
   const headers = buildHeaders(options, init);
+  let responseReceived = false;
+  let signal: AbortSignal | undefined;
+  let timeoutSignal: AbortSignal | undefined;
   try {
-    return await fetch(url, {
+    timeoutSignal = AbortSignal.timeout(options.timeout);
+    signal = init.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal;
+    const response = await fetch(url, {
       ...init,
       headers,
-      signal: AbortSignal.timeout(options.timeout),
+      signal,
     });
+    responseReceived = true;
+    return await consume(response);
   } catch (err) {
-    const cause = err instanceof Error ? err : new Error(String(err));
+    // A completed read can produce a provider or JSON error even if the
+    // caller aborts afterward. Cancellation only classifies transport errors.
+    if (responseReceived && !(err instanceof BodyReadError)) throw err;
+    if (signal?.aborted) {
+      const timedOut = timeoutSignal?.aborted && signal.reason === timeoutSignal.reason;
+      throw new MemoryTransportError(
+        providerName,
+        path,
+        url,
+        new DOMException('Request cancelled', timedOut ? 'TimeoutError' : 'AbortError'),
+      );
+    }
+    const cause = asError(err instanceof BodyReadError ? err.cause : err);
     throw new MemoryTransportError(providerName, path, url, cause);
   }
+}
+
+class BodyReadError extends Error {}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/** Errors thrown by the body reader are transport failures, regardless of their type. */
+async function readBody<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    throw new BodyReadError('Response body could not be read', { cause: error });
+  }
+}
+
+/** Parse separately so an arbitrary abort reason cannot be mistaken for invalid JSON. */
+async function readJson<T>(response: Response): Promise<T> {
+  const body = await readBody(() => response.text());
+  return JSON.parse(body) as T;
 }
 
 /**
@@ -100,7 +150,7 @@ async function throwForStatus(
   }
 
   if (!response.ok) {
-    const body = await response.text().catch(() => '');
+    const body = await readBody(() => response.text());
     throw new MemoryProviderError(
       `HTTP ${response.status}: ${body || response.statusText}`,
       providerName,
@@ -111,17 +161,23 @@ async function throwForStatus(
 
 /**
  * Execute a fetch request and handle rate-limit / error responses.
- * Returns the raw Response on success.
+ * Consume the response inside the same transport error boundary as fetch.
  */
-async function executeRequest(
+async function executeRequest<T>(
   providerName: string,
   options: HttpOptions,
   path: string,
-  init: RequestInit = {}
-): Promise<Response> {
-  const response = await performFetch(options, providerName, path, init);
-  await throwForStatus(response, providerName, path);
-  return response;
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+): Promise<T> {
+  return performRequest(options, providerName, path, init, async (response) => {
+    await throwForStatus(response, providerName, path);
+    if (options.rejectAccepted && response.status === 202) {
+      await readBody(async () => response.body?.cancel());
+      throw new PendingIngestError(providerName, path);
+    }
+    return consume(response);
+  });
 }
 
 /**
@@ -131,41 +187,29 @@ async function executeRequest(
  */
 export function createHttpClient(providerName: string): HttpClient {
   return {
-    async fetchJson<T>(
-      options: HttpOptions,
-      path: string,
-      init: RequestInit = {}
-    ): Promise<T> {
-      const response = await executeRequest(providerName, options, path, init);
-      return (await response.json()) as T;
+    async fetchJson<T>(options: HttpOptions, path: string, init: RequestInit = {}): Promise<T> {
+      return executeRequest(providerName, options, path, init,
+        (response) => readJson<T>(response),
+      );
     },
 
-    async fetchVoid(
-      options: HttpOptions,
-      path: string,
-      init: RequestInit = {}
-    ): Promise<void> {
-      await executeRequest(providerName, options, path, init);
+    async fetchVoid(options: HttpOptions, path: string, init: RequestInit = {}): Promise<void> {
+      await executeRequest(providerName, options, path, init, async () => {});
     },
 
-    async fetchJsonOrNull<T>(
-      options: HttpOptions,
-      path: string,
-      init: RequestInit = {}
-    ): Promise<T | null> {
-      const response = await performFetch(options, providerName, path, init);
-      if (response.status === 404) return null;
-      await throwForStatus(response, providerName, path);
-      return (await response.json()) as T;
+    async fetchJsonOrNull<T>(options: HttpOptions, path: string, init: RequestInit = {}): Promise<T | null> {
+      return performRequest(options, providerName, path, init, async (response) => {
+        if (response.status === 404) return null;
+        await throwForStatus(response, providerName, path);
+        return readJson<T>(response);
+      });
     },
 
-    async deleteIgnore404(
-      options: HttpOptions,
-      path: string,
-      init: RequestInit = {}
-    ): Promise<void> {
+    async deleteIgnore404(options: HttpOptions, path: string, init: RequestInit = {}): Promise<void> {
       try {
-        await executeRequest(providerName, options, path, { ...init, method: 'DELETE' });
+        await executeRequest(providerName, options, path,
+          { ...init, method: 'DELETE' }, async () => {},
+        );
       } catch (err: unknown) {
         if (err instanceof Error && err.message.includes('HTTP 404')) return;
         throw err;

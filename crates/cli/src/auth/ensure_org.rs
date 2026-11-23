@@ -137,7 +137,7 @@ fn map_org_error(err: CloudClientError) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     fn sample_org(id: &str, name: &str) -> Organization {
         Organization {
@@ -145,7 +145,7 @@ mod tests {
             clerk_org_id: format!("org_clerk_{id}"),
             name: name.into(),
             slug: id.into(),
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
         }
     }
 

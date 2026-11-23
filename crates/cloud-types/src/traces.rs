@@ -11,7 +11,8 @@ pub struct TraceSummary {
     pub input_summary: String,
     pub result_count: i32,
     pub latency_ms: i32,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub created_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -31,7 +32,8 @@ pub struct RetrievalTrace {
     pub candidates_json: serde_json::Value,
     pub result_count: i32,
     pub latency_ms: i32,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub created_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -54,7 +56,8 @@ pub struct MutationTrace {
     pub facts_json: serde_json::Value,
     pub evidence: serde_json::Value,
     pub latency_ms: i32,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub created_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -162,7 +165,8 @@ pub struct IngestTraceEnvelopeV2 {
     pub schema_version: u16,
     pub event_id: uuid::Uuid,
     pub core_instance_id: String,
-    pub occurred_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub occurred_at: time::OffsetDateTime,
     pub operation: TraceIngestOperation,
     pub outcome: TraceIngestOutcome,
     pub duration_ms: i32,

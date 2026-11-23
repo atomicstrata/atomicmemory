@@ -1,6 +1,6 @@
 //! Persist integration install records in `config.toml` (path-keyed ownership).
 
-use chrono::Utc;
+use time::OffsetDateTime;
 
 use anyhow::{Result, bail};
 use serde::Serialize;
@@ -99,7 +99,7 @@ pub(crate) fn record_install_in(
         scope: scope.id().to_string(),
         config_path: key.clone(),
         profile: profile.to_string(),
-        installed_at: Utc::now().to_rfc3339(),
+        installed_at: am_core_types::timestamp_serde::revision(OffsetDateTime::now_utc())?,
         entry_fingerprint: entry_fingerprint.to_string(),
         prior_entry,
     };

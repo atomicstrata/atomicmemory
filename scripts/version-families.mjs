@@ -49,7 +49,7 @@ export const families = {
     jsonPathTarget("adapters/langgraph/package.json", ["version"]),
     jsonPathTarget("adapters/mastra/package.json", ["version"]),
     jsonPathTarget("adapters/openai-agents/package.json", ["version"]),
-    jsonPathTarget("adapters/vercel-ai/package.json", ["version"]),
+    jsonPathTarget("adapters/vercel-ai-sdk/package.json", ["version"]),
   ],
   tool: [
     jsonPathTarget("packages/cli/package.json", ["version"]),

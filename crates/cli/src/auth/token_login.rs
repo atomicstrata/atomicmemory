@@ -1,7 +1,7 @@
 //! Paste a Clerk session JWT (same token the web dashboard uses).
 
 use anyhow::{Context, Result, bail};
-use chrono::Utc;
+use time::OffsetDateTime;
 
 use crate::auth::claims::decode_id_token;
 use crate::auth::setup::setup_default_project;
@@ -24,7 +24,7 @@ pub async fn run_login_token(
 
     let claims = decode_id_token(&token).context("decode pasted JWT")?;
     if let Some(exp) = claims.exp
-        && exp <= Utc::now().timestamp()
+        && exp <= OffsetDateTime::now_utc().unix_timestamp()
     {
         bail!("token is expired — sign in via the web dashboard and paste a fresh JWT");
     }

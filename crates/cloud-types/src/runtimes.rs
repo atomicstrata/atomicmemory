@@ -41,8 +41,12 @@ pub struct RuntimeSummary {
     pub capabilities: Vec<String>,
     pub core_version: Option<String>,
     pub connector_version: Option<String>,
-    pub last_heartbeat_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default, with = "am_core_types::timestamp_serde::option")]
+    pub last_heartbeat_at: Option<time::OffsetDateTime>,
+    #[serde(default, with = "am_core_types::timestamp_serde::option")]
+    pub revoked_at: Option<time::OffsetDateTime>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub updated_at: time::OffsetDateTime,
 }

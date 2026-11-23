@@ -18,6 +18,7 @@
 
 import type { HttpOptions } from './http';
 import { fetchJson, fetchJsonOrNull, fetchVoid } from './http';
+import { assertIngestIds } from './mappers';
 
 /**
  * A function that prepends the configured API-version prefix (e.g.
@@ -247,10 +248,12 @@ async function postIngest(
     body.skip_extraction = true;
   }
 
-  const raw = await fetchJson<RawIngestResponse>(http, path, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  const raw = await fetchJson<RawIngestResponse>(
+    { ...http, rejectAccepted: true },
+    path,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  assertIngestIds(raw);
   return toIngestResult(raw);
 }
 

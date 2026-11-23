@@ -116,7 +116,7 @@ const PUBLISHED_PACKAGE_PATHS = [
   "adapters/langgraph/package.json",
   "adapters/mastra/package.json",
   "adapters/openai-agents/package.json",
-  "adapters/vercel-ai/package.json",
+  "adapters/vercel-ai-sdk/package.json",
   "plugins/claude-code/package.json",
   "plugins/openclaw/package.json",
   "plugins/hermes/package.json",

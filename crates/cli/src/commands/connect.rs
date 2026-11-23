@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use am_cloud_types::RuntimePresence;
 use anyhow::{Result, bail};
-use chrono::{DateTime, Utc};
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
+use time::OffsetDateTime;
 
 use crate::auth::token::valid_bearer_token;
 use crate::cli::GlobalOptions;
@@ -712,9 +712,9 @@ async fn check_runtime_presence(global: &GlobalOptions, project_id: &str) -> Doc
     }
 }
 
-fn trace_is_recent(created_at: DateTime<Utc>) -> bool {
-    let age = Utc::now().signed_duration_since(created_at);
-    age.to_std().is_ok_and(|d| d <= RECENT_TRACE_WINDOW)
+fn trace_is_recent(created_at: OffsetDateTime) -> bool {
+    let age = OffsetDateTime::now_utc() - created_at;
+    std::time::Duration::try_from(age).is_ok_and(|d| d <= RECENT_TRACE_WINDOW)
 }
 
 pub fn render_trace_sync_env(cloud_base_url: &str, api_key: &str, show_secrets: bool) -> String {

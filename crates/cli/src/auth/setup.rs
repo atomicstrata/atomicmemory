@@ -134,7 +134,7 @@ mod tests {
     use am_cloud_types::{
         CANONICAL_DEFAULT_PROJECT_SLUG, LEGACY_DEFAULT_PROJECT_SLUG, PrivacyMode, ProjectType,
     };
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     fn sample_project(slug: &str, name: &str) -> Project {
         Project {
@@ -146,7 +146,7 @@ mod tests {
             kind: ProjectType::Cloud,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }

@@ -15,8 +15,12 @@ pub struct Memory {
     pub trust_score: f32,
     pub scope: serde_json::Value,
     pub source_type: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::observation_serde")]
+    #[schema(value_type = String, format = DateTime)]
+    pub created_at: tz::UtcDateTime,
+    #[serde(with = "am_core_types::observation_serde")]
+    #[schema(value_type = String, format = DateTime)]
+    pub updated_at: tz::UtcDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -42,7 +46,11 @@ fn map_memory_status(raw: Option<String>) -> String {
     }
 }
 
-pub fn core_memory_to_memory(core: CoreMemory, project_id: &str) -> Memory {
+/// Map memory observations without losing represented leap seconds; clock failures stay explicit.
+pub fn core_memory_to_memory(
+    core: CoreMemory,
+    project_id: &str,
+) -> Result<Memory, am_core_types::timestamp_serde::ParseError> {
     let mut scope = serde_json::Map::new();
     if let Some(s) = core.session_id.as_deref() {
         scope.insert("user".into(), serde_json::Value::String(s.to_string()));
@@ -53,8 +61,9 @@ pub fn core_memory_to_memory(core: CoreMemory, project_id: &str) -> Memory {
     if let Some(s) = core.agent_id.as_deref() {
         scope.insert("agent".into(), serde_json::Value::String(s.to_string()));
     }
-    let now = chrono::Utc::now();
-    Memory {
+    let now =
+        tz::UtcDateTime::now().map_err(|_| am_core_types::timestamp_serde::ParseError::Invalid)?;
+    Ok(Memory {
         id: core.id,
         project_id: project_id.to_string(),
         claim: core.content,
@@ -67,7 +76,7 @@ pub fn core_memory_to_memory(core: CoreMemory, project_id: &str) -> Memory {
         updated_at: core
             .updated_at
             .unwrap_or_else(|| core.created_at.unwrap_or(now)),
-    }
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -78,18 +87,22 @@ pub struct Evidence {
     pub raw_excerpt: Option<String>,
     pub author_type: Option<String>,
     pub confidence: Option<f32>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::observation_serde")]
+    #[schema(value_type = String, format = DateTime)]
+    pub created_at: tz::UtcDateTime,
 }
 
-pub fn evidence_from_core_metadata(metadata: &serde_json::Value) -> Vec<Evidence> {
-    let now = chrono::Utc::now();
+/// Decode evidence timestamps without replacing valid legacy observations with the current time.
+pub fn evidence_from_core_metadata(
+    metadata: &serde_json::Value,
+) -> Result<Vec<Evidence>, am_core_types::timestamp_serde::ParseError> {
+    let now =
+        tz::UtcDateTime::now().map_err(|_| am_core_types::timestamp_serde::ParseError::Invalid)?;
     let mut out = Vec::new();
 
     if let Some(items) = metadata.get("evidence").and_then(|v| v.as_array()) {
         for (idx, item) in items.iter().enumerate() {
-            if let Some(evidence) = map_evidence_item(item, idx, now) {
-                out.push(evidence);
-            }
+            out.push(map_evidence_item(item, idx, now)?);
         }
     }
 
@@ -97,26 +110,41 @@ pub fn evidence_from_core_metadata(metadata: &serde_json::Value) -> Vec<Evidence
         && let Some(items) = metadata.get("links").and_then(|v| v.as_array())
     {
         for (idx, item) in items.iter().enumerate() {
-            if let Some(evidence) = map_evidence_item(item, idx, now) {
-                out.push(evidence);
-            }
+            out.push(map_evidence_item(item, idx, now)?);
         }
     }
 
-    out
+    Ok(out)
 }
 
 fn map_evidence_item(
     item: &serde_json::Value,
     idx: usize,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Option<Evidence> {
+    now: tz::UtcDateTime,
+) -> Result<Evidence, am_core_types::timestamp_serde::ParseError> {
+    let created_at = match item.get("created_at").and_then(|value| value.as_str()) {
+        // Metadata historically used strict RFC3339, unlike saved DTO serde's
+        // extended-year grammar. Keep that fallback boundary unchanged.
+        Some(value)
+            if value.as_bytes().get(4) == Some(&b'-')
+                && value.as_bytes()[..4].iter().all(u8::is_ascii_digit) =>
+        {
+            match am_core_types::observation_serde::parse(value) {
+                Ok(at) => at,
+                // Preserve the existing free-form metadata fallback. Valid leap
+                // observations are native values and never take this path.
+                Err(am_core_types::timestamp_serde::ParseError::Invalid) => now,
+                Err(error) => return Err(error),
+            }
+        }
+        _ => now,
+    };
     let id = item
         .get("id")
         .and_then(|v| v.as_str())
         .unwrap_or(&format!("evidence_{idx}"))
         .to_string();
-    Some(Evidence {
+    Ok(Evidence {
         id,
         source_type: item
             .get("source_type")
@@ -143,12 +171,7 @@ fn map_evidence_item(
             .get("confidence")
             .and_then(|v| v.as_f64())
             .map(|v| v as f32),
-        created_at: item
-            .get("created_at")
-            .and_then(|v| v.as_str())
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .unwrap_or(now),
+        created_at,
     })
 }
 

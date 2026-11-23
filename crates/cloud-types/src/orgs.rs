@@ -9,7 +9,8 @@ pub struct Organization {
     pub clerk_org_id: String,
     pub name: String,
     pub slug: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub created_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, validator::Validate, ToSchema)]

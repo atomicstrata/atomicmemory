@@ -1,7 +1,7 @@
 //! Local → Cloud memory import DTOs.
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use utoipa::ToSchema;
 
 pub const IMPORT_SCHEMA_VERSION: i32 = 1;
@@ -18,9 +18,13 @@ pub struct ExportMemoryRecord {
     pub scope: ExportMemoryScope,
     pub source_site: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<DateTime<Utc>>,
+    #[serde(with = "am_core_types::observation_serde::option")]
+    #[schema(value_type = Option<String>, format = DateTime)]
+    pub created_at: Option<tz::UtcDateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(with = "am_core_types::observation_serde::option")]
+    #[schema(value_type = Option<String>, format = DateTime)]
+    pub updated_at: Option<tz::UtcDateTime>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -42,7 +46,8 @@ pub struct ExportManifest {
     #[serde(rename = "type")]
     pub kind: String,
     pub schema_version: i32,
-    pub exported_at: DateTime<Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub exported_at: OffsetDateTime,
     pub project_slug: String,
     pub record_count: usize,
 }

@@ -9,7 +9,7 @@ use clap::Subcommand;
 
 use crate::cli::GlobalOptions;
 use crate::commands::client::{memory_client_for_profile, resolve_ctx};
-use crate::config::{ProfileKind, ResolvedProfile, resolve_profile};
+use crate::config::{ProfileKind, ResolvedProfile};
 use crate::envelope::EmitContext;
 use crate::output::emit_command;
 use crate::telemetry::{ActivationContext, capture_first_real_memory_if_needed};
@@ -225,6 +225,7 @@ async fn run_ingest(
         stdin,
     )
     .await?;
+    let consent_generation = crate::telemetry::begin_first_memory();
     let resp = if is_verbatim {
         client
             .ingest_quick(&req)
@@ -236,26 +237,22 @@ async fn run_ingest(
             .await
             .map_err(|e| with_operation_recovery(e.into(), "Memory ingest", profile.kind))?
     };
-    if let Ok(profile) = resolve_profile(
-        global.profile.as_deref(),
-        global.base_url.as_deref(),
-        global.environment,
-    ) {
-        let actx = ActivationContext {
-            project_id: profile.project_id.clone(),
-            mode: Some(match profile.kind {
-                ProfileKind::Local => "local",
-                ProfileKind::Cloud => "cloud",
-            }),
-            ..Default::default()
-        };
-        capture_first_real_memory_if_needed(
-            resp.memories_stored,
-            &req.source_site,
-            &actx,
-            global.no_telemetry,
-        );
-    }
+    let actx = ActivationContext {
+        project_id: profile.project_id.clone(),
+        mode: Some(match profile.kind {
+            ProfileKind::Local => "local",
+            ProfileKind::Cloud => "cloud",
+        }),
+        ..Default::default()
+    };
+    capture_first_real_memory_if_needed(
+        resp.memories_stored,
+        &req.source_site,
+        &actx,
+        &profile,
+        global.no_telemetry,
+        consent_generation,
+    );
     let ctx = EmitContext::new("memory ingest", global);
     emit_command(global, &ctx, &resp, Some(resp.memories_stored))
 }

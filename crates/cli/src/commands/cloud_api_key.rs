@@ -395,7 +395,7 @@ mod tests {
     use am_cloud_types::ApiKeyWithSecret;
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use chrono::{TimeZone, Utc};
+    use time::OffsetDateTime;
 
     const TEST_LOCAL_KEY_NAME: &str = "connected-local-runtime-a1b2c3d4e5f6";
 
@@ -474,8 +474,8 @@ mod tests {
             name: name.into(),
             prefix: "amc_dev_xx".into(),
             status: status.into(),
-            created_at: Utc.timestamp_opt(created_secs, 0).unwrap(),
-            last_used_at: last_used_secs.map(|s| Utc.timestamp_opt(s, 0).unwrap()),
+            created_at: OffsetDateTime::from_unix_timestamp(created_secs).unwrap(),
+            last_used_at: last_used_secs.map(|s| OffsetDateTime::from_unix_timestamp(s).unwrap()),
         }
     }
 

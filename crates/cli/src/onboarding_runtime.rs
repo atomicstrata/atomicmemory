@@ -144,10 +144,10 @@ mod tests {
             capabilities: Vec::new(),
             core_version: None,
             connector_version: None,
-            last_heartbeat_at: Some(chrono::Utc::now()),
+            last_heartbeat_at: Some(time::OffsetDateTime::now_utc()),
             revoked_at: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
+            updated_at: time::OffsetDateTime::now_utc(),
         }
     }
 
@@ -174,7 +174,7 @@ mod tests {
             "this-machine"
         ));
         let mut revoked = expected.clone();
-        revoked.revoked_at = Some(chrono::Utc::now());
+        revoked.revoked_at = Some(time::OffsetDateTime::now_utc());
         assert!(!matching_runtime_online(
             &[revoked],
             "project-one",

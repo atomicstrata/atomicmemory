@@ -254,7 +254,9 @@ fn oauth_tokens_from_device_response(
     Ok(OAuthTokens {
         id_token: token.id_token,
         refresh_token: Some(refresh_token),
-        expires_at: Some(chrono::Utc::now().timestamp() + token.expires_in as i64),
+        expires_at: Some(
+            time::OffsetDateTime::now_utc().unix_timestamp() + token.expires_in as i64,
+        ),
         issuer: Some(issuer),
         api_origin: None,
     })

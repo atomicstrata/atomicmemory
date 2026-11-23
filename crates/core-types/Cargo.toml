@@ -11,7 +11,9 @@ repository = "https://github.com/atomicstrata/atomicmemory"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-chrono.workspace = true
+time.workspace = true
+tz.workspace = true
+thiserror.workspace = true
 utoipa.workspace = true
 
 [lints]
