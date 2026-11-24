@@ -36,7 +36,7 @@
   "dependencies": {
     "@atomicmemory/sdk": "^1.0.2",
     "@openai/agents": "^0.8.5",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

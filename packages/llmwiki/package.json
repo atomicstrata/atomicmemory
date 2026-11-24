@@ -51,7 +51,7 @@
     "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs"
   },
   "dependencies": {
-    "zod": "^3.23.0"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@atomicmemory/sdk": "^1.1.0",
