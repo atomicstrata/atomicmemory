@@ -19,7 +19,7 @@ const EXEMPT_TS_PACKAGES = new Map([
   ["adapters/langgraph", "new adapter package; covered by build, typecheck, lint, tests, and pack validation"],
   ["adapters/mastra", "new adapter package; covered by build, typecheck, lint, tests, and pack validation"],
   ["adapters/openai-agents", "adapter package without a historical fallow gate"],
-  ["adapters/vercel-ai", "adapter package without a historical fallow gate"],
+  ["adapters/vercel-ai-sdk", "adapter package without a historical fallow gate"],
   ["plugins/openclaw", "host plugin package without a historical fallow gate"],
 ]);
 

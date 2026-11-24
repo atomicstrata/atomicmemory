@@ -93,3 +93,33 @@ test('workflow calls the tested merge path, never a force-push', () => {
   assert.match(workflow, /bash scripts\/ci\/sync-public-to-private\.sh private-target "\$GITHUB_SHA"/);
   assert.doesNotMatch(workflow, /--force/);
 });
+
+test('a community contribution survives private import and the next public projection', (t) => {
+  const f = fixture(t);
+  writeFileSync(join(f.runner, 'shared.txt'), 'community fix\n');
+  git(f.runner, 'add', 'shared.txt');
+  const authored = spawnSync('git', ['commit', '-m', 'Community fix'], {
+    cwd: f.runner, encoding: 'utf8',
+    env: { ...env, GIT_AUTHOR_NAME: 'Community Contributor', GIT_AUTHOR_EMAIL: 'community@example.invalid' },
+  });
+  assert.equal(authored.status, 0, authored.stderr);
+  const contributed = git(f.runner, 'rev-parse', 'HEAD');
+  const publicTree = git(f.runner, 'rev-parse', 'HEAD^{tree}');
+  const projected = join(f.root, 'projected');
+  git(f.root, 'init', projected);
+  const result = sync(f);
+  assert.equal(result.status, 0, result.stderr);
+  git(f.root, '--git-dir', f.remote, 'merge-base', '--is-ancestor', contributed, 'main');
+  assert.equal(git(f.root, '--git-dir', f.remote, 'show', '-s', '--format=%an <%ae>', contributed), 'Community Contributor <community@example.invalid>');
+  const archive = spawnSync('git', ['--git-dir', f.remote, 'archive', 'main'], { cwd: f.root });
+  assert.equal(archive.status, 0);
+  const extracted = spawnSync('tar', ['-xf', '-', '-C', projected], { input: archive.stdout });
+  assert.equal(extracted.status, 0);
+  git(projected, 'add', '-A', '-f');
+  assert.equal(git(projected, 'write-tree'), publicTree);
+  assert.equal(readFileSync(join(projected, 'shared.txt'), 'utf8'), 'community fix\n');
+  const paths = spawnSync('tar', ['-tf', '-'], { input: archive.stdout, encoding: 'utf8' });
+  assert.equal(paths.status, 0);
+  assert.doesNotMatch(paths.stdout, /packages\/core\/hosted/);
+  assert.equal(git(f.root, '--git-dir', f.remote, 'show', 'main:packages/core/hosted/overlay.mjs'), 'private fixture');
+});

@@ -1,7 +1,7 @@
 {
-  "name": "@atomicmemory/vercel-ai",
+  "name": "@atomicmemory/vercel-ai-sdk",
   "version": "0.1.2",
-  "description": "AtomicMemory adapter for the Vercel AI SDK — pre-call memory retrieval + post-call ingest, framework-version-agnostic.",
+  "description": "User-scoped memory tools for AI SDK 6 and framework-free memory helpers.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "import": "./dist/tools.js"
     }
   },
   "files": [
@@ -18,32 +22,45 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/atomicstrata/atomicmemory.git",
-    "directory": "adapters/vercel-ai"
+    "directory": "adapters/vercel-ai-sdk"
   },
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "test": "node --test --import tsx 'src/**/*.test.ts'",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "test:types": "tsc -p tsconfig.tests.json --noEmit",
+    "smoke:packed": "node scripts/verify-packed.mjs",
+    "smoke:matrix": "node scripts/verify-peer-matrix.mjs",
     "prepack": "pnpm build",
     "prepublishOnly": "node ../../scripts/guards/guard-npm-publish.mjs && node -e \"const v=require('./package.json').dependencies['@atomicmemory/sdk'];if(v.startsWith('file:')||v.startsWith('link:')){console.error('refusing to publish: @atomicmemory/sdk is '+v+'. Publish the SDK first, then pin to a registry version here.');process.exit(1)}\""
   },
   "dependencies": {
-    "@atomicmemory/sdk": "^1.0.2"
+    "@atomicmemory/sdk": "^1.1.2"
+  },
+  "peerDependencies": {
+    "ai": "^6.0.0",
+    "zod": "^3.25.76 || ^4.1.8"
+  },
+  "peerDependenciesMeta": {
+    "ai": { "optional": true },
+    "zod": { "optional": true }
   },
   "devDependencies": {
+    "ai": "6.0.300",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "zod": "3.25.76"
   },
   "bugs": {
     "url": "https://github.com/atomicstrata/atomicmemory/issues"
   },
-  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/vercel-ai#readme",
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/vercel-ai-sdk#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

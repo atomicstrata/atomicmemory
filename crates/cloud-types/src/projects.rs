@@ -97,13 +97,15 @@ pub struct Project {
     pub local_url: Option<String>,
     #[serde(default = "default_privacy_mode")]
     pub privacy_mode: PrivacyMode,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "am_core_types::timestamp_serde")]
+    pub created_at: time::OffsetDateTime,
     /// Populated on `GET /api/projects` for cloud projects via core stats.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_count: Option<i64>,
     /// Most recent retrieval or mutation trace timestamp for the project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_activity_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(with = "am_core_types::timestamp_serde::option")]
+    pub last_activity_at: Option<time::OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
@@ -159,7 +161,7 @@ fn validate_project_kind(req: &CreateProjectRequest) -> Result<(), ValidationErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use time::OffsetDateTime;
     use validator::Validate;
 
     fn req(kind: ProjectType, local_url: Option<&str>) -> CreateProjectRequest {
@@ -230,7 +232,7 @@ mod tests {
                 kind: ProjectType::Cloud,
                 local_url: None,
                 privacy_mode: PrivacyMode::Connect,
-                created_at: Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
                 memory_count: None,
                 last_activity_at: None,
             },
@@ -243,7 +245,7 @@ mod tests {
                 kind: ProjectType::Cloud,
                 local_url: None,
                 privacy_mode: PrivacyMode::Connect,
-                created_at: Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
                 memory_count: None,
                 last_activity_at: None,
             },
@@ -263,7 +265,7 @@ mod tests {
             kind: ProjectType::Cloud,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }];
@@ -282,7 +284,7 @@ mod tests {
             kind: ProjectType::Cloud,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }];

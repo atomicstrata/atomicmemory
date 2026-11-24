@@ -879,7 +879,7 @@ mod tests {
 
     use am_cloud_client::CloudClientError;
     use am_cloud_types::{ApiKey, ApiKeyWithSecret, PrivacyMode, ProjectType};
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     use super::*;
 
@@ -1004,7 +1004,7 @@ mod tests {
             kind,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }
@@ -1047,7 +1047,7 @@ mod tests {
             name: name.into(),
             prefix: "amc_test".into(),
             status: "active".into(),
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             last_used_at: None,
         }
     }
@@ -1060,7 +1060,7 @@ mod tests {
                 name: TEST_KEY_NAME.into(),
                 prefix: "amc_test".into(),
                 status: "active".into(),
-                created_at: Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
                 last_used_at: None,
             },
             secret: secret.into(),

@@ -4,10 +4,15 @@
 
 import type { MetaFactFilterConfig } from '../meta-fact-filter';
 
+/** HTTP provider options for AtomicMemory Cloud or a self-hosted core. */
 export interface AtomicMemoryProviderConfig {
-  /** Base URL of the atomicmemory-core instance, e.g. `http://localhost:17350`. */
-  apiUrl: string;
-  /** Optional bearer token forwarded as `Authorization: Bearer <apiKey>`. */
+  /** Base URL. Defaults to `https://api.atomicstrata.ai`. */
+  apiUrl?: string;
+  /**
+   * Bearer token. First-party Cloud requires a nonblank key and, on Node servers only,
+   * reads ATOMICMEMORY_API_KEY when omitted. Other endpoints never read it.
+   * Browser callers must supply credentials explicitly.
+   */
   apiKey?: string;
   /** Request timeout in milliseconds. Defaults to 30_000. */
   timeout?: number;

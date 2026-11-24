@@ -16,8 +16,8 @@ use am_cloud_types::{
 };
 use am_core_types::CoreListMemoriesQuery;
 use anyhow::{Context, Result, bail};
-use chrono::Utc;
 use clap::Subcommand;
+use time::OffsetDateTime;
 
 use crate::cli::GlobalOptions;
 use crate::commands::client::{
@@ -245,7 +245,7 @@ async fn run_export(
     let manifest = ExportManifest {
         kind: "manifest".to_string(),
         schema_version: IMPORT_SCHEMA_VERSION,
-        exported_at: Utc::now(),
+        exported_at: OffsetDateTime::now_utc(),
         project_slug: project.slug.clone(),
         record_count: records.len(),
     };

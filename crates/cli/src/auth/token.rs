@@ -1,9 +1,9 @@
 //! OAuth token refresh and bearer resolution.
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
 use reqwest::Url;
 use serde::Deserialize;
+use time::OffsetDateTime;
 
 use crate::auth::claims::decode_id_token;
 use crate::auth::clerk_oauth::resolve_oauth_pair;
@@ -101,7 +101,9 @@ fn tokens_from_response(resp: TokenResponse, prior_refresh: Option<&str>) -> Res
         .id_token
         .or(resp.access_token)
         .ok_or_else(|| anyhow!("token response missing id_token/access_token"))?;
-    let expires_at = resp.expires_in.map(|secs| Utc::now().timestamp() + secs);
+    let expires_at = resp
+        .expires_in
+        .map(|secs| OffsetDateTime::now_utc().unix_timestamp() + secs);
     Ok(OAuthTokens {
         id_token,
         refresh_token: resp
@@ -331,7 +333,7 @@ fn token_fresh(tokens: &OAuthTokens) -> bool {
         // No expiry claim: treat as usable (caller still subject to API 401).
         return true;
     };
-    let now = Utc::now().timestamp();
+    let now = OffsetDateTime::now_utc().unix_timestamp();
     if tokens.refresh_token.is_some() {
         now + REFRESH_SKEW_SECS < exp
     } else {
@@ -341,7 +343,7 @@ fn token_fresh(tokens: &OAuthTokens) -> bool {
 
 fn unrefreshable_session_error(tokens: &OAuthTokens) -> anyhow::Error {
     match token_expiry(tokens) {
-        Some(exp) if Utc::now().timestamp() >= exp => anyhow!(
+        Some(exp) if OffsetDateTime::now_utc().unix_timestamp() >= exp => anyhow!(
             "session JWT is expired — paste a fresh Clerk session JWT \
              (`am auth login --token`) or run browser `am auth login`"
         ),
@@ -350,7 +352,7 @@ fn unrefreshable_session_error(tokens: &OAuthTokens) -> anyhow::Error {
             // but this path is for tokens without a refresh token — after
             // ATO-2308 they are accepted while `now < exp`, so this branch is
             // defensive (clock race / future skew changes).
-            let remaining = (exp - Utc::now().timestamp()).max(0);
+            let remaining = (exp - OffsetDateTime::now_utc().unix_timestamp()).max(0);
             anyhow!(
                 "session JWT has only {remaining}s remaining and cannot be refreshed \
                  (pasted tokens have no refresh token) — paste a fresh JWT or run \
@@ -572,7 +574,7 @@ mod tests {
                 id_token: "header.payload.sig".into(),
                 refresh_token: None,
                 // Issued by production Clerk.
-                expires_at: Some(Utc::now().timestamp() + 3600),
+                expires_at: Some(OffsetDateTime::now_utc().unix_timestamp() + 3600),
                 issuer: Some(Environment::PROD_OAUTH_ISSUER.into()),
                 api_origin: Some(Environment::PROD_BASE_URL.into()),
             },
@@ -607,7 +609,7 @@ mod tests {
             OAuthTokens {
                 id_token: "header.payload.sig".into(),
                 refresh_token: Some("refresh".into()),
-                expires_at: Some(Utc::now().timestamp() + 3600),
+                expires_at: Some(OffsetDateTime::now_utc().unix_timestamp() + 3600),
                 issuer: Some(Environment::PROD_OAUTH_ISSUER.into()),
                 api_origin: Some("https://api.dev.atomicstrata.ai".into()),
             },
@@ -730,7 +732,7 @@ mod tests {
     fn sixty_second_clerk_paste_jwt_is_fresh_without_refresh() {
         // ATO-2308: Clerk dashboard session JWTs often have exp-iat = 60 and
         // no refresh token. The old `now + 60 < exp` skew rejected them at once.
-        let now = Utc::now().timestamp();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
         let tokens = paste_tokens(now, now + 60);
         assert!(
             token_fresh(&tokens),
@@ -740,7 +742,7 @@ mod tests {
 
     #[test]
     fn sixty_second_paste_jwt_fresh_via_claim_when_expires_at_unset() {
-        let now = Utc::now().timestamp();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
         let mut tokens = paste_tokens(now, now + 60);
         tokens.expires_at = None;
         assert!(token_fresh(&tokens));
@@ -748,7 +750,7 @@ mod tests {
 
     #[test]
     fn already_expired_paste_jwt_is_not_fresh() {
-        let now = Utc::now().timestamp();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
         let tokens = paste_tokens(now - 120, now - 1);
         assert!(!token_fresh(&tokens));
         let err = unrefreshable_session_error(&tokens).to_string();
@@ -764,7 +766,7 @@ mod tests {
 
     #[test]
     fn oauth_with_refresh_applies_skew_before_expiry() {
-        let now = Utc::now().timestamp();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
         // 30s remaining: without skew this would still be valid; with refresh
         // skew we must refresh early instead of using the dying access token.
         let with_refresh = oauth_tokens(now + 30, true);
@@ -778,7 +780,7 @@ mod tests {
 
     #[test]
     fn unrefreshable_error_distinguishes_remaining_life_from_expired() {
-        let now = Utc::now().timestamp();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
         let still_valid = paste_tokens(now, now + 15);
         let err = unrefreshable_session_error(&still_valid).to_string();
         assert!(
@@ -792,7 +794,7 @@ mod tests {
     fn oauth_without_refresh_inside_skew_window_still_usable() {
         // Same remaining life as the refresh skew case, but paste/no-refresh:
         // still-unexpired must win so short-lived Clerk JWTs work.
-        let now = Utc::now().timestamp();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
         let tokens = oauth_tokens(now + 30, false);
         assert!(token_fresh(&tokens));
     }

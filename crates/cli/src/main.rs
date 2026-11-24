@@ -93,6 +93,7 @@ async fn main() {
         .compact()
         .init();
 
+    telemetry::apply_consent(cli.global.no_telemetry);
     let agent_output = cli.global.agent_output();
     let global_for_errors = cli.global.clone();
     let command_for_errors = cli::command_path(&cli.command);

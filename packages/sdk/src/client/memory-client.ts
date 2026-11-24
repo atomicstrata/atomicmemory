@@ -46,9 +46,9 @@ export interface MemoryProviderConfigs {
  * MemoryClient configuration.
  */
 export interface MemoryClientConfig {
-  /** Provider configurations keyed by provider name. */
-  providers: MemoryProviderConfigs;
-  /** Name of the default provider. If omitted, the first configured provider wins. */
+  /** Provider configurations keyed by name. Omit to use AtomicMemory Cloud. */
+  providers?: MemoryProviderConfigs;
+  /** Must name a configured provider. If omitted, the first configured provider wins. */
   defaultProvider?: string;
 }
 
@@ -66,9 +66,8 @@ export interface ProviderStatus {
  *
  * @example
  * ```ts
- * const memory = new MemoryClient({
- *   providers: { atomicmemory: { apiUrl: 'http://localhost:17350' } },
- * });
+   * // Set ATOMICMEMORY_API_KEY in your server environment first.
+   * const memory = new MemoryClient();
  * await memory.initialize();
  * await memory.ingest({ mode: 'text', content: 'hi', scope: { user: 'u1' } });
  * const results = await memory.search({ query: 'hi', scope: { user: 'u1' } });
@@ -79,8 +78,10 @@ export class MemoryClient {
   private initialized = false;
   private initPromise?: Promise<void>;
 
-  constructor(config: MemoryClientConfig) {
-    const providerConfigs: Record<string, unknown> = { ...config.providers };
+  constructor(config: MemoryClientConfig = {}) {
+    const providerConfigs: Record<string, unknown> = {
+      ...(config.providers ?? { atomicmemory: {} }),
+    };
     const defaultProvider =
       config.defaultProvider ?? pickFirstProviderKey(providerConfigs);
 
@@ -88,6 +89,14 @@ export class MemoryClient {
       throw new Error(
         'MemoryClient requires at least one provider config. ' +
         'Pass e.g. { providers: { atomicmemory: { apiUrl: "..." } } }.'
+      );
+    }
+
+    if (!Object.hasOwn(providerConfigs, defaultProvider) ||
+        providerConfigs[defaultProvider] === undefined) {
+      throw new Error(
+        'MemoryClient defaultProvider must name a configured provider. ' +
+        'Pass its configuration in providers.',
       );
     }
 

@@ -22,6 +22,8 @@ services:
     build:
       context: ../..
       dockerfile: packages/core/Dockerfile
+      args:
+        - ONNXRUNTIME_NODE_INSTALL_CUDA
     restart: unless-stopped
     ports:
       - "${APP_PORT:-17350}:17350"

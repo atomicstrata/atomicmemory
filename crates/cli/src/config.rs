@@ -1312,7 +1312,7 @@ fn lock_path_for(target: &Path) -> PathBuf {
     target.with_extension("lock")
 }
 
-fn with_path_lock<T>(target: &Path, op: impl FnOnce() -> Result<T>) -> Result<T> {
+pub(crate) fn with_path_lock<T>(target: &Path, op: impl FnOnce() -> Result<T>) -> Result<T> {
     let lock_path = lock_path_for(target);
     write_secure_dir(&lock_path)?;
     let lock = OpenOptions::new()
@@ -1328,7 +1328,7 @@ fn with_path_lock<T>(target: &Path, op: impl FnOnce() -> Result<T>) -> Result<T>
     result
 }
 
-fn write_atomic_file(path: &Path, contents: &str, mode: u32) -> Result<()> {
+pub(crate) fn write_atomic_file(path: &Path, contents: &str, mode: u32) -> Result<()> {
     write_secure_dir(path)?;
     let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("file");
     let tmp = path.with_file_name(format!(".{file_name}.tmp"));

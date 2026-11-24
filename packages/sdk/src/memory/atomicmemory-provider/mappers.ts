@@ -12,6 +12,7 @@ import type {
   RetrievalReceipt,
   Scope,
 } from '../types';
+import { MemoryProviderError } from '../errors';
 
 // ---------------------------------------------------------------------------
 // Raw backend shapes
@@ -48,29 +49,6 @@ interface RawRetrievalReceipt {
   query_text: string;
   candidate_ids: string[];
   trace_id: string;
-}
-
-/**
- * Raw snake_case wire shape emitted by core's `POST /memories/ingest` and
- * `POST /memories/ingest/quick`. Maps to V3's generic `IngestResult`.
- *
- * Core splits touched memory IDs per outcome: `stored_memory_ids` for
- * newly created memories, `updated_memory_ids` for mutated ones.
- * Length of each array matches its corresponding `memories_stored` /
- * `memories_updated` count. V3's `unchanged` has no cardinality source
- * on the wire (skipped memories are count-only) and is always empty.
- */
-interface RawIngestResult {
-  episode_id: string;
-  facts_extracted: number;
-  memories_stored: number;
-  memories_updated: number;
-  memories_deleted: number;
-  memories_skipped: number;
-  stored_memory_ids: string[];
-  updated_memory_ids: string[];
-  links_created: number;
-  composites_created: number;
 }
 
 interface RawAuditEntry {
@@ -174,12 +152,30 @@ export function toRetrievalReceipt(raw: RawRetrievalReceipt): RetrievalReceipt {
   };
 }
 
-export function toIngestResult(raw: RawIngestResult): IngestResult {
+/** Require completed-ingest IDs at the shared generic and namespace wire boundary. */
+export function assertIngestIds(raw: unknown): asserts raw is {
+  stored_memory_ids: string[];
+  updated_memory_ids: string[];
+} {
+  const result = raw as { stored_memory_ids?: unknown; updated_memory_ids?: unknown } | null;
+  if (!isMemoryIdList(result?.stored_memory_ids) || !isMemoryIdList(result?.updated_memory_ids)) {
+    throw new MemoryProviderError('Invalid ingest response: expected stored and updated memory IDs', 'atomicmemory', 'ingest');
+  }
+}
+
+/** Map the validated wire IDs to the generic SDK shape. */
+export function toIngestResult(raw: unknown): IngestResult {
+  assertIngestIds(raw);
   return {
-    created: raw.stored_memory_ids ?? [],
-    updated: raw.updated_memory_ids ?? [],
+    created: raw.stored_memory_ids,
+    updated: raw.updated_memory_ids,
+    // The wire reports skipped memories as a count, not an ID array.
     unchanged: [],
   };
+}
+
+function isMemoryIdList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(id => typeof id === 'string' && id.length > 0);
 }
 
 export function toMemoryVersion(raw: RawAuditEntry): MemoryVersion {

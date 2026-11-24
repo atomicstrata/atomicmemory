@@ -987,7 +987,7 @@ mod tests {
     use am_cloud_types::{
         CANONICAL_DEFAULT_PROJECT_SLUG, LEGACY_DEFAULT_PROJECT_SLUG, PrivacyMode, ProjectType,
     };
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     use super::*;
 
@@ -1001,7 +1001,7 @@ mod tests {
             kind: ProjectType::Local,
             local_url: Some("http://127.0.0.1:17350".into()),
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }
@@ -1029,7 +1029,7 @@ mod tests {
             clerk_org_id: "clerk_a".into(),
             name: "org".into(),
             slug: "org".into(),
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
         };
         let project = sample_project("org_a", "local");
         let opts = ConnectProjectOptions {

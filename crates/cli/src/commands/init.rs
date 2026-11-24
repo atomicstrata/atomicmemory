@@ -651,7 +651,7 @@ async fn run_create_local_project(
             kind: am_cloud_types::ProjectType::Local,
             local_url: Some(local_url.clone()),
             privacy_mode: am_cloud_types::PrivacyMode::Connect,
-            created_at: chrono::Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }
@@ -694,8 +694,8 @@ mod tests {
     use super::*;
     use crate::cli::Cli;
     use am_cloud_types::{PrivacyMode, ProjectType};
-    use chrono::Utc;
     use clap::Parser;
+    use time::OffsetDateTime;
 
     fn project(id: &str, slug: &str, kind: ProjectType) -> Project {
         Project {
@@ -707,7 +707,7 @@ mod tests {
             kind,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         }
@@ -948,7 +948,7 @@ mod tests {
     #[test]
     fn hosted_cloud_target_policy_never_picks_first_api_row() {
         use am_cloud_types::{PrivacyMode, ProjectType};
-        use chrono::Utc;
+        use time::OffsetDateTime;
 
         let first = Project {
             id: "proj_a".into(),
@@ -959,7 +959,7 @@ mod tests {
             kind: ProjectType::Cloud,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         };
@@ -972,7 +972,7 @@ mod tests {
             kind: ProjectType::Cloud,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         };
@@ -1025,7 +1025,7 @@ mod tests {
     #[test]
     fn ensure_cloud_project_for_handoff_rejects_local() {
         use am_cloud_types::{PrivacyMode, ProjectType};
-        use chrono::Utc;
+        use time::OffsetDateTime;
 
         let local = Project {
             id: "proj_local".into(),
@@ -1036,7 +1036,7 @@ mod tests {
             kind: ProjectType::Local,
             local_url: Some("http://127.0.0.1:17350".into()),
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         };
@@ -1049,7 +1049,7 @@ mod tests {
     #[test]
     fn ensure_local_project_for_connect_rejects_cloud() {
         use am_cloud_types::{PrivacyMode, ProjectType};
-        use chrono::Utc;
+        use time::OffsetDateTime;
 
         let cloud = Project {
             id: "proj_cloud".into(),
@@ -1060,7 +1060,7 @@ mod tests {
             kind: ProjectType::Cloud,
             local_url: None,
             privacy_mode: PrivacyMode::Connect,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             memory_count: None,
             last_activity_at: None,
         };

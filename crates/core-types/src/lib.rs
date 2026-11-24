@@ -7,6 +7,9 @@
 //! `serde_json::Value` so we don't have to re-roll the entire OpenAPI
 //! surface on every minor core upgrade.
 
+pub mod observation_serde;
+pub mod timestamp_serde;
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -238,9 +241,13 @@ pub struct CoreMemory {
     #[serde(default)]
     pub importance: Option<f32>,
     #[serde(default)]
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(with = "crate::observation_serde::option")]
+    #[schema(value_type = Option<String>, format = DateTime)]
+    pub created_at: Option<tz::UtcDateTime>,
     #[serde(default)]
-    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(with = "crate::observation_serde::option")]
+    #[schema(value_type = Option<String>, format = DateTime)]
+    pub updated_at: Option<tz::UtcDateTime>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
