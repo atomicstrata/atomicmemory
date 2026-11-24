@@ -63,7 +63,7 @@
     "commander": "^12.1.0",
     "ink": "npm:@jrichman/ink@6.6.9",
     "react": "^19.2.6",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
