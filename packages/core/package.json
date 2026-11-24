@@ -109,7 +109,7 @@
     "@helia/verified-fetch": "^7.2.8",
     "@ipld/car": "^5.4.2",
     "blockstore-core": "^6.1.3",
-    "filecoin-pin": "^0.21.0",
+    "filecoin-pin": "^1.1.1",
     "pino": "^10.3.1"
   },
   "devDependencies": {
