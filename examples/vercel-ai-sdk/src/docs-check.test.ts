@@ -12,7 +12,7 @@ function checkScope(user: string): SpawnSyncReturns<string> {
   try {
     const file = join(temporary, 'guide.md');
     writeFileSync(file, `\`\`\`ts\nimport { MemoryClient } from '@atomicmemory/sdk';
-import { memoryTools } from '@atomicmemory/vercel-ai-sdk/tools';
+import { memoryTools } from '@atomicmemory/vercel-ai/tools';
 const client = new MemoryClient({ providers: { atomicmemory: { apiUrl: 'https://example.com' } } });
 const tools = memoryTools({ client, scope: { user: ${user} } });
 \`\`\`\n`);

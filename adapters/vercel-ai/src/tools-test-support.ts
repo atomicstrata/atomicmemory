@@ -1,10 +1,10 @@
-/** Real SDK HTTP fixture and deterministic AI SDK 6 model responses for tool tests. */
+/** Real SDK HTTP fixture and deterministic AI SDK model responses for tool tests. */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import { MemoryClient } from '@atomicmemory/sdk';
-import { MockLanguageModelV3 } from 'ai/test';
-import type { ToolExecutionOptions } from 'ai';
+import { MockLanguageModelV4 } from 'ai/test';
+import type { MemoryTools } from './tools.js';
 import { z } from 'zod/v3';
 
 export const receipt = {
@@ -20,7 +20,8 @@ export const searchBody = {
   count: 1, retrieval: { ...receipt, metadata: 'secret-receipt', apiKey: 'secret-api-key' },
 };
 export const ingestBody = { stored_memory_ids: ['new-1'], updated_memory_ids: ['old-1'] };
-export const context: ToolExecutionOptions = { toolCallId: 'direct', messages: [] };
+type ExecutionOptions = Parameters<NonNullable<MemoryTools['memory_search']['execute']>>[1];
+export const context: ExecutionOptions = { toolCallId: 'direct', messages: [], context: undefined };
 
 export async function bodyOf(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -54,15 +55,15 @@ export async function fixture(
   } };
 }
 
-type GenerateResult = Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
+type GenerateResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 export function modelResult(content: GenerateResult['content'], tools = false): GenerateResult {
   return { content, finishReason: { unified: tools ? 'tool-calls' : 'stop', raw: undefined },
     usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
       outputTokens: { total: 1, text: 1, reasoning: 0 } }, warnings: [] };
 }
 
-export function toolModel(calls: { toolName: string; input: unknown }[]): MockLanguageModelV3 {
-  return new MockLanguageModelV3({ doGenerate: [
+export function toolModel(calls: { toolName: string; input: unknown }[]): MockLanguageModelV4 {
+  return new MockLanguageModelV4({ doGenerate: [
     modelResult(calls.map((call, i) => ({ type: 'tool-call', toolCallId: `call-${i}`,
       toolName: call.toolName, input: JSON.stringify(call.input) })), true),
     modelResult([{ type: 'text', text: 'Memory checked.' }]),

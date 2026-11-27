@@ -1,4 +1,4 @@
-/** Verify unpublished packed exports with local dependency artifacts, never publish. */
+/** Verify candidate packed exports with local dependency artifacts, never publish. */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url';
 const adapter = dirname(dirname(fileURLToPath(import.meta.url)));
 const consumer = await mkdtemp(join(tmpdir(), 'atomicmemory-ai-packed-'));
 const sdk = join(adapter, '../../packages/sdk');
+const ai = process.env.AI_SDK_VERSION ?? '7.0.181';
+const zod = process.env.ZOD_VERSION ?? '3.25.76';
 
-function run(command, args, cwd = consumer) {
-  return execFileSync(command, args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+function run(command, args, cwd = consumer, env = process.env) {
+  return execFileSync(command, args, { cwd, env, encoding: 'utf8', stdio: 'pipe' });
 }
 
 async function pack(directory) {
@@ -21,7 +23,7 @@ async function pack(directory) {
 }
 
 async function unpack(archive) {
-  const destination = join(consumer, 'root/node_modules/@atomicmemory/vercel-ai-sdk');
+  const destination = join(consumer, 'root/node_modules/@atomicmemory/vercel-ai');
   await mkdir(destination, { recursive: true });
   run('tar', ['-xzf', archive, '-C', destination, '--strip-components=1']);
   assert.deepEqual((await readdir(join(destination, 'dist'))).filter(name => name.startsWith('test-fixtures')), []);
@@ -29,21 +31,19 @@ async function unpack(archive) {
 }
 
 async function install(archive, sdkArchive) {
-  const ai = process.env.AI_SDK_VERSION ?? '6.0.300';
-  const zod = process.env.ZOD_VERSION ?? '3.25.76';
-  assert.match(ai, /^6\.\d+\.\d+$/);
+  assert.match(ai, /^[567]\.\d+\.\d+$/);
   assert.match(zod, /^[34]\.\d+\.\d+$/);
   await writeFile(join(consumer, 'package.json'), JSON.stringify({
     type: 'module', dependencies: {
-      '@atomicmemory/vercel-ai-sdk': `file:${process.env.LINKED_ADAPTER === 'injected' ? adapter : archive}`,
-      '@atomicmemory/sdk': `file:${sdkArchive}`, ai, zod,
+      '@atomicmemory/vercel-ai': `file:${process.env.LINKED_ADAPTER === 'injected' ? adapter : archive}`,
+      ai, zod,
     }, devDependencies: { '@types/json-schema': '7.0.15' },
-    dependenciesMeta: { '@atomicmemory/vercel-ai-sdk': { injected: true } },
+    dependenciesMeta: { '@atomicmemory/vercel-ai': { injected: true } },
     pnpm: { overrides: { '@atomicmemory/sdk': `file:${sdkArchive}` } },
   }));
-  run('pnpm', ['install', '--ignore-scripts']);
+  run('pnpm', ['install', '--ignore-scripts', '--strict-peer-dependencies']);
   if (process.env.LINKED_ADAPTER === '1') {
-    const installed = join(consumer, 'node_modules/@atomicmemory/vercel-ai-sdk');
+    const installed = join(consumer, 'node_modules/@atomicmemory/vercel-ai');
     await rm(installed);
     await symlink(adapter, installed);
   }
@@ -69,7 +69,7 @@ export async function resolve(specifier, context, nextResolve) {
 `);
   await writeFile(join(consumer, 'root/root.mjs'), `
 import assert from 'node:assert/strict';
-import * as root from '@atomicmemory/vercel-ai-sdk';
+import * as root from '@atomicmemory/vercel-ai';
 assert.deepEqual(Object.keys(root).sort(), [
   'augmentWithMemory', 'defaultFormatter', 'fromModelMessage', 'fromModelMessages',
   'ingestTurn', 'retrieve', 'withMemory',
@@ -82,14 +82,14 @@ assert.deepEqual(root.fromModelMessage({ role: 'user', content: 'tea' }), { role
 async function verifyTools() {
   await writeFile(join(consumer, 'tools.mjs'), `
 import assert from 'node:assert/strict';
-import { memoryTools } from '@atomicmemory/vercel-ai-sdk/tools';
+import { createMemory, memoryTools } from '@atomicmemory/vercel-ai/tools';
 assert.throws(() => memoryTools({}), { message: 'Memory tools configuration is invalid.' });
-assert.equal(typeof memoryTools, 'function');
+assert.equal(typeof createMemory, 'function');
 `);
   run(process.execPath, ['--loader', './deny-sdk.mjs', './tools.mjs']);
   await writeFile(join(consumer, 'consumer.ts'), `
-import { memoryTools, type MemoryToolsClient } from '@atomicmemory/vercel-ai-sdk/tools';
-import { generateText, stepCountIs, type InferToolInput, type InferToolOutput, type ToolSet, type LanguageModel } from 'ai';
+import { createMemory, memoryTools, type MemoryToolsClient } from '@atomicmemory/vercel-ai/tools';
+import { generateText, streamText, stepCountIs, type InferToolInput, type InferToolOutput, type ToolSet, type LanguageModel } from 'ai';
 declare const client: MemoryToolsClient;
 declare const model: LanguageModel;
 const tools = memoryTools({ client, scope: { user: 'authenticated-user' } }) satisfies ToolSet;
@@ -103,6 +103,13 @@ const invalidOutput: InferToolOutput<typeof tools.memory_search> = { results: [{
 // @ts-expect-error Ingest returns actual ID arrays, never numeric IDs.
 const invalidIDs: InferToolOutput<typeof tools.memory_ingest> = { created: [1], updated: [], unchanged: [] };
 generateText({ model, tools, prompt: input.query, stopWhen: stepCountIs(3) });
+const memory = await createMemory({ client });
+const readOnly = memory.toolsForUser('authenticated-user');
+const writable = memory.toolsForUser('authenticated-user', { allowWrites: true });
+// @ts-expect-error Writes are not exposed without an explicit opt-in.
+readOnly.memory_ingest;
+generateText({ model, tools: writable, prompt: 'tea', stopWhen: stepCountIs(3) });
+streamText({ model, tools: readOnly, prompt: 'tea', stopWhen: stepCountIs(3) });
 `);
   const flags = ['exec', 'tsc', '--noEmit', '--strict', '--module', 'NodeNext',
     '--target', 'ES2022', '--lib', 'ES2022,DOM', join(consumer, 'consumer.ts')];
@@ -111,7 +118,7 @@ generateText({ model, tools, prompt: input.query, stopWhen: stepCountIs(3) });
   // AI SDK's own declarations fail exactOptional independently; use CHECK_AI_DECLARATIONS to reproduce.
   run('pnpm', [...flags, '--exactOptionalPropertyTypes', '--skipLibCheck'], adapter);
   await writeFile(join(consumer, 'loop.mjs'), await readFile(join(adapter, 'scripts/packed-loop.mjs')));
-  run(process.execPath, ['./loop.mjs']);
+  run(process.execPath, ['./loop.mjs'], consumer, { ...process.env, AI_SDK_VERSION: ai });
 }
 
 async function verifyUpstreamDeclarations() {
@@ -130,7 +137,7 @@ try {
   await install(archive, sdkArchive);
   await verifyTools();
   if (process.env.CHECK_AI_DECLARATIONS === '1') await verifyUpstreamDeclarations();
-  console.log(`Packed ai@${process.env.AI_SDK_VERSION ?? '6.0.300'} + zod@${process.env.ZOD_VERSION ?? '3.25.76'}: strict declarations, exactOptional consumer with skipLibCheck, real tool loop and import boundaries passed.`);
+  console.log(`Packed ai@${ai} + zod@${zod}: strict declarations, exactOptional consumer with skipLibCheck, generated and streamed tools, and import boundaries passed.`);
 } finally {
   await rm(consumer, { recursive: true, force: true });
 }

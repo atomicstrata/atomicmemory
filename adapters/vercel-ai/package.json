@@ -1,7 +1,7 @@
 {
-  "name": "@atomicmemory/vercel-ai-sdk",
-  "version": "0.1.2",
-  "description": "User-scoped memory tools for AI SDK 6 and framework-free memory helpers.",
+  "name": "@atomicmemory/vercel-ai",
+  "version": "0.2.0",
+  "description": "User-scoped memory tools for Vercel AI SDK and framework-free memory helpers.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,8 +11,8 @@
       "import": "./dist/index.js"
     },
     "./tools": {
-      "types": "./dist/tools.d.ts",
-      "import": "./dist/tools.js"
+      "types": "./dist/tools-entry.d.ts",
+      "import": "./dist/tools-entry.js"
     }
   },
   "files": [
@@ -22,7 +22,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/atomicstrata/atomicmemory.git",
-    "directory": "adapters/vercel-ai-sdk"
+    "directory": "adapters/vercel-ai"
   },
   "license": "Apache-2.0",
   "engines": {
@@ -43,7 +43,7 @@
     "@atomicmemory/sdk": "^1.1.2"
   },
   "peerDependencies": {
-    "ai": "^6.0.0",
+    "ai": "^5.0.0 || ^6.0.0 || ^7.0.0",
     "zod": "^3.25.76 || ^4.1.8"
   },
   "peerDependenciesMeta": {
@@ -51,7 +51,7 @@
     "zod": { "optional": true }
   },
   "devDependencies": {
-    "ai": "6.0.300",
+    "ai": "7.0.181",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
@@ -60,7 +60,7 @@
   "bugs": {
     "url": "https://github.com/atomicstrata/atomicmemory/issues"
   },
-  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/vercel-ai-sdk#readme",
+  "homepage": "https://github.com/atomicstrata/atomicmemory/tree/main/adapters/vercel-ai#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

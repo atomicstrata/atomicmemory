@@ -258,11 +258,14 @@ Status labels are part of the public docs contract:
 
 | Package | Path | Status |
 | --- | --- | --- |
-| `@atomicmemory/vercel-ai-sdk` | `adapters/vercel-ai-sdk` | implemented, publish pending |
+| `@atomicmemory/vercel-ai` | `adapters/vercel-ai` | published |
 | `@atomicmemory/openai-agents` | `adapters/openai-agents` | published |
 | `@atomicmemory/langchain` | `adapters/langchain` | published |
 | `@atomicmemory/langgraph` | `adapters/langgraph` | published |
 | `@atomicmemory/mastra` | `adapters/mastra` | published |
+
+`@atomicmemory/vercel-ai@0.1.2` provides the root helpers on npm. AI SDK
+tools under `/tools` require the upcoming `0.2.0` release.
 
 ### Host plugins
 

@@ -3,12 +3,12 @@
  */
 import { spawnSync } from "node:child_process";
 import { packageJsonFiles, readJson } from "./lib/repo-files.mjs";
+import { families } from "../version-families.mjs";
 
 const MONOREPO_URL = "git+https://github.com/atomicstrata/atomicmemory.git";
 const BUGS_URL = "https://github.com/atomicstrata/atomicmemory/issues";
 const HOMEPAGE_ROOT = "https://github.com/atomicstrata/atomicmemory/tree/main";
 const PUBLISHABLE_ROOTS = ["packages/", "adapters/", "plugins/"];
-const VERSION_FAMILIES = ["plugin", "adapter", "tool"];
 const HOST_PLUGIN_ARTIFACTS = [
   ".claude-plugin",
   "openclaw.plugin.json",
@@ -105,7 +105,7 @@ function validateFiles(filePath, files) {
 }
 
 function validateVersionFamilies() {
-  return VERSION_FAMILIES.flatMap((family) => {
+  return Object.keys(families).flatMap((family) => {
     const result = spawnSync(process.execPath, ["scripts/version-families.mjs", family, "--check"], {
       encoding: "utf8",
     });

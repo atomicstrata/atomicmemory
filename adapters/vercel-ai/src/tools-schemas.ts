@@ -7,6 +7,7 @@ const MAX_USER_LENGTH = 256;
 const MAX_QUERY_LENGTH = 4096;
 const MAX_CONTENT_LENGTH = 32768;
 const MAX_SEARCH_LIMIT = 20;
+export const DEFAULT_SEARCH_LIMIT = 5;
 
 function nonblank(max: number) {
   return z.string().min(1).max(max).refine(value => value.trim().length > 0);
@@ -14,7 +15,7 @@ function nonblank(max: number) {
 
 export const searchInputSchema = z.object({
   query: nonblank(MAX_QUERY_LENGTH),
-  limit: z.number().int().min(1).max(MAX_SEARCH_LIMIT).default(5),
+  limit: z.number().int().min(1).max(MAX_SEARCH_LIMIT).optional(),
 }).strict();
 
 export const ingestInputSchema = z.object({

@@ -1,12 +1,11 @@
 /** Workspace-linked memory tools exercised through real SDK HTTP and AI SDK generation. */
-import { MemoryClient, type IngestResult } from '@atomicmemory/sdk';
-import { memoryTools, type MemorySearchOutput } from '@atomicmemory/vercel-ai-sdk/tools';
+import type { IngestResult } from '@atomicmemory/sdk';
+import { createMemory, type MemoryTools, type ReadOnlyMemoryTools, type MemorySearchOutput } from '@atomicmemory/vercel-ai/tools';
 import { generateText, stepCountIs } from 'ai';
 import { startLocalFixture } from './fixture-http.js';
 import { scriptedModel, type ScriptedTurn } from './scripted-model.js';
 
-type Tools = ReturnType<typeof memoryTools>;
-type TurnResult = Awaited<ReturnType<typeof generateText<Tools>>>;
+type TurnResult<T extends ReadOnlyMemoryTools> = Awaited<ReturnType<typeof generateText<T>>>;
 
 /** Observable offline results, explicitly separate from hosted or real-engine verification. */
 export interface DemoReport {
@@ -26,16 +25,14 @@ export interface DemoReport {
 export async function runOfflineDemo(): Promise<DemoReport> {
   const fixture = await startLocalFixture();
   try {
-    const client = new MemoryClient({ providers: { atomicmemory: {
-      apiUrl: fixture.apiUrl, apiKey: 'local-demo-key', allowPrivateNetworks: true,
-    } } });
-    await client.initialize();
-    const tools = memoryTools({ client, scope: { user: 'fixture-user-alice' } });
-    const saved = await runTurn(tools, { tool: 'memory_ingest', content: 'I prefer tea.' });
-    const recalled = await runTurn(tools, { tool: 'memory_search', query: 'preferred drink' });
-    const changed = await runTurn(tools, { tool: 'memory_ingest', content: 'I now prefer coffee.' });
-    const later = await runTurn(tools, { tool: 'memory_search', query: 'preferred drink' });
-    const other = await runTurn(memoryTools({ client, scope: { user: 'fixture-user-bob' } }),
+    const memory = await createMemory({ backend: 'local', url: fixture.apiUrl, apiKey: 'local-demo-key' });
+    const writable = memory.toolsForUser('fixture-user-alice', { allowWrites: true });
+    const readOnly = memory.toolsForUser('fixture-user-alice');
+    const saved = await runTurn(writable, { tool: 'memory_ingest', content: 'I prefer tea.' });
+    const recalled = await runTurn(readOnly, { tool: 'memory_search', query: 'preferred drink' });
+    const changed = await runTurn(writable, { tool: 'memory_ingest', content: 'I now prefer coffee.' });
+    const later = await runTurn(readOnly, { tool: 'memory_search', query: 'preferred drink' });
+    const other = await runTurn(memory.toolsForUser('fixture-user-bob'),
       { tool: 'memory_search', query: 'preferred drink' });
     return {
       backend: 'local-contract-fixture', model: 'deterministic-ai-sdk-test-model',
@@ -49,7 +46,7 @@ export async function runOfflineDemo(): Promise<DemoReport> {
   }
 }
 
-async function runTurn(tools: Tools, turn: ScriptedTurn): Promise<TurnResult> {
+async function runTurn<T extends ReadOnlyMemoryTools>(tools: T, turn: ScriptedTurn): Promise<TurnResult<T>> {
   const result = await generateText({
     model: scriptedModel(turn), tools, prompt: 'Execute the scripted memory operation.',
     stopWhen: stepCountIs(3),
@@ -60,14 +57,14 @@ async function runTurn(tools: Tools, turn: ScriptedTurn): Promise<TurnResult> {
   return result;
 }
 
-function ingestResult(result: TurnResult): IngestResult {
+function ingestResult(result: TurnResult<MemoryTools>): IngestResult {
   for (const step of result.steps) for (const part of step.content) {
     if (part.type === 'tool-result' && !part.dynamic && part.toolName === 'memory_ingest') return part.output;
   }
   throw new Error('Offline ingest result missing.');
 }
 
-function searchResult(result: TurnResult): MemorySearchOutput {
+function searchResult(result: TurnResult<ReadOnlyMemoryTools>): MemorySearchOutput {
   for (const step of result.steps) for (const part of step.content) {
     if (part.type === 'tool-result' && !part.dynamic && part.toolName === 'memory_search') return part.output;
   }

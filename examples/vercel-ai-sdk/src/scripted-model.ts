@@ -1,9 +1,9 @@
 /** Deterministic AI SDK model that answers from actual tool output in offline checks. */
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { z } from 'zod';
 
-type ModelResult = Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
-type ModelRequest = Parameters<MockLanguageModelV3['doGenerate']>[0];
+type ModelResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
+type ModelRequest = Parameters<MockLanguageModelV4['doGenerate']>[0];
 const searchOutput = z.object({ results: z.array(z.object({ content: z.string() })) });
 const ingestOutput = z.object({
   created: z.array(z.string()), updated: z.array(z.string()), unchanged: z.array(z.string()),
@@ -15,9 +15,9 @@ export type ScriptedTurn =
   | { tool: 'memory_ingest'; content: string };
 
 /** Request one tool, then derive the next answer from the resulting model prompt. */
-export function scriptedModel(turn: ScriptedTurn): MockLanguageModelV3 {
+export function scriptedModel(turn: ScriptedTurn): MockLanguageModelV4 {
   let firstStep = true;
-  return new MockLanguageModelV3({
+  return new MockLanguageModelV4({
     doGenerate: async request => {
       if (firstStep) {
         firstStep = false;
