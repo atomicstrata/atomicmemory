@@ -2,12 +2,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { streamText } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { memoryTools } from './tools.js';
 import { fixture, modelResult } from './tools-test-support.js';
 
-function streamingModel(): MockLanguageModelV3 {
-  return new MockLanguageModelV3({ doStream: async () => ({
+function streamingModel(): MockLanguageModelV4 {
+  return new MockLanguageModelV4({ doStream: async () => ({
     stream: new ReadableStream({ start(controller) {
       controller.enqueue({ type: 'stream-start', warnings: [] });
       controller.enqueue({ type: 'tool-call', toolCallId: 'search', toolName: 'memory_search',

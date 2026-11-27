@@ -49,7 +49,10 @@ export const families = {
     jsonPathTarget("adapters/langgraph/package.json", ["version"]),
     jsonPathTarget("adapters/mastra/package.json", ["version"]),
     jsonPathTarget("adapters/openai-agents/package.json", ["version"]),
-    jsonPathTarget("adapters/vercel-ai-sdk/package.json", ["version"]),
+  ],
+  // Follow AI SDK and Node compatibility without forcing unrelated adapter bumps.
+  "vercel-ai": [
+    jsonPathTarget("adapters/vercel-ai/package.json", ["version"]),
   ],
   tool: [
     jsonPathTarget("packages/cli/package.json", ["version"]),
@@ -65,25 +68,29 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 }
 
 function main() {
-  if (!families[familyName]) usage();
+  if (familyName !== "all" && !Object.hasOwn(families, familyName)) usage();
   if (unknownFlag) fail(`Unknown flag '${unknownFlag}'. Use --check.`);
   if (!checkOnly || positional.length > 0) usage();
 
-  const targets = families[familyName];
+  const names = familyName === "all" ? Object.keys(families) : [familyName];
+  for (const name of names) checkFamily(name, families[name]);
+}
+
+function checkFamily(name, targets) {
   const current = targets.map((target) => ({ target, version: target.read() }));
   const uniqueVersions = [...new Set(current.map(({ version }) => version))];
 
   if (uniqueVersions.length > 1) {
     const details = current.map(({ target, version }) => `  - ${target.file} ${target.label}: ${version}`).join("\n");
-    fail(`${familyName} versions are not aligned:\n${details}`);
+    fail(`${name} versions are not aligned:\n${details}`);
   }
 
-  console.log(`${familyName} versions are aligned at ${uniqueVersions[0]}.`);
+  console.log(`${name} versions are aligned at ${uniqueVersions[0]}.`);
 }
 
 function usage() {
   const familiesList = Object.keys(families).join("|");
-  fail(`Usage: node scripts/version-families.mjs <${familiesList}> --check`);
+  fail(`Usage: node scripts/version-families.mjs <all|${familiesList}> --check`);
 }
 
 function jsonPathTarget(file, path) {

@@ -13,7 +13,7 @@ body:
         - packages/sdk
         - packages/cli
         - packages/mcp-server
-        - adapters/vercel-ai-sdk
+        - adapters/vercel-ai
         - adapters/openai-agents
         - adapters/langchain
         - adapters/langgraph

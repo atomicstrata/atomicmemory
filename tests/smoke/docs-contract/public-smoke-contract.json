@@ -71,15 +71,15 @@
     },
     {
       "kind": "adapter",
-      "name": "@atomicmemory/vercel-ai-sdk",
-      "monorepo_path": "adapters/vercel-ai-sdk",
-      "registry_artifact": null,
+      "name": "@atomicmemory/vercel-ai",
+      "monorepo_path": "adapters/vercel-ai",
+      "registry_artifact": "npm:@atomicmemory/vercel-ai",
       "required_for_public_release": true,
       "coverage_label": "package_protocol",
-      "publish_status": "implemented_publish_pending",
+      "publish_status": "published",
       "install_type": "npm_framework_adapter",
-      "public_install_command": null,
-      "release_blocker": "The renamed @atomicmemory/vercel-ai-sdk package is not published."
+      "public_install_command": "npm install @atomicmemory/vercel-ai@0.1.2 @atomicmemory/sdk",
+      "release_blocker": "The published status and install command apply to the 0.1.2 root helpers only. Packed CI tests 0.2.0 /tools. Verify a clean npm install of 0.2.0 with /tools before marking those tools available."
     },
     {
       "kind": "adapter",

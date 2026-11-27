@@ -119,8 +119,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ai: ["6.0.0", "6.0.300"]
-        zod: ["3.25.76", "4.1.8", "4.6.5"]
+        ai: ["5.0.0", "5.0.292", "6.0.0", "6.0.336", "7.0.0", "7.0.181"]
+        zod: ["3.25.76", "4.1.8", "4.6.7"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -135,12 +135,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the adapter and SDK
-        run: pnpm exec turbo run build --filter=@atomicmemory/vercel-ai-sdk
+        run: pnpm exec turbo run build --filter=@atomicmemory/vercel-ai...
       - name: Verify packed exports, consumer types, and tool execution
         env:
           AI_SDK_VERSION: ${{ matrix.ai }}
           ZOD_VERSION: ${{ matrix.zod }}
-        run: pnpm --filter @atomicmemory/vercel-ai-sdk smoke:packed
+        run: pnpm --filter @atomicmemory/vercel-ai smoke:packed
 
   affected-build-test:
     name: affected-build-test (node ${{ matrix.node-version }})

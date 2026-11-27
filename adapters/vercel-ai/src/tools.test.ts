@@ -1,4 +1,4 @@
-/** Tool behavior through real SDK HTTP requests and AI SDK 6 generation loops. */
+/** Tool behavior through real SDK HTTP requests and AI SDK generation loops. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryClient } from '@atomicmemory/sdk';
